@@ -11,9 +11,13 @@ secret-handling rules apply here. App behavior and setup are in [README.md](READ
 - `/phone` and `/admin` are Next.js pages for modern browsers. Authenticate on
   the phone and authorize the iPad through the backend. Preserve the three-minute
   global inactivity timeout; polling and animation must not extend sessions.
-- Keep verified Privy access tokens (API authentication) and verified identity
-  tokens (wallet authorization) distinct. Preserve shared admin membership checks,
-  exact signer policies and server validation of transaction details.
+- Authenticate app APIs with verified Privy access tokens. Authorize wallet
+  requests with `useAuthorizationSignature` in the browser and the server SDK’s
+  exact request bytes (`sign_fns`). Do not exchange access/identity JWTs for
+  wallet signing keys or add a server owner key as a workaround. Preserve shared
+  admin membership checks, exact signer policies and server validation of
+  transaction details. Authorization channels are short-lived, single-use,
+  account/endpoint-bound and must never log request payloads or signatures.
 - Slot writes, the reveal keeper and LI.FI swaps have separate authorization
   paths. Reuse `lib/slot` / `lib/admin` services and their coordinators. Do not
   silently retry a transaction whose submission result is unknown.

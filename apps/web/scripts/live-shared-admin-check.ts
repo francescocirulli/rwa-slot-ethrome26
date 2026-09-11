@@ -5,11 +5,13 @@ import {PrivyClient} from '@privy-io/node';
 import {randomUUID} from 'node:crypto';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {createAdminService} from '../lib/admin/service';
+import {createWalletAuthorizationHandler} from '../lib/wallet-authorization-api';
 import {createAdminHandler} from '../lib/admin/api';
 import {createWalletService} from '../lib/privy';
 import {createBalanceReader} from '../lib/balance';
 import {createAccountHandler} from '../lib/account';
 import {adminChainFixture} from '../tests/browser/admin-chain-fixture.mjs';
+const diagnosticLog=(value:object)=>{if(process.env.LIVE_CHECK_DIAGNOSTICS==='1')console.log(JSON.stringify(value));};
 async function main(){
 const origin=process.env.LIVE_CHECK_ORIGIN||'http://localhost:3000';
 const appId=process.env.NEXT_PUBLIC_PRIVY_APP_ID!,appSecret=process.env.PRIVY_APP_SECRET!;
@@ -24,6 +26,8 @@ try {
   const pages:Page[]=[],ids:string[]=[];
   for(let person=0;person<2;person++){
     const context=await browser.newContext({viewport:{width:person?390:1280,height:900}}),page=await context.newPage();pages.push(page);
+    page.on('requestfailed',request=>diagnosticLog({requestFailed:new URL(request.url()).pathname}));
+    page.on('response',response=>{if(response.url().includes('privy.io')&&response.status()>=400)diagnosticLog({privyPath:new URL(response.url()).pathname,status:response.status()});});
     const cdp=await context.newCDPSession(page);await cdp.send('WebAuthn.enable');
     await cdp.send('WebAuthn.addVirtualAuthenticator',{options:{protocol:'ctap2',transport:'internal',hasResidentKey:true,hasUserVerification:true,isUserVerified:true,automaticPresenceSimulation:true}});
     await page.goto(origin+'/admin');
@@ -44,10 +48,17 @@ try {
   }});
   let handle=createAdminHandler({service:diagnostic(service),walletService:wallets,origin,readBalance});
   const personal=createAccountHandler(wallets,readBalance);
+  const authorization=createWalletAuthorizationHandler({walletService:wallets,origin});
+  for(const page of pages)await page.route('**/api/wallet-authorization',async route=>{
+    const request=route.request();diagnosticLog({authorizationAction:request.postDataJSON()?.action,event:'start'});const response=await authorization(new Request(request.url(),{method:request.method(),headers:request.headers(),body:request.postData()||undefined}));
+    diagnosticLog({authorizationAction:request.postDataJSON()?.action,status:response.status,state:(await response.clone().json()).state});
+    await route.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:await response.text()});
+  });
   for(const page of pages)await page.route('**/api/admin/**',async route=>{
     const request=route.request(),path=new URL(request.url()).pathname;
     if(path.startsWith('/api/admin/contract/')){await route.abort('blockedbyclient');return;}
     const action=path.split('/').pop() as 'account'|'create'|'member'|'proof';
+    diagnosticLog({adminAction:action,event:'start'});
     const response=await handle(new Request(request.url(),{method:request.method(),headers:request.headers(),body:request.postData()||undefined}),action);
     await route.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:await response.text()});
   });
@@ -60,7 +71,7 @@ try {
   const address=(await owner.locator('.account-details code').textContent())!;
   await expect(owner.locator('.admin-wallet-balance')).toContainText('0,00',{timeout:30000});
   expect((await service.resolve({userId:ids[0],wallets:[]})).wallet.address).toBe(address);passed();
-  stage='owner authorizes second Privy identity using its own JWT';
+  stage='owner authorizes second Privy identity with native browser authorization';
   await owner.getByLabel('Codice account del collaboratore').fill(ids[1]);
   await owner.getByRole('button',{name:'Aggiungi collaboratore',exact:false}).click();
   await owner.getByRole('button',{name:'Conferma autorizzazione',exact:true}).click();

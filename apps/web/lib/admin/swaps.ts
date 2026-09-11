@@ -4,7 +4,7 @@ import {createPublicClient,http,erc20Abi,encodeFunctionData,parseEventLogs,parse
 import {base} from 'viem/chains';
 import {entryPoint06Address,entryPoint07Address,entryPoint08Address,entryPoint09Address} from 'viem/account-abstraction';
 import {PAYMENT_ASSET,RWA_ASSETS,SWAP_INPUTS,assetUnits} from '../assets';
-import type {Identity,WalletService} from '../types';
+import type {Identity,WalletService,WalletAuthorization} from '../types';
 import type {AdminAccessService} from './service';
 import {SlotError} from '../slot/errors';
 import {definiteSendFailure,transactionError,type GasToken} from '../slot/gas';
@@ -103,7 +103,7 @@ export function createSwapService({client,walletService,admin,chain=createSwapCh
       if(balance<BigInt(baseAmount))throw new SlotError('SwapBalance','Saldo '+inputAsset.ticker+' insufficiente per questo importo.',400);
       const op:Operation={id:randomBytes(32).toString('hex'),userId:user.userId,walletId:wallet.id,address:intent.address,assetId:asset.id,inputAssetId:inputAsset.id,expiresAt:now()+30000,stage:'quoted',step:inputAsset.id==='usdc'&&allowance<BigInt(baseAmount)?'approval':'swap',intent,quote};operations.set(op.id,op);return view(op);
     },
-    async execute(user:Identity,identityToken:string,id:unknown,confirm:unknown){
+    async execute(user:Identity,authorization:WalletAuthorization,id:unknown,confirm:unknown){
       const {wallet}=await access(user,true),op=typeof id==='string'?operations.get(id):undefined;
       if(!op||op.userId!==user.userId||op.walletId!==wallet.id)throw new SlotError('SwapUnknown','Quotazione scaduta o non disponibile. Verifica prima eventuali transazioni già inviate.',404);
       if(confirm!==true)throw new SlotError('Consent','Conferma l’operazione prima dell’invio.',400);
@@ -127,7 +127,7 @@ export function createSwapService({client,walletService,admin,chain=createSwapCh
         await assertAccess();
         const transaction=op.step==='approval'?{to:PAYMENT_ASSET.address,data:encodeFunctionData({abi:erc20Abi,functionName:'approve',args:[LIFI_ROUTER,BigInt(op.intent.amount)]}),value:'0x0' as const}:op.quote.transaction;
         sending=true;
-        op.submission=await walletService.sendOwned(wallet,identityToken,{...transaction,chainId:8453},op.id+':'+op.step,'usdc',token=>{op.gasToken=token;},assertAccess);
+        op.submission=await walletService.sendOwned(wallet,authorization,{...transaction,chainId:8453},op.id+':'+op.step,'usdc',token=>{op.gasToken=token;},assertAccess);
         if(!op.submission.hash&&!op.submission.transactionId&&!op.submission.userOperationHash)throw new Error('Missing transaction reference');
         op.stage='pending';
       }catch(error){

@@ -3,7 +3,7 @@ import {APIError} from '@privy-io/node';
 import type {Balance,WalletService} from '../types';
 import {SlotError} from '../slot/errors';
 import type {AdminService} from './service';
-import {walletAuthorizationToken} from '../wallet-authorization';
+import {withWalletAuthorization} from '../wallet-authorization';
 export function createAdminHandler({service,walletService,origin,readBalance}:{service?:AdminService;walletService?:WalletService;origin:string;readBalance:(address:string)=>Promise<Balance>}) {
   return async function handle(request:Request,action:'account'|'create'|'member'|'proof') {
     const reply=(value:unknown,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store','Vary':'Authorization','Referrer-Policy':'no-referrer'}});
@@ -23,15 +23,19 @@ export function createAdminHandler({service,walletService,origin,readBalance}:{s
         if(action==='create')await service.create(user);
         if(action==='member') {
           if(typeof input.userId!=='string'||!['add','remove'].includes(input.operation))throw new SlotError('Input','Collaboratore non valido.',400);
-          await service.setMember(user,await walletAuthorizationToken(request,user,walletService),input.userId,input.operation==='remove');
+          await withWalletAuthorization(request,user,authorization=>service.setMember(user,authorization,input.userId,input.operation==='remove'));
         }
-        if(action==='proof')return reply(await service.proof(user,await walletAuthorizationToken(request,user,walletService)));
+        if(action==='proof')return reply(await withWalletAuthorization(request,user,authorization=>service.proof(user,authorization)));
       }
       const state=await service.status(user);
       const wallet=state.wallet?{address:state.wallet.address,balance:await readBalance(state.wallet.address),depositQr:await QRCode.toDataURL(state.wallet.address,{width:280,margin:2,errorCorrectionLevel:'M'})}:null;
       return reply({...state,userId:user.userId,wallet});
     }catch(error) {
       if(error instanceof SlotError)return reply({error:error.message,code:error.code},error.status);
+      if(error instanceof APIError){
+        const code=(error.error as {code?:unknown}|undefined)?.code;
+        console.warn('Privy admin request rejected',{action,status:error.status,code:typeof code==='string'&&/^[a-z_]{1,64}$/.test(code)?code:'unknown'});
+      }
       if(error instanceof APIError&&error.status===404)return reply({error:'Account o risorsa Privy non trovata. Verifica il codice e aggiorna.',code:'PrivyNotFound'},404);
       if(error instanceof APIError&&[401,403].includes(error.status||0))return reply({error:'Privy non ha autorizzato l’operazione. Accedi di nuovo e verifica i permessi dell’app.',code:'PrivyPermission'},403);
       return reply({error:'Operazione Privy non verificabile. Aggiorna lo stato prima di riprovare.',code:'PrivyUnavailable'},503);

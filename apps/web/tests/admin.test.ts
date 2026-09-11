@@ -1,3 +1,4 @@
+import {testAuthorization,testSignature,authorizedTestRequest} from './helpers/wallet-authorization';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {PrivyClient} from '@privy-io/node';
@@ -17,16 +18,16 @@ function fixture(){
   const wallets=new Map<string,any>(),accounts=new Map<string,typeof key>(),quorums=new Map<string,any>(),policies=new Map<string,any>(),updates:any[]=[],signatures:string[]=[];
   const client={wallets:()=>({list:async(params:any)=>({data:[...wallets.values()].filter(value=>value.external_id===params.external_id),next_cursor:null}),get:async(id:string)=>structuredClone(wallets.get(id)),
     create:async(input:any)=>{const scalar=BigInt('0x'+'1'.repeat(64))+BigInt(wallets.size);const account=privateKeyToAccount(('0x'+scalar.toString(16).padStart(64,'0')) as `0x${string}`);wallet={...input,id:'wallet-shared-'+wallets.size,address:account.address,additional_signers:[],policy_ids:[]};wallets.set(wallet.id,wallet);accounts.set(wallet.id,account);return structuredClone(wallet);},
-    update:async(id:string,input:any)=>{assert.deepEqual(input.authorization_context,{user_jwts:['owner-identity']});updates.push(input);const value=wallets.get(id);value.additional_signers=structuredClone(input.additional_signers);return structuredClone(value);},
-    ethereum:()=>({signMessage:async(id:string,input:any)=>{signatures.push(input.authorization_context.user_jwts[0]);return{signature:await accounts.get(id)!.signMessage({message:input.message})};}})}),
+    update:async(id:string,input:any)=>{assert.equal(await input.authorization_context.sign_fns[0](Buffer.from('update')),testSignature(owner.userId));updates.push(input);const value=wallets.get(id);value.additional_signers=structuredClone(input.additional_signers);return structuredClone(value);},
+    ethereum:()=>({signMessage:async(id:string,input:any)=>{signatures.push(await input.authorization_context.sign_fns[0](Buffer.from('proof')));return{signature:await accounts.get(id)!.signMessage({message:input.message})};}})}),
     keyQuorums:()=>({get:async(id:string)=>structuredClone(quorums.get(id)),create:async(input:any)=>{const value={...input,id:'quorum-'+(++next),authorization_keys:[],key_quorum_ids:[]};quorums.set(value.id,value);return value;}}),
     policies:()=>({get:async(id:string)=>structuredClone(policies.get(id)),create:async(input:any)=>{const value={...input,id:'policy-'+(++next)};policies.set(value.id,value);return value;}}),
     users:()=>({_get:async(id:string)=>({id})})} as unknown as PrivyClient;
   const service=createAdminService(client,owner.userId,()=>deployed);
-  const walletService={verifyIdentityToken:async(token:string,userId:string)=>{const expected=userId===owner.userId?'owner-identity':userId===operator.userId?'operator-identity':'outsider-identity';if(token!==expected)throw new Error('Identity mismatch');},authenticate:async(token:string)=>{if(token==='owner-token')return owner;if(token==='operator-token')return operator;if(token==='outsider-token')return outsider;throw new Error('Unauthorized');}} as unknown as WalletService;
+  const walletService={authenticate:async(token:string)=>{if(token==='owner-token')return owner;if(token==='operator-token')return operator;if(token==='outsider-token')return outsider;throw new Error('Unauthorized');}} as unknown as WalletService;
   const handle=createAdminHandler({service,walletService,origin,readBalance:async()=>({amount:'25',stale:false,updatedAt:1000})});
   async function call(action:'account'|'create'|'member'|'proof',token='owner-token',body?:unknown,requestOrigin=origin) {
-    const response=await handle(new Request(origin+'/api/admin/'+action,{method:action==='account'?'GET':'POST',headers:{Authorization:'Bearer '+token,Origin:requestOrigin,'Privy-Id-Token':token.replace('-token','-identity'),'Content-Type':'application/json','X-Slot-Request':'1'},body:action==='account'?undefined:JSON.stringify(body)}),action);
+    const response=await authorizedTestRequest(new Request(origin+'/api/admin/'+action,{method:action==='account'?'GET':'POST',headers:{Authorization:'Bearer '+token,Origin:requestOrigin,'Content-Type':'application/json','X-Slot-Request':'1'},body:action==='account'?undefined:JSON.stringify(body)}),token==='owner-token'?owner.userId:token==='operator-token'?operator.userId:outsider.userId,request=>handle(request,action));
     return {status:response.status,body:await response.json()};
   }
   return {service,client,call,updates,signatures,quorums,policies,wallet:()=>wallet,deploy:()=>{deployed=contract;}};
@@ -44,7 +45,7 @@ test('only configured owner can create shared wallet; independent logins see ide
   const stranger=await f.call('account','outsider-token');assert.equal(stranger.body.state,'waiting');assert.equal(stranger.body.wallet,null);assert.deepEqual(stranger.body.members,[]);
   assert.equal((await f.call('member','operator-token',{userId:outsider.userId,operation:'add',confirm:true})).status,403);
   assert.equal((await f.call('proof','owner-token',{confirm:true})).body.verified,true);
-  assert.equal((await f.call('proof','operator-token',{confirm:true})).body.verified,true);assert.deepEqual(f.signatures,['owner-identity','operator-identity']);
+  assert.equal((await f.call('proof','operator-token',{confirm:true})).body.verified,true);assert.deepEqual(f.signatures,[testSignature(owner.userId),testSignature(operator.userId)]);
   // Provider persists wallet and membership; process restart requires no app database.
   const restarted=createAdminService(f.client,owner.userId,()=>null);
   assert.equal((await restarted.resolve(operator)).wallet.id,id);
@@ -53,10 +54,10 @@ test('only configured owner can create shared wallet; independent logins see ide
   assert.equal((await f.call('proof','operator-token',{confirm:true})).status,403);
 });
 test('operator policies require owner activation for deployed contract and never grant ownership actions',async()=>{
-  const f=fixture();await f.service.create(owner);await f.service.setMember(owner,'owner-identity',operator.userId);
+  const f=fixture();await f.service.create(owner);await f.service.setMember(owner,testAuthorization(owner.userId),operator.userId);
   await assert.rejects(f.service.assertAction(operator,'pause'));
   f.deploy();await assert.rejects(f.service.assertAction(operator,'pause'));
-  await f.service.setMember(owner,'owner-identity',operator.userId);
+  await f.service.setMember(owner,testAuthorization(owner.userId),operator.userId);
   assert.equal((await f.service.assertAction(operator,'pause')).wallet.address,key.address);
   for(const action of ['grantRole','beginDefaultAdminTransfer','acceptDefaultAdminTransfer','renounceRole','approveBudget'])await assert.rejects(f.service.assertAction(operator,action));
   assert.equal((await f.service.assertAction(owner,'grantRole')).role,'owner');
@@ -106,10 +107,10 @@ test('a new owner can initialize an explicitly selected wallet without taking ov
   assert.notEqual(current.wallet.address,originalWallet.address);
   assert.deepEqual(f.quorums.get(f.wallet().owner_id).user_ids,[owner.userId]);
   assert.equal((await selected.status(operator)).state,'waiting');
-  await selected.setMember(owner,'owner-identity',operator.userId);
+  await selected.setMember(owner,testAuthorization(owner.userId),operator.userId);
   assert.deepEqual((await selected.resolve(operator)).wallet,current.wallet);
-  assert.equal((await selected.proof(owner,'owner-identity')).address,current.wallet.address);
-  assert.equal((await selected.proof(operator,'operator-identity')).address,current.wallet.address);
+  assert.equal((await selected.proof(owner,testAuthorization(owner.userId))).address,current.wallet.address);
+  assert.equal((await selected.proof(operator,testAuthorization(operator.userId))).address,current.wallet.address);
   const restarted=createAdminService(f.client,owner.userId,()=>null,externalId);
   await restarted.create(owner);
   assert.deepEqual((await restarted.resolve(operator)).wallet,current.wallet);
@@ -117,22 +118,22 @@ test('a new owner can initialize an explicitly selected wallet without taking ov
   assert.deepEqual(await f.client.wallets().get(originalWallet.id),originalWallet);
   assert.deepEqual(f.quorums.get(originalWallet.owner_id),originalQuorum);
   assert.equal((await previous.resolve(outsider)).wallet.id,originalWallet.id);
-  await selected.setMember(owner,'owner-identity',operator.userId,true);
+  await selected.setMember(owner,testAuthorization(owner.userId),operator.userId,true);
   await assert.rejects(restarted.resolve(operator),{code:'AdminAccess'});
 });
 
 test('legacy collaborators retain visibility and contract rights while LI.FI requires an explicit owner upgrade',async()=>{
-  const f=fixture();await f.service.create(owner);await f.service.setMember(owner,'owner-identity',operator.userId);
+  const f=fixture();await f.service.create(owner);await f.service.setMember(owner,testAuthorization(owner.userId),operator.userId);
   const policyId=f.wallet().additional_signers[0].override_policy_ids[0];
   assert.equal((await f.service.resolve(operator)).swapEnabled,true);
   assert.equal((await f.service.status(owner)).members[0].enabled,true);
   f.policies.get(policyId).rules=legacyOperatorPolicy(key.address,null);
   assert.equal((await f.service.resolve(operator)).swapEnabled,false);
   assert.equal((await f.service.status(owner)).members[0].enabled,false);
-  await f.service.setMember(owner,'owner-identity',operator.userId);
+  await f.service.setMember(owner,testAuthorization(owner.userId),operator.userId);
   assert.equal((await f.service.resolve(operator)).swapEnabled,true);
   f.deploy();assert.equal((await f.service.resolve(operator)).swapEnabled,true);
-  await f.service.setMember(owner,'owner-identity',operator.userId);
+  await f.service.setMember(owner,testAuthorization(owner.userId),operator.userId);
   const active=f.wallet().additional_signers[0].override_policy_ids[0];
   f.policies.get(active).rules=legacyOperatorPolicy(key.address,contract);
   assert.equal((await f.service.resolve(operator)).swapEnabled,false);
