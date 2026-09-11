@@ -1,0 +1,25 @@
+{
+  "name": "rwa-slot-ethrome26",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "setup:web": "npm --prefix apps/web ci",
+    "dev": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/web run build",
+    "start": "npm --prefix apps/web start",
+    "typecheck": "npm --prefix apps/web run typecheck",
+    "test": "npm --prefix apps/web test",
+    "test:browser": "npm --prefix apps/web run test:browser",
+    "test:chain": "npm --prefix apps/web run test:chain",
+    "build:contracts": "forge build --root contracts",
+    "test:contracts": "forge test --root contracts",
+    "railway:plan": "railway config plan",
+    "railway:apply": "railway config apply"
+  },
+  "devDependencies": {
+    "railway": "3.11.0"
+  }
+}

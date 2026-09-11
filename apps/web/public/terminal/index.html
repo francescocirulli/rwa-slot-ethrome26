@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#171426">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Lucky Signal — il prossimo colpo è tuo</title>
+  <link rel="icon" href="/symbols/star.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/terminal/style.css">
+  <script src="/terminal/client.js" defer></script>
+  <script src="/terminal/game.js" defer></script>
+</head>
+<body data-wallet-state="restoring">
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">✳</span><div>LUCKY<span>SIGNAL<span class="brand-dot">®</span></span></div></div>
+      <div class="header-center">GOOD ENERGY. <span>YOUR LUCK.</span></div>
+      <div class="network"><i></i> BASE <span>NETWORK</span></div>
+    </header>
+    <main class="main-layout">
+      <section class="cabinet" aria-label="Slot dimostrativa con 3 righe e 5 colonne">
+        <div class="cabinet-heading"><span class="overline">THE WALLET ARCADE</span><span class="edition">VOL. 001 <b>↗</b></span></div>
+        <div class="headline"><h1>FEELING<br><span>LUCKY?</span></h1><div class="orbit-seal" aria-hidden="true"><span>GOOD<br>THINGS<br>AHEAD</span><b>✦</b></div></div>
+        <div class="machine">
+          <div class="machine-top"><span><i></i> LUCKY SIGNAL</span><span>5 REELS / 3 ROWS</span></div>
+          <div class="reels" aria-label="Quindici simboli arcade; gioco non ancora attivo">
+            <div class="reel"><div class="cell"><img src="/symbols/symbol-2.svg" alt="NVIDIA"></div><div class="cell middle"><img src="/symbols/symbol-1.svg" alt="Free spin"></div><div class="cell"><img src="/symbols/symbol-0.svg" alt="Magnete"></div></div>
+            <div class="reel"><div class="cell"><img src="/symbols/symbol-4.svg" alt="SpaceX"></div><div class="cell middle"><img src="/symbols/symbol-3.svg" alt="Gadget"></div><div class="cell"><img src="/symbols/symbol-5.svg" alt="Apple"></div></div>
+            <div class="reel"><div class="cell"><img src="/symbols/symbol-6.svg" alt="Alphabet"></div><div class="cell middle"><img src="/symbols/symbol-11.svg" alt="Gold"></div><div class="cell"><img src="/symbols/symbol-8.svg" alt="ENS"></div></div>
+            <div class="reel"><div class="cell"><img src="/symbols/symbol-7.svg" alt="Amazon"></div><div class="cell middle"><img src="/symbols/symbol-9.svg" alt="Urbe Hub Day Pass"></div><div class="cell"><img src="/symbols/symbol-10.svg" alt="T-shirt"></div></div>
+            <div class="reel"><div class="cell"><img src="/symbols/symbol-11.svg" alt="Gold"></div><div class="cell middle"><img src="/symbols/symbol-2.svg" alt="NVIDIA"></div><div class="cell"><img src="/symbols/symbol-1.svg" alt="Free spin"></div></div>
+          </div>
+          <div class="machine-bottom"><span class="line-marks" aria-hidden="true">▰ ▰ ▰ ▰ ▰</span><span id="machine-status">IL PROSSIMO COLPO È TUO.</span><span class="line-marks" aria-hidden="true">▰ ▰ ▰ ▰ ▰</span></div>
+        </div>
+        <div class="cabinet-footer"><div><span id="cabinet-label" class="overline">IL TUO POSTO TI ASPETTA</span><p id="cabinet-copy">Collega il wallet dal telefono.</p></div><span id="game-unconfigured" class="coming-soon">CONTRATTO DA COLLEGARE <b>↗</b></span></div>
+        <div id="game-controls" class="game-controls" hidden>
+          <div class="game-progress" role="status"><span class="overline" id="game-phase">IL TUO TURNO</span><strong id="game-title">Prendi posto.</strong><p id="game-detail">Collega il wallet per giocare.</p></div>
+          <div class="game-actions"><button id="spin-paid" class="primary-button" type="button" disabled>GIOCA <span id="ticket-label">— USDC</span></button><button id="spin-free" class="free-spin-button" type="button" disabled>FREE SPIN <span id="free-spin-count">0</span></button></div>
+        </div>
+      </section>
+      <aside class="control-panel" aria-label="Collegamento e gestione wallet">
+        <div class="panel-top"><span class="overline">PLAYER CONSOLE</span><span id="connection-light" class="status-tag">VERIFICA</span></div>
+        <div id="connection-banner" class="connection-banner" role="status" hidden>Connessione persa. Riproviamo in automatico.</div>
+        <div id="session-feedback" class="session-feedback" role="status" hidden></div>
+        <section id="transition-panel" class="transition-panel" role="status">
+          <span class="transition-mark" aria-hidden="true">✳</span><span class="overline" id="transition-label">UN MOMENTO</span>
+          <h2 id="transition-title">Ritroviamo<br>il tuo posto.</h2><p id="transition-copy">Verifichiamo se un wallet è già collegato a questo iPad.</p><span class="loader" aria-hidden="true"></span>
+        </section>
+        <section id="welcome" hidden>
+          <div class="step-label">01 <span>/ NESSUN WALLET COLLEGATO</span></div>
+          <h2>La fortuna<br>parte da te<span>.</span></h2>
+          <p class="panel-copy">Scansiona con il telefono.<br>Collega il wallet e prendi posto.</p>
+          <div class="qr-frame"><img id="login-qr" alt="QR per collegare il telefono all’iPad" hidden><div id="qr-loading" class="qr-loading"><span class="loader"></span><span>Prepariamo il tuo posto…</span></div></div>
+          <div class="pair-code"><span>IL TUO CODICE</span><strong id="pair-code">— — —</strong></div>
+          <p class="qr-note">Confronta questo codice sul telefono.</p>
+          <div class="how-it-works"><span>↗</span><p><b>Il telefono ti riconosce.</b><br>Questo iPad ti dà il benvenuto.</p></div>
+        </section>
+        <section id="wallet-panel" hidden>
+          <div class="step-label">02 <span>/ IL TUO POSTO È QUI</span></div>
+          <div class="balance-heading"><h2>Wallet collegato<span>.</span></h2><span class="coin" aria-hidden="true">$</span></div>
+          <div class="session-indicator"><i></i><span>Sessione personale</span><span id="session-countdown">3:00</span></div><span class="overline balance-label">IL TUO SALDO</span>
+          <div class="balance-line"><strong id="balance">—</strong><span>USDC</span></div>
+          <p id="balance-status" class="balance-status">Lettura del saldo su Base…</p>
+          <div class="wallet-address"><span class="overline">IL TUO WALLET · BASE</span><p id="short-address"></p><button id="deposit-toggle" class="text-button" type="button">Ricarica il wallet <span>↗</span></button></div>
+          <div id="play-consent-status" class="play-consent-status" hidden><b id="play-consent-title">Autorizza il budget sul telefono.</b><p id="play-consent-copy">Le giocate usano il tuo wallet Privy.</p></div>
+          <div class="signature-card"><span id="signature-icon" aria-hidden="true">↗</span><div><b id="signature-title">Un ultimo sì sul telefono.</b><p id="signature-description">Autorizza la prova di firma per completare il collegamento.</p></div></div>
+          <button id="sign-button" class="primary-button" type="button" disabled><span id="sign-button-label">ATTENDI IL TELEFONO</span><span aria-hidden="true">↗</span></button>
+          <button id="proof-toggle" class="text-button proof-toggle" type="button" hidden>Vedi la firma verificata ↗</button>
+          <button id="logout" class="logout-button" type="button">Esci e libera il posto <span>↗</span></button>
+        </section>
+        <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+        <button id="retry" class="text-button" type="button" hidden>Riprova ↗</button>
+        <div class="panel-footnote"><span aria-hidden="true">◇</span><p>Il wallet resta tuo.<br>La sessione finisce dopo 3 minuti di inattività.</p></div>
+      </aside>
+    </main>
+    <footer class="bottom-bar"><span><i></i> MADE FOR A LITTLE LUCK</span><span id="footer-state">SCANSIONA. COLLEGATI. PRENDI POSTO.</span><span>EST. 2026 <b>✦</b></span></footer>
+  </div>
+  <div id="deposit-panel" class="overlay" role="dialog" aria-modal="true" aria-labelledby="deposit-title" hidden><div class="dialog receive-dialog"><span class="overline">IL TUO WALLET · BASE</span><h2 id="deposit-title">Fai il pieno.</h2><p>Ricevi USDC sulla rete Base.</p><img id="deposit-qr" alt="QR dell’indirizzo per ricevere USDC su Base"><p id="full-address"></p><small>Il deposito arriva al tuo wallet anche se esci dall’iPad.</small><button id="deposit-close" class="primary-button" type="button">FATTO <span>✓</span></button></div></div>
+  <div id="idle-warning" class="overlay" role="dialog" aria-modal="true" aria-labelledby="idle-title" hidden><div class="dialog"><span class="overline">IL TUO POSTO STA PER LIBERARSI</span><h2 id="idle-title">Ci sei ancora?</h2><p>La sessione termina tra <strong id="idle-seconds">30</strong> secondi.<br>Il tuo wallet e i tuoi fondi restano tuoi.</p><button id="stay" class="primary-button" type="button">SONO QUI <span>↗</span></button><button id="idle-logout" class="text-button" type="button">Ho finito, esci</button></div></div>
+  <div id="proof-dialog" class="overlay" role="dialog" aria-modal="true" aria-labelledby="proof-title" hidden><div class="dialog proof-dialog"><span class="overline">COLLEGAMENTO VERIFICATO</span><h2 id="proof-title">La firma è autentica.</h2><p>Il server ha firmato il messaggio autorizzato e verificato la firma rispetto al tuo wallet.</p><label>MESSAGGIO</label><pre id="proof-message"></pre><label>FIRMA</label><pre id="proof-value"></pre><button id="proof-close" class="primary-button" type="button">FATTO <span>✓</span></button></div></div>
+  <noscript>Attiva JavaScript in Safari per collegare il tuo wallet.</noscript>
+</body>
+</html>
