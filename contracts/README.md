@@ -3,6 +3,9 @@
 A Foundry project for a 5x3 slot machine on Base. Users pay for a spin in native Base USDC; prizes are paid
 immediately as ERC-20 tokens, ERC-1155 tokens, or free-spin credits held by the contract.
 
+Before contributing, read [../CONTRIBUTING.md](../CONTRIBUTING.md),
+[../AGENTS.md](../AGENTS.md) and the [contract rules](AGENTS.md).
+
 > This is prototype code and has not been audited. Future L2 block hashes are influenced by Base's sequencer.
 > Replace the entropy provider with verifiable randomness before using material prize value.
 
