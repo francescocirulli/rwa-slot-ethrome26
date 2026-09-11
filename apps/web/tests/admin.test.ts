@@ -6,6 +6,7 @@ import type {Address} from 'viem';
 import {createAdminService} from '../lib/admin/service';
 import {createAdminHandler} from '../lib/admin/api';
 import {ADMIN_WALLET_EXTERNAL_ID} from '../lib/admin/model';
+import {loadAdminWalletExternalId} from '../lib/admin/config';
 import {operatorPolicy,legacyOperatorPolicy,OPERATOR_ACTIONS,policyMatches} from '../lib/admin/policy';
 import type {WalletService} from '../lib/types';
 const owner={userId:'did:privy:owner00001',wallets:[]},operator={userId:'did:privy:operator001',wallets:[]},outsider={userId:'did:privy:outsider001',wallets:[]};
@@ -13,11 +14,11 @@ const key=privateKeyToAccount(('0x'+'1'.repeat(64)) as `0x${string}`),contract='
 const origin='https://slot.example';
 function fixture(){
   let wallet:any=null,next=0,deployed:Address|null=null;
-  const quorums=new Map<string,any>(),policies=new Map<string,any>(),updates:any[]=[],signatures:string[]=[];
-  const client={wallets:()=>({list:async(params:any)=>({data:wallet?.external_id===params.external_id?[wallet]:[],next_cursor:null}),get:async()=>structuredClone(wallet),
-    create:async(input:any)=>{wallet={...input,id:'wallet-shared',address:key.address,additional_signers:[],policy_ids:[]};return structuredClone(wallet);},
-    update:async(_id:string,input:any)=>{assert.deepEqual(input.authorization_context,{user_jwts:['owner-identity']});updates.push(input);wallet.additional_signers=structuredClone(input.additional_signers);return structuredClone(wallet);},
-    ethereum:()=>({signMessage:async(_id:string,input:any)=>{signatures.push(input.authorization_context.user_jwts[0]);return{signature:await key.signMessage({message:input.message})};}})}),
+  const wallets=new Map<string,any>(),accounts=new Map<string,typeof key>(),quorums=new Map<string,any>(),policies=new Map<string,any>(),updates:any[]=[],signatures:string[]=[];
+  const client={wallets:()=>({list:async(params:any)=>({data:[...wallets.values()].filter(value=>value.external_id===params.external_id),next_cursor:null}),get:async(id:string)=>structuredClone(wallets.get(id)),
+    create:async(input:any)=>{const scalar=BigInt('0x'+'1'.repeat(64))+BigInt(wallets.size);const account=privateKeyToAccount(('0x'+scalar.toString(16).padStart(64,'0')) as `0x${string}`);wallet={...input,id:'wallet-shared-'+wallets.size,address:account.address,additional_signers:[],policy_ids:[]};wallets.set(wallet.id,wallet);accounts.set(wallet.id,account);return structuredClone(wallet);},
+    update:async(id:string,input:any)=>{assert.deepEqual(input.authorization_context,{user_jwts:['owner-identity']});updates.push(input);const value=wallets.get(id);value.additional_signers=structuredClone(input.additional_signers);return structuredClone(value);},
+    ethereum:()=>({signMessage:async(id:string,input:any)=>{signatures.push(input.authorization_context.user_jwts[0]);return{signature:await accounts.get(id)!.signMessage({message:input.message})};}})}),
     keyQuorums:()=>({get:async(id:string)=>structuredClone(quorums.get(id)),create:async(input:any)=>{const value={...input,id:'quorum-'+(++next),authorization_keys:[],key_quorum_ids:[]};quorums.set(value.id,value);return value;}}),
     policies:()=>({get:async(id:string)=>structuredClone(policies.get(id)),create:async(input:any)=>{const value={...input,id:'policy-'+(++next)};policies.set(value.id,value);return value;}}),
     users:()=>({_get:async(id:string)=>({id})})} as unknown as PrivyClient;
@@ -72,6 +73,52 @@ test('no implicit first-login owner and ownership changes fail closed',async()=>
   assert.equal((await unconfigured.status(owner)).state,'unconfigured');await assert.rejects(unconfigured.create(owner));
   await f.service.create(owner);const quorum=f.quorums.get(f.wallet().owner_id);quorum.user_ids=[outsider.userId];
   await assert.rejects(f.service.resolve(owner));assert.equal(f.wallet().external_id,ADMIN_WALLET_EXTERNAL_ID);
+});
+
+test('wallet selection preserves the existing default and rejects malformed configuration',()=>{
+  for(const value of [undefined,''])assert.equal(loadAdminWalletExternalId(value),ADMIN_WALLET_EXTERNAL_ID);
+  assert.equal(loadAdminWalletExternalId('rwa_slot_admin_production_v1'),'rwa_slot_admin_production_v1');
+  for(const value of [' ',' wallet','wallet\n','wallet/id','x'.repeat(129)]){
+    assert.throws(()=>loadAdminWalletExternalId(value),{message:'Invalid ADMIN_WALLET_EXTERNAL_ID'});
+  }
+});
+
+test('a new owner can initialize an explicitly selected wallet without taking over the previous wallet',async()=>{
+  const f=fixture();
+  const previous=createAdminService(f.client,outsider.userId,()=>null);
+  await previous.create(outsider);
+  const originalWallet=structuredClone(f.wallet());
+  const originalQuorum=structuredClone(f.quorums.get(originalWallet.owner_id));
+  // Reconfiguring only the owner must neither grant access nor create a replacement.
+  await assert.rejects(f.service.status(owner),{code:'AdminOwnerChanged'});
+  await assert.rejects(f.service.create(owner),{code:'AdminOwnerChanged'});
+  assert.deepEqual(f.wallet(),originalWallet);
+
+  const externalId=loadAdminWalletExternalId('rwa_slot_admin_production_v1');
+  const selected=createAdminService(f.client,owner.userId,()=>null,externalId);
+  assert.equal((await selected.status(owner)).state,'create');
+  assert.equal((await selected.status(operator)).state,'waiting');
+  await assert.rejects(selected.create(operator),{code:'AdminOwner'});
+  await selected.create(owner);
+  const current=await selected.resolve(owner);
+  assert.equal(current.role,'owner');
+  assert.notEqual(current.wallet.id,originalWallet.id);
+  assert.notEqual(current.wallet.address,originalWallet.address);
+  assert.deepEqual(f.quorums.get(f.wallet().owner_id).user_ids,[owner.userId]);
+  assert.equal((await selected.status(operator)).state,'waiting');
+  await selected.setMember(owner,'owner-identity',operator.userId);
+  assert.deepEqual((await selected.resolve(operator)).wallet,current.wallet);
+  assert.equal((await selected.proof(owner,'owner-identity')).address,current.wallet.address);
+  assert.equal((await selected.proof(operator,'operator-identity')).address,current.wallet.address);
+  const restarted=createAdminService(f.client,owner.userId,()=>null,externalId);
+  await restarted.create(owner);
+  assert.deepEqual((await restarted.resolve(operator)).wallet,current.wallet);
+  assert.equal((await restarted.status(outsider)).state,'waiting');
+  assert.deepEqual(await f.client.wallets().get(originalWallet.id),originalWallet);
+  assert.deepEqual(f.quorums.get(originalWallet.owner_id),originalQuorum);
+  assert.equal((await previous.resolve(outsider)).wallet.id,originalWallet.id);
+  await selected.setMember(owner,'owner-identity',operator.userId,true);
+  await assert.rejects(restarted.resolve(operator),{code:'AdminAccess'});
 });
 
 test('legacy collaborators retain visibility and contract rights while LI.FI requires an explicit owner upgrade',async()=>{
