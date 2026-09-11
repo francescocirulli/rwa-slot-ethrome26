@@ -5,6 +5,7 @@ import {createAssetsHandler} from './assets-api';
 import {adminWrites} from './write-coordinator';
 import {PrivyClient} from '@privy-io/node';
 import {isAddress,type Address} from 'viem';
+import {createWalletAuthorizationHandler} from '../wallet-authorization-api';
 import {createWalletService} from '../privy';
 import {createBalanceReader} from '../balance';
 import {createAdminService} from './service';
@@ -20,6 +21,6 @@ function build() {
   const service=client?createAdminService(client,ownerId,contract,externalId):undefined;
   const walletService=appId&&secret?createWalletService(appId,secret):undefined;
   const origin=process.env.APP_ORIGIN||(process.env.RAILWAY_PUBLIC_DOMAIN?`https://${process.env.RAILWAY_PUBLIC_DOMAIN}`:'http://localhost:3000');
-  return {service,assets:createAssetsHandler({admin:service,walletService,swaps:client&&service&&walletService?createSwapService({client,walletService,admin:service,chain:createSwapChain(process.env.BASE_RPC_URL),getQuote:createLifiClient(fetch,process.env.LIFI_API_KEY),coordinator:adminWrites()}):undefined,inventory:createInventoryReader(process.env.BASE_RPC_URL),contract,origin}),handle:createAdminHandler({service,walletService,origin,readBalance:createBalanceReader(process.env.BASE_RPC_URL)})};
+  return {service,authorization:createWalletAuthorizationHandler({walletService,origin}),assets:createAssetsHandler({admin:service,walletService,swaps:client&&service&&walletService?createSwapService({client,walletService,admin:service,chain:createSwapChain(process.env.BASE_RPC_URL),getQuote:createLifiClient(fetch,process.env.LIFI_API_KEY),coordinator:adminWrites()}):undefined,inventory:createInventoryReader(process.env.BASE_RPC_URL),contract,origin}),handle:createAdminHandler({service,walletService,origin,readBalance:createBalanceReader(process.env.BASE_RPC_URL)})};
 }
 export function getAdminRuntime(){return global.sharedAdmin||=build();}

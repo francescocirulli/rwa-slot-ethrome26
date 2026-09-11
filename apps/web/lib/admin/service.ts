@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 import type {PrivyClient} from '@privy-io/node';
 import type {Wallet as PrivyWallet, KeyQuorum} from '@privy-io/node/resources';
 import {verifyMessage, type Address} from 'viem';
-import type {Identity, Wallet} from '../types';
+import type {Identity, Wallet, WalletAuthorization} from '../types';
 import {SlotError} from '../slot/errors';
 import {ADMIN_WALLET_EXTERNAL_ID,adminProofMessage,type AdminRole} from './model';
 import {OPERATOR_ACTIONS,operatorPolicy,legacyOperatorPolicy,policyMatches} from './policy';
@@ -88,7 +88,7 @@ export function createAdminService(client:PrivyClient,ownerId:string|undefined,c
         walletId=value.id;await wallet();
       });
     },
-    async setMember(user:Identity,token:string,memberId:string,remove=false) {
+    async setMember(user:Identity,authorization:WalletAuthorization,memberId:string,remove=false) {
       requireOwner(user);
       if(!/^did:privy:[a-zA-Z0-9_-]{5,100}$/.test(memberId)||memberId===ownerId)throw new SlotError('AdminMember','Inserisci il codice account Privy del collaboratore.',400);
       await exclusive(async()=>{
@@ -96,7 +96,7 @@ export function createAdminService(client:PrivyClient,ownerId:string|undefined,c
         const list=await members(value),matches=list.filter(item=>item.userId===memberId);
         if(remove){
           if(!matches.length)return;
-          await client.wallets().update(value.id,{additional_signers:value.additional_signers.filter(signer=>!matches.some(item=>item.signer.signer_id===signer.signer_id)),authorization_context:{user_jwts:[token]}});
+          await client.wallets().update(value.id,{additional_signers:value.additional_signers.filter(signer=>!matches.some(item=>item.signer.signer_id===signer.signer_id)),request_expiry:Date.now()+90000,authorization_context:authorization});
           return;
         }
         if(matches.length>1)throw new SlotError('AdminConfig','Rimuovi gli accessi duplicati prima di autorizzare nuovamente questo account.');
@@ -107,12 +107,12 @@ export function createAdminService(client:PrivyClient,ownerId:string|undefined,c
         const policy=await client.policies().create({name:'Lucky Signal admin operator',version:'1.0',chain_type:'ethereum',owner_id:value.owner_id!,rules});
         // A fresh policy is attached by the owner; collaborators never own their policy.
         const signerId=matches[0]?.signer.signer_id||(await client.keyQuorums().create({display_name:'Lucky Signal admin operator',user_ids:[memberId],authorization_threshold:1})).id;
-        await client.wallets().update(value.id,{additional_signers:[...value.additional_signers.filter(signer=>signer.signer_id!==signerId),{signer_id:signerId,override_policy_ids:[policy.id]}],authorization_context:{user_jwts:[token]}});
+        await client.wallets().update(value.id,{additional_signers:[...value.additional_signers.filter(signer=>signer.signer_id!==signerId),{signer_id:signerId,override_policy_ids:[policy.id]}],request_expiry:Date.now()+90000,authorization_context:authorization});
       });
     },
-    async proof(user:Identity,token:string) {
+    async proof(user:Identity,authorization:WalletAuthorization) {
       const access=await resolve(user),message=adminProofMessage(access.wallet.address);
-      const result=await client.wallets().ethereum().signMessage(access.wallet.id,{message,authorization_context:{user_jwts:[token]}});
+      const result=await client.wallets().ethereum().signMessage(access.wallet.id,{message,request_expiry:Date.now()+90000,authorization_context:authorization});
       if(!await verifyMessage({address:access.wallet.address as Address,message,signature:result.signature as `0x${string}`}))throw new SlotError('AdminProof','Firma non valida.',503);
       await resolve(user);
       return {verified:true,address:access.wallet.address};

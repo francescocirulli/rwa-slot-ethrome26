@@ -24,20 +24,29 @@ restano ruoli distinti: il wallet admin non viene offerto al pairing dell'iPad.
    saldo, condivisione e firma di prova.
 
 Privy consente di creare quorum e signer tramite API: non occorre creare una
-chiave comune nel dashboard. In **User management → Authentication → Advanced**
-attivare **Return user data in an identity token**, poi accedere di nuovo.
-L'access token autentica le API dell'app; l'identity token, verificato contro
-lo stesso user ID, autorizza il wallet tramite `authorization_context.user_jwts`.
-Il collaudo ha rilevato che passare l'access token alle API wallet restituisce
-`Invalid JWT token provided`.
-Servono inoltre email/passkey e **User pays → Base → USDC** per le commissioni. I quorum con
-user ID vengono creati dal codice. Un eventuale rifiuto del provider deve
-essere risolto sull'app Privy, senza ripiegare su wallet controllati dal server.
+chiave comune nel dashboard. Servono email/passkey e **User pays → Base → USDC**
+per le commissioni. Gli identity token non sono richiesti per autorizzare il wallet.
+
+L'access token verifica l'identità sulle API dell'app. Per ogni modifica o firma,
+il backend prepara la richiesta esatta con il Node SDK; il browser la autorizza
+con `useAuthorizationSignature`. La firma torna al Node SDK tramite `sign_fns`.
+Il canale dura al massimo 90 secondi ed è vincolato all'account e all'endpoint,
+utilizzabile da una sola operazione. Le chiavi restano nel SDK Privy del browser.
+Una pagina chiusa, un cambio account o una firma rifiutata non autorizzano l'invio.
+Servono una sola replica sempre attiva e nessun database; al riavvio, un canale
+interrotto richiede una nuova conferma. Le operazioni già inviate si verificano
+attraverso i loro riferimenti esistenti, senza ripeterle.
+
+La precedente implementazione passava un identity token a `user_jwts`:
+Privy rispondeva `400 Invalid JWT token provided` su `/v1/wallets/authenticate`,
+sia per la firma di prova sia per l'aggiunta di un collaboratore. La prova reale
+ha rifiutato anche l'access token; abilitare gli identity token non risolveva.
+La firma nativa nel browser evita quello scambio e non cambia la proprietà.
 
 ## Permessi
 
 Il proprietario del wallet approva l'aggiunta/rimozione di signer con il proprio
-identity token Privy, verificato insieme all'access token. Il collaboratore ha un quorum personale e una policy controllata
+sessione Privy nel browser, autenticata anche sulle API dell'app. Il collaboratore ha un quorum personale e una policy controllata
 dal proprietario. Può gestire la slot e finanziare/prelevare premi quando il
 contratto lo consente. Sono esclusi cambi di proprietà, ruoli, rinunce ai ruoli,
 approvazioni di budget player e modifiche al wallet Privy. Le policy limitano
@@ -111,16 +120,21 @@ firma messaggi benigni e revoca l'accesso del collaboratore alla fine.
 Le transazioni restano intercettate. Evidenza in
 `artifacts/live-shared-admin-check.json`. Non carica fondi né deploya contratti.
 
-Stato del collaudo reale al 2026-09-11: verificati i due login separati e la
-creazione del wallet di test con owner. La condivisione/firma è ancora in
-attesa dell'attivazione degli identity token nell'app Privy; il test si ferma
-con l'istruzione corrispondente. Revoca, persistenza, funding comune e invii
-simultanei sono coperti dai test con provider simulato. Ripetere il test reale
-dopo avere attivato l'opzione e rifatto il login.
+Il collaudo deve completare aggiunta, firma di entrambe le persone e revoca
+con il provider reale: un login riuscito o un test con provider simulato non
+provano che Privy accetti l'autorizzazione del wallet.
+
+Collaudo del 2026-09-12 completato con la build locale: due registrazioni
+passkey indipendenti, wallet condiviso vuoto, aggiunta del collaboratore,
+firma verificata da entrambi sullo stesso indirizzo, persistenza dopo il
+riavvio del servizio e revoca. Anche il recupero della UI dopo una risposta
+persa è verificato; invii onchain e pagamento del gas restano simulati.
+Lo script crea account di prova nell'app Privy: non usare l'ultimo account
+registrato per dedurre chi debba essere `ADMIN_OWNER_USER_ID`.
 
 - [Privy: owner e signer](https://docs.privy.io/controls/authorization-keys/owners/overview)
 - [Privy: quorum con user ID](https://docs.privy.io/api-reference/key-quorums/create)
-- [Privy: abilitare identity token](https://docs.privy.io/user-management/users/identity-tokens)
+- [Privy: firma nativa delle richieste](https://docs.privy.io/controls/authorization-keys/using-owners/sign/utility-functions)
 - [Privy: policy Ethereum](https://docs.privy.io/controls/policies/example-policies/ethereum)
 
 ### Swap capability

@@ -2,9 +2,10 @@
 import {useEffect,useRef,useState} from 'react';
 import {usePrivy} from '@privy-io/react-auth';
 import type {AdminAccountView} from '@/lib/admin/model';
-import {walletAuthorizationHeaders} from '@/lib/wallet-authorization-client';
+import {useWalletRequest} from '@/lib/wallet-authorization-client';
 export function AdminTeam({account,onRefresh}:{account:AdminAccountView;onRefresh:()=>void}) {
   const {getAccessToken}=usePrivy();
+  const walletRequest=useWalletRequest();
   const [member,setMember]=useState(''),[review,setReview]=useState<{id:string;remove:boolean}|null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[verified,setVerified]=useState(false);
   const alive=useRef(true),locked=useRef(false);
@@ -13,8 +14,7 @@ export function AdminTeam({account,onRefresh}:{account:AdminAccountView;onRefres
     if(locked.current)return;locked.current=true;setBusy(true);setError('');setVerified(false);
     try {
       const token=await getAccessToken();if(!token||!alive.current)throw new Error('Accedi di nuovo.');
-      const walletHeaders=await walletAuthorizationHeaders();if(!alive.current)return;
-      const response=await fetch('/api/admin/'+action,{method:'POST',headers:{Authorization:`Bearer ${token}`,...walletHeaders,'Content-Type':'application/json','X-Slot-Request':'1'},body:JSON.stringify({...body,confirm:true}),signal:AbortSignal.timeout(90000)});
+      const response=await walletRequest('/api/admin/'+action,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json','X-Slot-Request':'1'},body:JSON.stringify({...body,confirm:true}),signal:AbortSignal.timeout(90000)});
       const value=await response.json();if(!alive.current)return;
       if(!response.ok)throw new Error(value.error||'Operazione non verificata. Aggiorna prima di riprovare.');
       if(action==='proof')setVerified(value.verified&&value.address.toLowerCase()===account.wallet?.address.toLowerCase());

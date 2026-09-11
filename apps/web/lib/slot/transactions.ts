@@ -8,7 +8,7 @@ import {prepareAction} from './actions';
 import {SlotError, slotError} from './errors';
 import {definiteSendFailure, transactionError, type GasToken} from './gas';
 import type {AdminAccessService} from '../admin/service';
-import {walletAuthorizationToken} from '../wallet-authorization';
+import {withWalletAuthorization} from '../wallet-authorization';
 
 type Transaction = Awaited<ReturnType<typeof prepareAction>>;
 type Operation = {
@@ -94,16 +94,13 @@ export function createContractApi({walletService, getSlot, origin, admin, coordi
       if(op.expiresAt<=now()){op.stage='cancelled';throw new SlotError('Expired','Conferma scaduta. Prepara di nuovo l’operazione.');}
       if(input.confirm!==true)throw new SlotError('Consent','Conferma operazione e commissioni prima dell’invio.',400);
       if(!walletService.sendOwned)throw new SlotError('Config','Invio Privy non disponibile.',503);
-      const authorizationToken=await walletAuthorizationToken(request,user,walletService);
-      // Identity verification yields; another confirmation may have won meanwhile.
-      if(op.stage!=='prepared')return reply(view(op),202);
-      if(op.expiresAt<=now()){op.stage='cancelled';throw new SlotError('Expired','Conferma scaduta. Prepara di nuovo l’operazione.');}
       // Mark synchronously, before yielding, so concurrent confirmations share one send.
       op.stage='submitting';
-      void(async()=>{
+      void withWalletAuthorization(request,user,async authorization=>{
         let sending=false;
         try {
           const assertAccess=async()=>{
+            if(op.expiresAt<=now())throw new SlotError('Cancelled','Conferma scaduta prima dell’invio. Prepara di nuovo l’operazione.');
             if(scope!=='admin')return;
             const access=await admin!.assertAction(user,op.action);
             if(access.wallet.id!==op.walletId||access.wallet.address.toLowerCase()!==op.address.toLowerCase())throw new SlotError('Cancelled','Il wallet condiviso è cambiato.');
@@ -113,11 +110,11 @@ export function createContractApi({walletService, getSlot, origin, admin, coordi
           const checked=await prepareAction(slot.reader,op.address as Address,op.action,op.args);
           if(checked.to!==op.transaction.to||checked.data!==op.transaction.data||checked.chainId!==op.transaction.chainId)throw new SlotError('Cancelled','Configurazione cambiata. Prepara nuovamente l’operazione.');
           sending=true;
-          op.submission=await walletService.sendOwned!(operationWallet,authorizationToken,op.transaction,op.id,op.transaction.gasMode,gas=>{op.gasToken=gas;},assertAccess);
+          op.submission=await walletService.sendOwned!(operationWallet,authorization,op.transaction,op.id,op.transaction.gasMode,gas=>{op.gasToken=gas;},assertAccess);
           if(!op.submission.hash&&!op.submission.transactionId)throw new Error('Missing submission reference');
           op.gasToken=op.submission.gasToken||op.gasToken;op.stage='confirming';
         }catch(error){op.stage=!sending||definiteSendFailure(error)?'failed':'uncertain';op.error=sending?transactionError(error):slotError(error).message;}
-      })();
+      }).catch(error=>{op.stage='failed';op.error=slotError(error).message;});
       return reply(view(op),202);
     }catch(error){const safe=slotError(error);return reply({error:safe.message,code:safe.code},safe.status);}
   }};

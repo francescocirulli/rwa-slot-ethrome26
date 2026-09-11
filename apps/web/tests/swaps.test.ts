@@ -1,3 +1,4 @@
+import {testAuthorization} from './helpers/wallet-authorization';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {APIError,type PrivyClient} from '@privy-io/node';
@@ -67,9 +68,9 @@ test('LI.FI client fixes network, wallet and slippage; rejects error responses a
 test('both admins execute exactly once; identity binding and shared wallet gas USDC',async()=>{
   for(const actor of [owner,other]){
     const f=fixture(),q=await f.service.quote(actor,'nvidia','12.5');assert.equal(q.step,'swap');assert.equal(f.sent.length,0);
-    await assert.rejects(f.service.execute(actor===owner?other:owner,'other-id',q.id,true));await assert.rejects(f.service.execute(actor,'identity-token',q.id,false));
-    let release!:()=>void;f.wait(new Promise<void>(r=>{release=r;}));const first=f.service.execute(actor,'identity-token',q.id,true);await new Promise(r=>setImmediate(r));assert.equal((await f.service.execute(actor,'identity-token',q.id,true)).stage,'submitting');release();const result=await first;
-    assert.equal(result.stage,'pending');assert.equal(f.sent.length,1);const sent=f.sent[0];assert.equal(sent.wallet.id,wallet.id);assert.equal(sent.token,'identity-token');assert.equal(sent.transaction.to,LIFI_ROUTER);assert.equal(sent.transaction.value,'0x0');assert.equal(sent.transaction.chainId,8453);assert.deepEqual(sent.gas.sponsor_options,{asset:'usdc'});assert.ok(!JSON.stringify(result).includes('identity-token'));
+    await assert.rejects(f.service.execute(actor===owner?other:owner,testAuthorization(),q.id,true));await assert.rejects(f.service.execute(actor,testAuthorization(),q.id,false));
+    let release!:()=>void;f.wait(new Promise<void>(r=>{release=r;}));const first=f.service.execute(actor,testAuthorization(),q.id,true);await new Promise(r=>setImmediate(r));assert.equal((await f.service.execute(actor,testAuthorization(),q.id,true)).stage,'submitting');release();const result=await first;
+    assert.equal(result.stage,'pending');assert.equal(f.sent.length,1);const sent=f.sent[0];assert.equal(sent.wallet.id,wallet.id);assert.equal(typeof sent.token.sign_fns[0],'function');assert.equal(sent.transaction.to,LIFI_ROUTER);assert.equal(sent.transaction.value,'0x0');assert.equal(sent.transaction.chainId,8453);assert.deepEqual(sent.gas.sponsor_options,{asset:'usdc'});assert.ok(!JSON.stringify(result).includes('identity-token'));
     assert.equal((await f.service.status(other,q.id,null)).stage,'pending');f.confirm(result.actionId!);assert.equal((await f.service.status(other,q.id,null)).output,'1000000');
     const restarted=createSwapService(f.deps);assert.equal((await restarted.status(other,q.id,result.actionId)).stage,'succeeded');
     f.transactions.get(result.actionId!)!.wallet_id='other-wallet';await assert.rejects(restarted.status(other,q.id,result.actionId));
@@ -77,50 +78,50 @@ test('both admins execute exactly once; identity binding and shared wallet gas U
 });
 test('USDC approval has the exact allowance and never reports swap success or submits a swap automatically',async()=>{
   const f=fixture();f.allowance(0n);const q=await f.service.quote(other,'gold','3.123456');assert.equal(q.step,'approval');
-  const op=await f.service.execute(other,'id-token',q.id,true),sent=f.sent[0];
+  const op=await f.service.execute(other,testAuthorization(),q.id,true),sent=f.sent[0];
   const decoded=decodeFunctionData({abi:erc20Abi,data:sent.transaction.data});assert.equal(decoded.functionName,'approve');assert.deepEqual(decoded.args,[LIFI_ROUTER,3123456n]);assert.equal(sent.transaction.to,PAYMENT_ASSET.address);
   f.confirm(op.actionId!,'approval');const done=await f.service.status(owner,q.id,null);assert.equal(done.stage,'approved');assert.equal(done.output,null);assert.equal(f.sent.length,1);
-  await f.service.execute(other,'id-token',q.id,true);assert.equal(f.sent.length,1);await f.coordinator.acquire(wallet.id,'deposit',async()=>true);
+  await f.service.execute(other,testAuthorization(),q.id,true);assert.equal(f.sent.length,1);await f.coordinator.acquire(wallet.id,'deposit',async()=>true);
 });
 test('ETH input uses native value, skips approval, and falls back to ETH gas only on definitive USDC shortage',async()=>{
   const f=fixture();f.allowance(0n);f.shortGas();const q=await f.service.quote(other,'gold','0.004000000000000001','eth');assert.equal(q.step,'swap');assert.equal(q.input,'4000000000000001');
-  const result=await f.service.execute(other,'identity-token',q.id,true);assert.equal(result.gasToken,'ETH');assert.equal(f.sent.length,2);assert.equal(f.sent[0].transaction.value,toHex(4000000000000001n));assert.deepEqual(f.sent[0].transaction,f.sent[1].transaction);assert.equal(f.sent[1].gas.sponsor,false);assert.notEqual(f.sent[0].gas.idempotency_key,f.sent[1].gas.idempotency_key);
+  const result=await f.service.execute(other,testAuthorization(),q.id,true);assert.equal(result.gasToken,'ETH');assert.equal(f.sent.length,2);assert.equal(f.sent[0].transaction.value,toHex(4000000000000001n));assert.deepEqual(f.sent[0].transaction,f.sent[1].transaction);assert.equal(f.sent[1].gas.sponsor,false);assert.notEqual(f.sent[0].gas.idempotency_key,f.sent[1].gas.idempotency_key);
   f.confirm(result.actionId!);assert.equal((await f.service.status(owner,q.id,null)).stage,'succeeded');
 });
 test('uncertain and provider policy failures never trigger gas fallback; uncertain requests block competing writes',async()=>{
   for(const error of [new Error('Network timeout'),new APIError(403,{error:'Denied'},'Denied',new Headers())]){
-    const f=fixture();const q=await f.service.quote(other,'nvidia','1');f.fail(error);const result=await f.service.execute(other,'identity',q.id,true);assert.equal(result.stage,error instanceof APIError?'rejected':'uncertain');
-    await f.service.execute(other,'identity',q.id,true);assert.equal(f.sent.length,1);if(!(error instanceof APIError))await assert.rejects(f.coordinator.acquire(wallet.id,'deposit',async()=>true));
+    const f=fixture();const q=await f.service.quote(other,'nvidia','1');f.fail(error);const result=await f.service.execute(other,testAuthorization(),q.id,true);assert.equal(result.stage,error instanceof APIError?'rejected':'uncertain');
+    await f.service.execute(other,testAuthorization(),q.id,true);assert.equal(f.sent.length,1);if(!(error instanceof APIError))await assert.rejects(f.coordinator.acquire(wallet.id,'deposit',async()=>true));
   }
 });
 test('revocation between fee attempts prevents ETH fallback',async()=>{
-  const f=fixture();f.shortGas();f.revokeOnSend();const q=await f.service.quote(other,'nvidia','1');assert.equal((await f.service.execute(other,'identity',q.id,true)).stage,'rejected');assert.equal(f.sent.length,1);
+  const f=fixture();f.shortGas();f.revokeOnSend();const q=await f.service.quote(other,'nvidia','1');assert.equal((await f.service.execute(other,testAuthorization(),q.id,true)).stage,'rejected');assert.equal(f.sent.length,1);
 });
 test('expiry, worse prices, unavailable balance and permissions block sends',async()=>{
   const f=fixture();await assert.rejects(f.service.quote(owner,'arbitrary','1'));await assert.rejects(f.service.quote(owner,'gold','1','arbitrary'));
-  const q=await f.service.quote(owner,'gold','1');f.price();assert.equal((await f.service.execute(owner,'identity',q.id,true)).stage,'rejected');assert.equal(f.sent.length,0);
-  const q2=await f.service.quote(owner,'gold','1');f.expire();await assert.rejects(f.service.execute(owner,'identity',q2.id,true));
-  const q3=await f.service.quote(other,'gold','1');f.permissions();await assert.rejects(f.service.execute(other,'identity',q3.id,true));await assert.rejects(f.service.quote(other,'gold','1'));
+  const q=await f.service.quote(owner,'gold','1');f.price();assert.equal((await f.service.execute(owner,testAuthorization(),q.id,true)).stage,'rejected');assert.equal(f.sent.length,0);
+  const q2=await f.service.quote(owner,'gold','1');f.expire();await assert.rejects(f.service.execute(owner,testAuthorization(),q2.id,true));
+  const q3=await f.service.quote(other,'gold','1');f.permissions();await assert.rejects(f.service.execute(other,testAuthorization(),q3.id,true));await assert.rejects(f.service.quote(other,'gold','1'));
   f.balance(0n);await assert.rejects(f.service.quote(owner,'gold','1'));assert.equal(f.sent.length,0);
 });
 test('pending contract write prevents swap; reverted receipts release the shared coordinator',async()=>{
   const f=fixture();let done=false;await f.coordinator.acquire(wallet.id,'contract',async()=>done);
-  const q=await f.service.quote(other,'gold','1');assert.equal((await f.service.execute(other,'identity',q.id,true)).stage,'rejected');assert.equal(f.sent.length,0);
-  done=true;const q2=await f.service.quote(other,'gold','1');const op=await f.service.execute(other,'identity',q2.id,true);f.confirm(op.actionId!);f.receipt({status:'reverted',logs:[]} as unknown as TransactionReceipt);
+  const q=await f.service.quote(other,'gold','1');assert.equal((await f.service.execute(other,testAuthorization(),q.id,true)).stage,'rejected');assert.equal(f.sent.length,0);
+  done=true;const q2=await f.service.quote(other,'gold','1');const op=await f.service.execute(other,testAuthorization(),q2.id,true);f.confirm(op.actionId!);f.receipt({status:'reverted',logs:[]} as unknown as TransactionReceipt);
   assert.equal((await f.service.status(owner,q2.id,null)).stage,'failed');await f.coordinator.acquire(wallet.id,'deposit',async()=>true);
 });
 test('wrong receiver or missing completion event never counts as a successful swap',async()=>{
-  const f=fixture();const q=await f.service.quote(other,'gold','1');const op=await f.service.execute(other,'identity',q.id,true);f.confirm(op.actionId!,'swap',router);
+  const f=fixture();const q=await f.service.quote(other,'gold','1');const op=await f.service.execute(other,testAuthorization(),q.id,true);f.confirm(op.actionId!,'swap',router);
   await assert.rejects(f.service.status(owner,q.id,null));await assert.rejects(f.coordinator.acquire(wallet.id,'deposit',async()=>true));
 });
-test('asset API rejects unauthenticated, cross-origin and mismatched identity-token requests',async()=>{
+test('asset API rejects unauthenticated, cross-origin and missing browser authorizations',async()=>{
   const f=fixture(),origin='https://slot.example';
   const service={authenticate:async(token:string)=>{if(token!=='access')throw new Error('Unauthorized');return other;},verifyIdentityToken:async(token:string)=>{if(token!=='identity')throw new Error('Mismatch');}} as unknown as WalletService;
   const handle=createAssetsHandler({admin:f.admin,walletService:service,swaps:f.service,inventory:async()=>({address:wallet.address}) as any,contract:()=>null,origin});
   const call=(headers:Record<string,string>,action:'quote'|'execute'='quote',body:unknown={assetId:'nvidia',amount:'0.004',inputAssetId:'eth'})=>handle(new Request(origin+'/'+action,{method:'POST',headers:{Origin:origin,'X-Slot-Request':'1','Content-Type':'application/json',Authorization:'Bearer access','Privy-Id-Token':'identity',...headers},body:JSON.stringify(body)}),action);
   assert.equal((await call({Authorization:''})).status,401);assert.equal((await call({Origin:'https://evil.example'})).status,403);assert.equal(f.quotes.length,0);
   const response=await call({'Privy-Id-Token':''});assert.equal(response.status,200);const quote=await response.json();assert.equal(quote.inputAssetId,'eth');
-  assert.equal((await call({'Privy-Id-Token':'other'},'execute',{id:quote.id,confirm:true})).status,401);assert.equal(f.sent.length,0);
+  assert.equal((await call({'X-Wallet-Authorization':'invalid'},'execute',{id:quote.id,confirm:true})).status,404);assert.equal(f.sent.length,0);
 });
 
 test('USDC gas tracks a user-operation-only response without resubmission, including read-only restart recovery',async()=>{
@@ -128,7 +129,7 @@ test('USDC gas tracks a user-operation-only response without resubmission, inclu
   f.deps.walletService.sendOwned=async()=>({userOperationHash:userOp,gasToken:'USDC'});
   let found=false;
   f.deps.chain.userOperation=async(hash,sender,block)=>{assert.equal(hash,userOp);assert.equal(sender,address);assert.ok(block>=100n);return found?{hash:txHash,success:true,nextBlock:block}:{nextBlock:block+1n};};
-  const q=await f.service.quote(other,'gold','1'),op=await f.service.execute(other,'identity',q.id,true);
+  const q=await f.service.quote(other,'gold','1'),op=await f.service.execute(other,testAuthorization(),q.id,true);
   assert.equal(op.stage,'pending');assert.equal(op.actionId,null);assert.equal(op.userOperationHash,userOp);assert.equal(op.fromBlock,'100');
   const pending=await f.service.status(other,q.id,null);assert.equal(pending.stage,'pending');assert.equal(pending.fromBlock,'101');
   const {parseAbi}=await import('viem');
@@ -143,7 +144,7 @@ test('failed user operation is terminal even when the containing bundle transact
   const f=fixture(),userOp=('0x'+'8'.repeat(64)) as Hash;
   f.deps.walletService.sendOwned=async()=>({userOperationHash:userOp,gasToken:'USDC'});
   f.deps.chain.userOperation=async()=>({hash:txHash,success:false,nextBlock:100n});
-  const q=await f.service.quote(other,'gold','1');await f.service.execute(other,'identity',q.id,true);
+  const q=await f.service.quote(other,'gold','1');await f.service.execute(other,testAuthorization(),q.id,true);
   f.receipt({status:'success',logs:[]} as unknown as TransactionReceipt);
   assert.equal((await f.service.status(other,q.id,null)).stage,'failed');
   const restarted=createSwapService(f.deps);assert.equal((await restarted.status(other,q.id,null,null,userOp,'100')).stage,'failed');

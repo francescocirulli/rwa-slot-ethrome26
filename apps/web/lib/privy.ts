@@ -135,11 +135,12 @@ export function createWalletService(appId: string, appSecret: string, excludeSha
       })});
       return {hash: /^0x[0-9a-fA-F]{64}$/.test(result.hash) ? result.hash as Hash : undefined, transactionId: result.transaction_id, gasToken:result.gasToken};
     },
-    async sendOwned(wallet, token, transaction, idempotencyKey, mode, onGasToken, assertValid) {
+    async sendOwned(wallet, authorization, transaction, idempotencyKey, mode, onGasToken, assertValid) {
       const result = await sendWithGas({mode, key:idempotencyKey, onGasToken, assertValid, send: gas => client.wallets().ethereum().sendTransaction(wallet.id, {
         caip2:`eip155:${transaction.chainId}` as 'eip155:8453', ...gas,
         params:{transaction:{to:transaction.to,data:transaction.data,chain_id:transaction.chainId,value:transaction.value||'0x0'}},
-        authorization_context:{user_jwts:[token]},
+        request_expiry:Date.now()+90000,
+        authorization_context:{sign_fns:[async payload=>{const signature=await authorization.sign_fns[0](payload);await assertValid?.();return signature;}]},
       })});
       return {hash:/^0x[0-9a-fA-F]{64}$/.test(result.hash)?result.hash as Hash:undefined,transactionId:result.transaction_id,userOperationHash:result.user_operation_hash&&/^0x[0-9a-fA-F]{64}$/.test(result.user_operation_hash)?result.user_operation_hash as Hash:undefined,gasToken:result.gasToken};
     },
