@@ -29,6 +29,7 @@ export default defineRailway(() => {
       NEXT_PUBLIC_PRIVY_APP_ID: preserve(),
       PRIVY_APP_SECRET: preserve(),
       ADMIN_OWNER_USER_ID: preserve(),
+      ADMIN_WALLET_EXTERNAL_ID: preserve(),
       PRIVY_GAS_MODE: preserve(),
       BASE_RPC_URL: preserve(),
       SLOT_CONTRACT_ADDRESS: preserve(),
