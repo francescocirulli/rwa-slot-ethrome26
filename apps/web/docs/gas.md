@@ -1,75 +1,73 @@
-# Gas pagato dal wallet
+# Gas paid by the wallet
 
-`PRIVY_GAS_MODE=usdc` è il default. Nel dashboard Privy devono essere attivi
-**User pays**, rete **Base**, asset **USDC**. L'app invia
-`sponsor: true, sponsor_options: {asset: 'usdc'}` tramite Node SDK: in questa
-modalità l'addebito è al wallet dell'utente, non ai crediti gas dell'app.
-Privy gestisce l'approvazione al paymaster nella transazione. L'approvazione
-`USDC.approve(slot, budget)` resta distinta e limita solo le giocate.
+`PRIVY_GAS_MODE=usdc` is the default. Enable **User pays**, network **Base** and
+asset **USDC** in the Privy dashboard. The app sends
+`sponsor: true, sponsor_options: {asset: 'usdc'}` through the Node SDK: in this
+mode, the user's wallet pays, rather than the app's gas credits. Privy handles
+paymaster approval in the transaction. `USDC.approve(slot, budget)` remains
+separate and limits only gameplay spending.
 
-Il SDK React installato non espone `sponsor_options`. Le operazioni approvate
-dal telefono e dall'admin passano quindi dalle API del server. L'access token
-Privy autentica la richiesta; il browser autorizza i byte esatti preparati dal
-Node SDK con `useAuthorizationSignature`. Il server inoltra la firma con
-`sign_fns`, senza scambiare JWT per chiavi wallet. Ogni tentativo USDC/ETH
-richiede la propria firma sul payload corrispondente. Dopo la firma si
-ricontrollano accesso e scadenza prima dell'invio. Chiavi, token e firme non
-vengono registrati nei log.
-Il signer P-256 della sessione iPad resta limitato a `startSpin()`.
+The installed React SDK does not expose `sponsor_options`, so phone- and
+admin-approved operations go through server APIs. The Privy access token
+authenticates the request; the browser authorizes the exact bytes prepared by
+the Node SDK with `useAuthorizationSignature`. The server forwards the signature
+through `sign_fns`, without exchanging JWTs for wallet keys. Each USDC/ETH attempt
+requires its own signature for the corresponding payload. Access and expiry
+are rechecked after signing and before submission. Keys, tokens and signatures
+are not logged. The iPad session's P-256 signer remains limited to `startSpin()`.
 
 ## Fallback
 
-1. Richiesta con gas USDC e chiave idempotente stabile per operazione/valuta.
-2. Soltanto un errore Privy HTTP 400 riconosciuto come saldo insufficiente,
-   senza riferimenti a una transazione già inviata, permette un tentativo ETH
-   sullo stesso wallet: `sponsor: false`, senza `sponsor_options`.
-3. Errori di rete, 5xx, policy, configurazione, revert o errori sconosciuti non
-   fanno scattare il fallback. Se anche ETH è insufficiente, la UI chiede una
-   ricarica. Non si cambia valuta dopo una submission accettata.
+1. Request USDC gas with a stable idempotency key per operation/currency.
+2. Only a Privy HTTP 400 error recognized as insufficient balance, without
+   references to an already submitted transaction, allows an ETH attempt from
+   the same wallet: `sponsor: false`, without `sponsor_options`.
+3. Network errors, 5xx responses, policy errors, configuration errors, reverts
+   and unknown errors do not trigger fallback. If ETH is also insufficient,
+   the UI asks for funding. Currency never changes after an accepted submission.
 
-Il riconoscimento fallisce in modo conservativo: se Privy cambia il formato
-del rifiuto, la richiesta non passa automaticamente a ETH. Non è sufficiente
-guardare `balanceOf`: gli USDC devono coprire insieme operazione e commissioni.
-`PRIVY_GAS_MODE=eth` disabilita la prima richiesta e usa direttamente ETH.
+Error recognition fails closed: if Privy changes the rejection format, the
+request does not automatically switch to ETH. Checking `balanceOf` alone is
+insufficient: USDC must cover both the operation and its fees.
+`PRIVY_GAS_MODE=eth` skips the first attempt and uses ETH directly.
 
-Il consenso specifica che le commissioni si aggiungono al budget/importo.
-Non viene mostrato un preventivo numerico vincolante: è Privy a calcolare
-il gas al momento dell'invio. Il wallet backend per reveal, scadenze e free
-spin paga sempre in ETH, a carico dell'operatore.
+Consent states that fees are additional to the budget/amount. No binding numeric
+quote is shown: Privy calculates gas at submission time. The backend wallet for
+reveals, expiry and free spins always pays in ETH, funded by the operator.
 
-## Conferme e recupero senza database
+## Confirmations and recovery without a database
 
-`POST /api/contract/prepare` simula un'azione ammessa, con il vero sender e
-gas price zero per non respingere i wallet senza ETH. Non firma e non invia.
-La richiesta è vincolata a utente, wallet, calldata e modalità gas, scade dopo
-5 minuti e deve essere confermata nella UI. `POST /send` richiede il suo ID
-e `confirm: true`; richieste concorrenti condividono un solo invio. `POST
-/cancel` annulla soltanto richieste ancora non inviate. `/status` richiede
-l'autenticazione dello stesso proprietario.
+`POST /api/contract/prepare` simulates an allowed action with the real sender
+and zero gas price so wallets without ETH are not rejected. It neither signs
+nor submits. The request is bound to the user, wallet, calldata and gas mode,
+expires after 5 minutes and must be confirmed in the UI. `POST /api/contract/send`
+requires its ID and `confirm: true`; concurrent requests share one submission.
+`POST /api/contract/cancel` cancels only requests not yet submitted.
+`GET /api/contract/status` requires authentication as the same owner.
 
-Privy può restituire un `transaction_id` prima dell'hash. Il backend lo segue
-fino alla ricevuta; la UI conserva solo ID pubblico e, appena disponibile,
-hash in sessionStorage. Un refresh non ripete l'invio. Due conferme onchain
-concludono l'operazione. Il polling non prolunga la sessione dell'iPad.
+Privy may return a `transaction_id` before a hash. The backend tracks it through
+to the receipt; the UI stores only the public ID and, once available, the hash
+in sessionStorage. Refreshing does not resubmit. Two onchain confirmations
+complete the operation. Polling does not extend the iPad session.
 
-Le richieste non ancora onchain sono in memoria. Dopo un riavvio, l'hash già
-salvato consente la verifica diretta della ricevuta. Se la risposta Privy si
-perde senza hash/ID, o il server riparte prima che il browser riceva l'hash,
-l'app mantiene il blocco e chiede di verificare il wallet: non promette di
-recuperare una submission priva di riferimenti, né reinvia alla cieca.
-I reveal delle giocate già registrate continuano a recuperarsi dal contratto.
+Requests not yet onchain are held in memory. After a restart, a saved hash allows
+direct receipt verification. If the Privy response is lost without a hash/ID,
+or the server restarts before the browser receives the hash, the app keeps the
+operation blocked and asks the user to check the wallet. It does not promise
+recovery of a submission without references or blindly resend. Reveals for
+games already recorded onchain remain recoverable from the contract.
 
-## Verifica
+## Validation
 
-Test automatici: opzioni SDK, USDC → ETH, errori ambigui, sessione scaduta fra
-i tentativi, fondi insufficienti, consenso gas, ownership, calldata immutabile,
-click duplicati e stato pending. Anvil verifica la simulazione senza ETH.
-Il browser test manuale usa un wallet Privy vuoto e intercetta le scritture
-per verificare conferma, annullamento e refresh.
+Automated tests cover SDK options, USDC → ETH, ambiguous errors, session expiry
+between attempts, insufficient funds, gas consent, ownership, immutable calldata,
+duplicate clicks and pending state. Anvil verifies simulation without ETH.
+The manual browser test uses an empty Privy wallet and intercepts writes to
+verify confirmation, cancellation and refresh.
 
-**L'addebito reale USDC e il fallback ETH su Base richiedono ancora il deploy
-del contratto e un collaudo con fondi.** Nessun fondo reale è stato movimentato.
+**Real USDC gas charges and ETH fallback on Base still require contract deployment
+and a funded acceptance test.** No real funds have been moved.
 
-- [Privy: configurazione User pays](https://docs.privy.io/wallets/gas-and-asset-management/gas/setup)
+- [Privy: User pays setup](https://docs.privy.io/wallets/gas-and-asset-management/gas/setup)
 - [Privy: eth_sendTransaction](https://docs.privy.io/api-reference/wallets/ethereum/eth-send-transaction)
-- [Privy: autorizzazione con JWT utente](https://docs.privy.io/controls/authorization-keys/keys/create/user/request)
+- [Privy: native request authorization](https://docs.privy.io/controls/authorization-keys/using-owners/sign/utility-functions)

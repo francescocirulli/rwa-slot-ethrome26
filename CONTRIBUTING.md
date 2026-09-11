@@ -3,7 +3,8 @@
 The shared rules are in [AGENTS.md](AGENTS.md). They apply to people and coding
 assistants. The root README explains the project; component READMEs explain
 the web app and contracts. Every `CLAUDE.md` imports its local `AGENTS.md`, so
-Claude and other agents use the same written rules.
+Claude and other agents use the same written rules. Write all repository
+Markdown documentation in English, including new or updated README files.
 
 ## Branches and pull requests
 

@@ -1,160 +1,160 @@
 # Lucky Signal
 
-Slot arcade per iPad condiviso, con accesso dal telefono, wallet embedded
-Privy e USDC su Base. Integra `DigitalSlotMachine` in [`../../contracts`](../../contracts):
-giocate a pagamento, free spin, reveal automatico e console admin onchain.
-Il contratto non è ancora deployato: senza indirizzo configurato, wallet e
-pairing funzionano e le operazioni di gioco restano disabilitate.
+Arcade slot machine for a shared iPad, with phone login, embedded Privy wallets
+and USDC on Base. Integrates `DigitalSlotMachine` from [`../../contracts`](../../contracts):
+paid spins, free spins, automatic reveal and an onchain admin console.
+The contract has not been deployed yet: without a configured address, wallets
+and pairing work while game operations remain disabled.
 
-Per contribuire leggere [../../CONTRIBUTING.md](../../CONTRIBUTING.md),
-[../../AGENTS.md](../../AGENTS.md) e le [regole web](AGENTS.md).
+Before contributing, read [../../CONTRIBUTING.md](../../CONTRIBUTING.md),
+[../../AGENTS.md](../../AGENTS.md) and the [web rules](AGENTS.md).
 
-## Avvio
+## Getting started
 
-Node.js 22. Copiare `.env.example` in `.env.local` e compilare le variabili
-necessarie senza condividere segreti in chat o nel repository.
+Use Node.js 22. Copy `.env.example` to `.env.local` and fill in the required
+variables without sharing secrets in chat or the repository.
 
 ```sh
 npm ci
 npm run dev
 ```
 
-- `/`: terminale iPad, HTML/CSS/ES5, senza runtime React o SDK wallet.
-- `/phone`: accesso Privy, pairing, saldo, ricezione USDC e consenso al budget.
-- `/admin`: account Privy personali, wallet condiviso, collaboratori, catalogo, riserve e comandi.
+- `/`: iPad terminal, HTML/CSS/ES5, without a React runtime or wallet SDK.
+- `/phone`: Privy login, pairing, balance, receiving USDC and budget consent.
+- `/admin`: personal Privy accounts, shared wallet, collaborators, catalog, reserves and controls.
 
-Telefono e iPad devono raggiungere la stessa origine HTTPS. `APP_ORIGIN` è
-l'origine pubblica esatta, senza path. `NEXT_PUBLIC_PRIVY_APP_ID` è pubblico;
-`PRIVY_APP_SECRET` e `SLOT_BACKEND_PRIVATE_KEY` sono esclusivamente server-side.
-Le credenziali vengono lette a runtime, anche nella build standalone.
+The phone and iPad must reach the same HTTPS origin. `APP_ORIGIN` is the exact
+public origin, without a path. `NEXT_PUBLIC_PRIVY_APP_ID` is public;
+`PRIVY_APP_SECRET` and `SLOT_BACKEND_PRIVATE_KEY` are server-only.
+Credentials are read at runtime, including in the standalone build.
 
-## Privy e sessioni
+## Privy and sessions
 
-Abilitare email, passkey e registrazione con passkey, wallet embedded Ethereum
-di proprietà dell'utente e l'origine pubblica dell'app. L'email usa un codice
-OTP: Privy non offre password tradizionali. Per conservare le passkey fra
-accessi usare un dominio stabile. Un account email può aggiungere una passkey
-senza creare un secondo wallet.
+Enable email, passkeys and passkey registration, user-owned embedded Ethereum
+wallets and the app's public origin. Email uses an OTP code: Privy does not
+offer traditional passwords. Use a stable domain to retain passkeys between
+visits. An email account can add a passkey without creating a second wallet.
 
-Il QR monouso dura 5 minuti e contiene il segreto nel fragment dell'URL, rimosso
-dal telefono dopo la lettura. Il pairing richiede confronto del codice e JWT
-Privy verificato sul backend. L'indirizzo proviene dai wallet embedded verificati
-dell'account, non dal browser. Cookie HttpOnly, SameSite=Lax e Secure su HTTPS;
-mutazioni protette con origine esatta e header dedicato.
+The single-use QR code lasts 5 minutes and carries its secret in the URL
+fragment, which the phone removes after reading it. Pairing requires comparing
+the code and a backend-verified Privy JWT. The address comes from the account's
+verified embedded wallets, not from the browser. Cookies are HttpOnly,
+SameSite=Lax and Secure over HTTPS; mutations require the exact origin and a
+dedicated header.
 
-La sessione condivisa termina dopo **3 minuti di inattività globale** su iPad e
-telefono. Polling, animazioni e letture non rinnovano il timer. Il terminale
-nasconde i dati alla scadenza anche offline e ignora risposte tardive. Un nuovo
-pairing dello stesso account chiude il precedente. Il wallet e i fondi restano
-all'utente; il logout admin segue invece la sessione personale Privy.
+The shared session ends after **3 minutes of global inactivity** across iPad
+and phone. Polling, animations and reads do not reset the timer. The terminal
+hides data at expiry even offline and ignores late responses. Pairing the same
+account again closes its previous session. The user retains the wallet and
+funds; admin logout follows the personal Privy session instead.
 
-Il wallet player e quello condiviso dell'admin hanno selezioni separate. Ogni
-admin accede con il proprio account Privy; tutti gli autorizzati vedono lo
-stesso wallet, saldo e QR per il funding. I ruoli onchain vengono assegnati a
-questo indirizzo condiviso. Il proprietario gestisce gli accessi; i collaboratori
-possono operare senza modificare proprietà o ruoli. Un semplice login non
-conferisce accesso. Configurazione e collaudo: [docs/shared-admin.md](docs/shared-admin.md).
-`ADMIN_OWNER_USER_ID` indica l'account autorizzato a creare il wallet condiviso;
-il codice è visibile dopo il login nell'admin. L'access token autentica le API.
-La sessione Privy nel browser firma ogni richiesta wallet con
-`useAuthorizationSignature`; gli identity token non sono necessari.
-`ADMIN_WALLET_EXTERNAL_ID` seleziona il wallet condiviso: lasciarlo vuoto conserva
-quello esistente. Per inizializzare un wallet distinto dopo una prova con un altro
-account, seguire [la procedura dedicata](docs/shared-admin.md#cambio-account-dopo-una-prova).
-L'admin usa un browser moderno; il terminale è destinato a iPad Air orizzontale,
-iOS 12.5.8 / Safari 12.1.2, come la repo sperimentale di riferimento.
+Player and shared admin wallets have separate selection paths. Each admin
+signs in with their own Privy account; all authorized users see the same wallet,
+balance and funding QR code. Onchain roles are assigned to this shared address.
+The owner manages access; collaborators can operate without changing ownership
+or roles. Login alone does not grant access. Setup and testing:
+[docs/shared-admin.md](docs/shared-admin.md).
+`ADMIN_OWNER_USER_ID` identifies the account allowed to create the shared wallet;
+its account code is visible after admin login. The access token authenticates APIs.
+The browser's Privy session signs each wallet request with
+`useAuthorizationSignature`; identity tokens are not required.
+`ADMIN_WALLET_EXTERNAL_ID` selects the shared wallet: leaving it empty preserves
+the existing default. To initialize a separate wallet after a trial with another
+account, follow [the recovery procedure](docs/shared-admin.md#changing-accounts-after-a-trial).
+The admin panel requires a modern browser; the terminal targets iPad Air in
+landscape, iOS 12.5.8 / Safari 12.1.2, matching the experimental reference repo.
 
-## Gioco e separazione dei wallet
+## Gameplay and wallet separation
 
-| Operazione | Wallet che firma |
+| Operation | Signing wallet |
 | --- | --- |
-| `USDC.approve(slot, budget)` | Player Privy, con conferma sul telefono |
-| `startSpin()` | Player Privy, attraverso il signer temporaneo della sessione |
-| `startFreeSpin(player)` | EOA backend, con `GAME_MANAGER_ROLE` |
-| `revealRound(gameId)` e chiusura delle giocate scadute | EOA backend |
-| Configurazione, ruoli, tesoreria, deposito premi | Admin Privy, con conferma nel browser |
+| `USDC.approve(slot, budget)` | Player Privy wallet, confirmed on the phone |
+| `startSpin()` | Player Privy wallet, through the session's temporary signer |
+| `startFreeSpin(player)` | Backend EOA with `GAME_MANAGER_ROLE` |
+| `revealRound(gameId)` and expired-game cleanup | Backend EOA |
+| Configuration, roles, treasury and prize deposits | Admin Privy wallet, confirmed in the browser |
 
-Sul telefono l'utente sceglie un budget USDC limitato. Il backend verifica
-l'approvazione esatta prima di abilitare il signer. La sua policy ammette
-esclusivamente `eth_sendTransaction`, rete Base, indirizzo della slot, valore
-nativo zero e funzione `startSpin()`. Non ammette approvazioni token, trasferimenti
-arbitrari o typed data. Il contratto scala il prezzo corrente dall'allowance
-ad ogni giocata; il signer non può aumentarla. Le autorizzazioni e gli addebiti
-al paymaster per il gas sono gestiti separatamente da Privy e non fanno parte
-del budget approvato alla slot.
+On the phone, the user chooses a limited USDC budget. The backend verifies the
+exact approval before enabling the signer. Its policy permits only
+`eth_sendTransaction` on Base, to the slot address, with zero native value and
+the `startSpin()` function. It does not allow token approvals, arbitrary
+transfers or typed data. The contract deducts the current ticket price from
+the allowance on each spin; the signer cannot increase it. Privy handles
+paymaster authorizations and gas charges separately; they are outside the
+budget approved for the slot.
 
-Logout e scadenza distruggono immediatamente la chiave P-256 temporanea in
-memoria e tentano la cancellazione remota del quorum. La policy non ha una
-scadenza autonoma: il timer è applicato dal backend, che custodisce la sola
-chiave capace di usare quel signer. Metadati Privy possono restare se la pulizia
-remota fallisce. **L'allowance USDC residua non viene azzerata dal logout**:
-il telefono offre un comando esplicito per azzerarla. Per scegliere un nuovo
-budget si chiude il collegamento e si scansiona un nuovo QR.
+Logout and expiry immediately destroy the temporary in-memory P-256 key and
+attempt to delete the remote quorum. The policy does not expire independently:
+the backend enforces the timer and holds the only key capable of using that
+signer. Privy metadata may remain if remote cleanup fails.
+**Logout does not reset the remaining USDC allowance**: the phone offers an
+explicit action to reset it. To choose a new budget, disconnect and scan a new QR code.
 
-I rulli girano dall'invio della giocata fino a due conferme del reveal. Il
-backend aspetta il blocco richiesto dal contratto e conclude la giocata anche
-se il telefono è chiuso o la sessione è terminata. Il premio viene pagato dal
-contratto al player originale. Nessun risultato viene inventato o anticipato
-con `previewPendingResult`.
+The reels spin from submission until the reveal has two confirmations. The
+backend waits for the block required by the contract and finishes the game even
+if the phone is closed or the session has ended. The contract pays the prize to
+the original player. Results are neither fabricated nor shown early through
+`previewPendingResult`.
 
-Stato corrente da read call; premi storici da `RoundRevealed` e `PrizePaid`.
-Il keeper recupera le giocate pendenti con `getActiveGameIds` dopo ogni riavvio.
-**Nessun database.** Dettagli, mapping ABI, limiti e configurazione in
+Current state comes from read calls; historical prizes come from `RoundRevealed`
+and `PrizePaid`. The keeper recovers pending games through `getActiveGameIds`
+after each restart. **No database.** Details, ABI mapping, limits and configuration:
 [docs/contracts.md](docs/contracts.md).
 
-La precedente prova di `personal_sign` resta disponibile quando il contratto
-non è collegato. Usa una policy separata limitata all'esatto messaggio con
-nonce/sessione, viene eseguita una sola volta e verifica la firma del wallet.
+The earlier `personal_sign` proof remains available when no contract is connected.
+It uses a separate policy limited to the exact message with a nonce/session,
+runs once and verifies the wallet signature.
 
-## Dopo il deploy del contratto
+## After contract deployment
 
-Impostare `SLOT_CONTRACT_ADDRESS`, il suo `SLOT_DEPLOYMENT_BLOCK` esatto e una
-`SLOT_BACKEND_PRIVATE_KEY` dedicata. L'app verifica Base mainnet (8453), presenza
-del codice e token di pagamento USDC nativo
-`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` (6 decimali).
+Set `SLOT_CONTRACT_ADDRESS`, its exact `SLOT_DEPLOYMENT_BLOCK` and a dedicated
+`SLOT_BACKEND_PRIVATE_KEY`. The app verifies Base mainnet (8453), deployed code
+and native USDC as the payment token:
+`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` (6 decimals).
 
-Assegnare i ruoli all'admin Privy tramite owner e `GAME_MANAGER_ROLE` al wallet
-backend. Finanziare quest'ultimo con ETH su Base; configurare almeno 3 simboli,
-pesi totali pari a 1000 e riserve dei premi. Il reveal è permissionless, mentre
-la partenza dei free spin richiede il ruolo manager.
+Have the owner assign roles to the Privy admin wallet and `GAME_MANAGER_ROLE`
+to the backend wallet. Fund the latter with ETH on Base; configure at least
+3 symbols, weights totaling 1000 and prize reserves. Reveal is permissionless;
+starting free spins requires the manager role.
 
-Per player e admin, `PRIVY_GAS_MODE=usdc` (default) richiede **User pays**, con
-USDC su Base abilitato nel dashboard Privy. Il gas viene addebitato al wallet
-dell'utente in USDC, oltre all'importo della giocata/operazione. Solo un rifiuto
-esplicito di saldo insufficiente prima dell'invio abilita un tentativo in ETH
-dallo stesso wallet; timeout e risposte ambigue non attivano il fallback.
-Con `PRIVY_GAS_MODE=eth` si usa direttamente ETH. La vecchia variabile
-`PRIVY_SPONSOR_TRANSACTIONS` non è più utilizzata. L'EOA backend paga sempre
-il proprio gas in ETH. Dettagli e limiti: [docs/gas.md](docs/gas.md).
-`BASE_RPC_URL` resta privato; l'RPC pubblico è un default per sviluppo.
+For players and admins, `PRIVY_GAS_MODE=usdc` (the default) requires **User pays**
+with USDC on Base enabled in the Privy dashboard. Gas is charged to the user's
+wallet in USDC, in addition to the spin/operation amount. Only an explicit
+insufficient-balance rejection before submission allows an ETH attempt from
+the same wallet; timeouts and ambiguous responses do not trigger fallback.
+`PRIVY_GAS_MODE=eth` uses ETH directly. The old `PRIVY_SPONSOR_TRANSACTIONS`
+variable is no longer used. The backend EOA always pays its own gas in ETH.
+Details and limits: [docs/gas.md](docs/gas.md).
+`BASE_RPC_URL` stays private; the public RPC is a development default.
 
 ## Railway
 
-`Dockerfile` multi-stage, output Next standalone e [`../../.railway/railway.ts`](../../.railway/railway.ts) con
-healthcheck `/api/health`. Impostare le variabili nel servizio e usare un dominio
-HTTPS registrato anche in Privy. `PORT` è fornita da Railway. I file `.env*`
-sono esclusi dall'immagine Docker.
+Uses a multi-stage `Dockerfile`, Next standalone output and
+[`../../.railway/railway.ts`](../../.railway/railway.ts) with the `/api/health`
+healthcheck. Set service variables and use an HTTPS domain also registered in
+Privy. Railway supplies `PORT`. `.env*` files are excluded from the Docker image.
 
-Usare **una sola replica, sempre attiva, senza sospensione automatica**. Il
-keeper deve continuare a lavorare senza richieste browser. Sessioni, chiavi e
-coordinamento dei nonce sono in memoria: un deploy chiude i pairing, ma non
-cancella giocate, premi o crediti già onchain. Il backend riprende i reveal dal
-contratto. Non usare la stessa EOA contemporaneamente in altri processi.
+Run **one always-on replica with automatic sleep disabled**. The keeper must
+continue without browser requests. Sessions, keys and nonce coordination are
+in memory: a deployment ends pairings but does not delete games, prizes or
+credits already onchain. The backend resumes reveals from the contract.
+Do not use the same EOA concurrently in other processes.
 
-Per provare l'output di produzione:
+To test the production output:
 
 ```sh
 npm run build
 APP_ORIGIN=http://localhost:3000 HOSTNAME=0.0.0.0 PORT=3000 node --env-file=.env.local .next/standalone/server.js
 ```
 
-Procedura monorepo e variabili: [`../../.railway/README.md`](../../.railway/README.md).
-Il contratto non è ancora deployato. `SLOT_BACKEND_PRIVATE_KEY=REPLACE_ME`
-mantiene il keeper disattivato finché non viene inserita una chiave reale.
-Arduino non è ancora collegato: `window.slotPullLever()` è il punto d'ingresso
-del terminale per il futuro adapter della leva.
+Monorepo deployment procedures and variables:
+[`../../.railway/README.md`](../../.railway/README.md).
+The contract has not been deployed yet. `SLOT_BACKEND_PRIVATE_KEY=REPLACE_ME`
+keeps the keeper disabled until a real key is supplied.
+Arduino is not connected yet: `window.slotPullLever()` is the terminal entry
+point for the future lever adapter.
 
-## Verifica
+## Validation
 
 ```sh
 npm test
@@ -164,42 +164,44 @@ npm run test:chain
 npm run build
 ```
 
-I test chain richiedono `anvil` sul PATH e usano il bytecode del contratto reale
-con token di test, esclusivamente su una blockchain locale. Coprono addebito
-player, deduplicazione, attesa del blocco, reveal dopo riavvio, premi ERC20 e
-ERC1155, crediti free spin, scadenze, ruoli e transazioni admin. I fixture sono
-separati dal runtime di produzione e nessun fondo reale viene movimentato.
+Chain tests require `anvil` on PATH and use real contract bytecode with test
+tokens, exclusively on a local blockchain. They cover player charges,
+deduplication, block waiting, reveal after restart, ERC20 and ERC1155 prizes,
+free-spin credits, expiry, roles and admin transactions. Fixtures are separate
+from the production runtime and no real funds are moved.
 
-I test browser del terminale usano API di pairing di test e snapshot onchain
-controllati: verificano entrambi i tempi, conferme, griglia row-major, linea
-vincente, logout e layout 1024×768 / 1024×650. Backend: autenticazione, budget
-esatto, isolamento e revoca anche durante operazioni asincrone. Entrambi i
-bundle del terminale sono verificati come ES5.
+Terminal browser tests use test pairing APIs and controlled onchain snapshots.
+They verify both transaction stages, confirmations, the row-major grid, winning
+line, logout and 1024×768 / 1024×650 layouts. Backend tests cover authentication,
+exact budgets, isolation and revocation during asynchronous operations.
+Both terminal bundles are checked for ES5 compatibility.
 
-I collaudi manuali `scripts/live-privy-check.mjs` e `scripts/live-admin-check.mjs`
-creano account Privy di prova con passkey virtuali e wallet vuoti. Non salvano
-credenziali né inviano transazioni. Il secondo esegue
-`scripts/live-shared-admin-check.ts`: due identità, un wallet di test distinto
-da quello dell'app, firme reali, revoca, ripartenza e funding condiviso.
-L'invio onchain resta intercettato nel browser per verificare consenso gas,
-risposta persa e recupero dopo refresh senza un secondo invio.
-Non fanno parte dei test automatici ordinari.
-Il nuovo invio di transazioni tramite Privy richiede ancora un collaudo sul
-deployment effettivo. Restano anche le verifiche su iPad fisico ed email OTP.
+Manual checks in `scripts/live-privy-check.mjs` and `scripts/live-admin-check.mjs`
+create test Privy accounts with virtual passkeys and empty wallets. They neither
+save credentials nor send transactions. The latter runs
+`scripts/live-shared-admin-check.ts`: two identities, a test wallet separate
+from the app wallet, real signatures, revocation, restart and shared funding.
+Onchain submissions remain intercepted in the browser to verify gas consent,
+lost responses and recovery after refresh without a second submission.
+These checks are not part of the ordinary automated test suite.
+The new Privy transaction submission flow still needs validation on the actual
+deployment. Physical iPad and email OTP checks also remain outstanding.
 
-## Riferimenti
+## References
 
-- [Privy: signer](https://docs.privy.io/wallets/using-wallets/signers/quickstart)
-- [Privy: policy](https://docs.privy.io/controls/policies/overview)
-- [Privy: invio transazioni](https://docs.privy.io/wallets/using-wallets/ethereum/send-a-transaction)
+- [Privy: signers](https://docs.privy.io/wallets/using-wallets/signers/quickstart)
+- [Privy: policies](https://docs.privy.io/controls/policies/overview)
+- [Privy: sending transactions](https://docs.privy.io/wallets/using-wallets/ethereum/send-a-transaction)
 - [Privy: gas sponsorship](https://docs.privy.io/wallets/gas-and-asset-management/gas/setup)
 - [Privy: email OTP](https://docs.privy.io/authentication/user-authentication/login-methods/email)
 
 ## Token inventory and swaps
 
-The admin panel includes **Swap** (LI.FI API, USDC or native ETH → six supported Base RWA tokens) and
-**Inventory** (shared wallet balances, NFT placeholders, free-spin counter and
-reviewed contract deposits). See [assets and swap setup](docs/assets-and-swaps.md)
-for the token addresses, decimal precision, deployment mapping, Privy gas setup,
-collaborator permission upgrades and recovery behavior. Both owner and authorized collaborators can swap; gas uses the shared USDC balance with ETH fallback. Brand sources are recorded in
-[public/brands/SOURCES.md](public/brands/SOURCES.md).
+The admin panel includes **Swap** (LI.FI API, USDC or native ETH → six supported
+Base RWA tokens) and **Inventory** (shared wallet balances, NFT placeholders,
+free-spin counter and reviewed contract deposits). See
+[assets and swap setup](docs/assets-and-swaps.md) for token addresses, decimal
+precision, deployment mapping, Privy gas setup, collaborator permission
+upgrades and recovery behavior. Both owner and authorized collaborators can
+swap; gas uses the shared USDC balance with ETH fallback. Brand sources are
+recorded in [public/brands/SOURCES.md](public/brands/SOURCES.md).
