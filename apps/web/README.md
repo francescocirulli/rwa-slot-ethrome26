@@ -6,6 +6,9 @@ giocate a pagamento, free spin, reveal automatico e console admin onchain.
 Il contratto non è ancora deployato: senza indirizzo configurato, wallet e
 pairing funzionano e le operazioni di gioco restano disabilitate.
 
+Per contribuire leggere [../../CONTRIBUTING.md](../../CONTRIBUTING.md),
+[../../AGENTS.md](../../AGENTS.md) e le [regole web](AGENTS.md).
+
 ## Avvio
 
 Node.js 22. Copiare `.env.example` in `.env.local` e compilare le variabili

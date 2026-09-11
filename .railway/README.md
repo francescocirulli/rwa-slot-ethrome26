@@ -69,8 +69,11 @@ railway config apply
 
 Controllare sempre il piano prima dell'apply. Questo file descrive l'intero
 ambiente: aggiungere qui eventuali nuovi servizi prima di applicare modifiche.
-Le modifiche di infrastruttura richiedono l'apply; i push al codice dell'app
-su `main` vengono deployati dalla sorgente GitHub collegata.
+Le modifiche di infrastruttura richiedono l'apply. Il codice dell'app arriva in
+produzione solo dopo il flusso branch di lavoro → PR in `dev` → PR `dev` in
+`main`; l'aggiornamento di `main` avvia il deploy dalla sorgente GitHub collegata.
+Non pushare direttamente su `main` e non usare un deploy manuale per aggirare
+questo flusso. Vedi [../CONTRIBUTING.md](../CONTRIBUTING.md).
 
 Per un deploy manuale, eseguire dalla **radice della monorepo**, in modo che
 Railway possa applicare la root directory configurata:
