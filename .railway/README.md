@@ -42,6 +42,10 @@ Usare le variabili del servizio Railway. L'elenco completo, con spiegazioni,
 - `APP_ORIGIN`: URL HTTPS pubblico esatto, senza slash finale. Registrare
   questo dominio anche fra le origini consentite di Privy, se vengono limitate.
 - `ADMIN_OWNER_USER_ID`: account proprietario del wallet admin condiviso.
+- `ADMIN_WALLET_EXTERNAL_ID`: identificatore stabile del wallet condiviso in
+  Privy. Vuoto conserva `lucky_signal_shared_admin_v1`. Cambiarlo seleziona un
+  altro wallet; non trasferisce proprietà o fondi. Vedi il
+  [ripristino della configurazione admin](../apps/web/docs/shared-admin.md#cambio-account-dopo-una-prova).
 - `PRIVY_GAS_MODE=usdc`: gas USDC con fallback ETH per i wallet Privy.
 - `BASE_RPC_URL`: endpoint Base mainnet; preferire un RPC dedicato in produzione.
 - `SLOT_CONTRACT_ADDRESS` e `SLOT_DEPLOYMENT_BLOCK`: vuoti finché il contratto

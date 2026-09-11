@@ -59,10 +59,43 @@ recupero senza hash restano quelli descritti in [gas.md](gas.md).
 
 ## Persistenza e test
 
-Il wallet è ritrovato con l'external ID `lucky_signal_shared_admin_v1`; i membri
-sono letti dai signer/quorum Privy. Un riavvio non perde funding o accessi.
+Il wallet è ritrovato con `ADMIN_WALLET_EXTERNAL_ID`. Se la variabile è vuota o
+assente, l'external ID rimane `lucky_signal_shared_admin_v1`, preservando i wallet
+già creati. I membri sono letti dai signer/quorum Privy. Un riavvio non perde funding o accessi.
 Serve sempre una sola replica del server per il coordinamento delle scritture.
 Non è stato aggiunto un database.
+
+### Cambio account dopo una prova
+
+Creare una passkey tramite una nuova registrazione può creare un altro account
+Privy. L'account con cui si accede è distinto dal wallet condiviso, che ha un
+proprietario registrato su Privy. Cambiare `ADMIN_OWNER_USER_ID` non trasferisce
+quella proprietà: l'app blocca l'accesso se i due proprietari non corrispondono.
+Non vengono nominati proprietari automaticamente gli utenti più recenti.
+
+Per inizializzare **un nuovo wallet con un nuovo indirizzo**, dopo aver deciso
+di non usare quello di prova:
+
+1. Accedere con l'account da mantenere e impostare il suo `did:privy:…` in
+   `ADMIN_OWNER_USER_ID`.
+2. Scegliere un nuovo `ADMIN_WALLET_EXTERNAL_ID`, per esempio
+   `rwa_slot_admin_production_v1`, distinto dagli identificatori già usati in
+   questa app Privy. Sono ammessi 1–128 caratteri: lettere, cifre, `_` e `-`.
+3. Riavviare il servizio con entrambe le variabili. Il proprietario accede a
+   `/admin` e conferma **Crea wallet condiviso**. Il quorum iniziale contiene
+   soltanto il suo account. Nessun altro utente può crearlo.
+4. Il collaboratore accede con il proprio account e comunica il suo codice;
+   il proprietario lo aggiunge dall'app. Entrambi usano l'indirizzo del nuovo
+   wallet, con funding comune e permessi distinti.
+
+Conservare questo external ID anche quando si aggiungono collaboratori o si
+aggiorna l'app. Il vecchio wallet, i suoi accessi e i suoi fondi restano intatti;
+non vengono trasferiti al nuovo. Aggiornare eventuali indirizzi di funding e
+ruoli onchain separatamente. Per mantenere invece il vecchio indirizzo serve
+un trasferimento autorizzato dal proprietario attuale su Privy, non un cambio
+di external ID.
+
+### Verifica
 
 `npm test` copre ownership, assenza di accesso implicito, utenti distinti con
 saldo/QR comune, policy, revoca, scope player/admin, conferme e richieste

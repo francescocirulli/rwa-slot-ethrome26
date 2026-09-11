@@ -56,6 +56,9 @@ data in an identity token**, poi accedere di nuovo. `ADMIN_OWNER_USER_ID` indica
 l'account autorizzato a creare il wallet condiviso; il codice è visibile dopo
 il login nell'admin. Le operazioni wallet richiedono access token e identity
 token verificati per la stessa persona.
+`ADMIN_WALLET_EXTERNAL_ID` seleziona il wallet condiviso: lasciarlo vuoto conserva
+quello esistente. Per inizializzare un wallet distinto dopo una prova con un altro
+account, seguire [la procedura dedicata](docs/shared-admin.md#cambio-account-dopo-una-prova).
 L'admin usa un browser moderno; il terminale è destinato a iPad Air orizzontale,
 iOS 12.5.8 / Safari 12.1.2, come la repo sperimentale di riferimento.
 
