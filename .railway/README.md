@@ -5,6 +5,13 @@ La configurazione in `railway.ts` usa l'SDK `railway/iac`; `npm ci` alla radice
 installa la versione fissata nel lockfile. Richiede Railway CLI >= 5.42.1.
 Il vecchio formato `railway.json` non viene usato per questo nuovo servizio.
 
+Deployment pubblico: [app](https://web-production-e2628.up.railway.app),
+[admin](https://web-production-e2628.up.railway.app/admin),
+[dashboard Railway](https://railway.com/project/c3367565-9058-4341-9795-e9de185dfea0).
+Primo deploy verificato dal commit `93b1164`: build Docker, healthcheck, QR
+di pairing e schermate di login. Il contratto e la chiave keeper restano da
+configurare; non sono state inviate transazioni durante il collaudo del deploy.
+
 | Impostazione | Valore |
 | --- | --- |
 | GitHub | `francescocirulli/rwa-slot-ethrome26`, branch `main` |

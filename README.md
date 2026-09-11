@@ -2,6 +2,10 @@
 
 Monorepo della slot per iPad con wallet Privy e USDC su Base.
 
+**Online:** [terminale iPad](https://web-production-e2628.up.railway.app) ·
+[admin](https://web-production-e2628.up.railway.app/admin) ·
+[progetto Railway](https://railway.com/project/c3367565-9058-4341-9795-e9de185dfea0).
+
 | Cartella | Contenuto |
 | --- | --- |
 | [`apps/web`](apps/web) | Next.js, terminale iPad, login dal telefono, admin e backend keeper |
