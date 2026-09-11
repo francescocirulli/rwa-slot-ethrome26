@@ -3,6 +3,9 @@
 Checked on 2026-09-11. This records the initial feasibility assessment. The integration has since been
 implemented with USDC and ETH inputs for both admin roles. See
 [the current integration](assets-and-swaps.md) for behavior, permissions and validation.
+The identity-token signing path considered below was replaced with native browser
+authorization through `useAuthorizationSignature` and server SDK `sign_fns`;
+see [shared wallet authorization](shared-admin.md#setup) for the current flow.
 
 ## Conclusion
 

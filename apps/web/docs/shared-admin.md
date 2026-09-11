@@ -1,146 +1,145 @@
-# Wallet admin condiviso
+# Shared admin wallet
 
-Ogni persona accede a `/admin` con il proprio account Privy (email OTP o
-passkey). Un wallet dedicato all'arcade raccoglie tutte le ricariche; lo stesso
-saldo paga le operazioni e il gas USDC/ETH. Il wallet player e l'EOA keeper
-restano ruoli distinti: il wallet admin non viene offerto al pairing dell'iPad.
+Each person signs in to `/admin` with their own Privy account (email OTP or
+passkey). A dedicated arcade wallet receives all funding; the same balance
+pays for operations and USDC/ETH gas. The player wallet and keeper EOA remain
+separate roles: the admin wallet is not offered for iPad pairing.
 
-## Attivazione
+## Setup
 
-1. Il proprietario accede a `/admin` e copia il proprio codice `did:privy:…`.
-2. Impostare **`ADMIN_OWNER_USER_ID`** nell'ambiente del server. Non è una
-   credenziale segreta. La configurazione vuota non nomina automaticamente
-   proprietario il primo visitatore.
-3. Il proprietario sceglie **Crea wallet condiviso**. Il backend crea un wallet
-   con un quorum composto soltanto dal suo user ID, soglia 1. Nessuna chiave
-   di firma condivisa viene creata nell'env.
-4. Il collaboratore accede con il proprio account, copia il suo codice e lo
-   comunica al proprietario. Nella sezione Wallet admin, il proprietario lo
-   aggiunge e conferma i permessi. L'app non manda email o inviti automatici.
-5. Entrambi verificano la firma e possono finanziare l'indirizzo/QR condiviso.
-6. Dopo il deploy assegnare i ruoli onchain al nuovo indirizzo condiviso. Il
-   proprietario sceglie **Aggiorna permessi** per abilitare il collaboratore
-   sul contratto configurato. Prima del deploy sono disponibili funding,
-   saldo, condivisione e firma di prova.
+1. The owner signs in to `/admin` and copies their `did:privy:…` account code.
+2. Set **`ADMIN_OWNER_USER_ID`** in the server environment. It is not a secret
+   credential. Leaving it empty does not automatically make the first visitor
+   the owner.
+3. The owner selects the action to **create a shared wallet**. The backend
+   creates a wallet with a quorum containing only their user ID, threshold 1.
+   No shared signing key is created in the environment.
+4. The collaborator signs in with their own account, copies their code and
+   shares it with the owner. In the admin wallet section, the owner adds them
+   and confirms their permissions. The app does not send emails or automatic invites.
+5. Both verify their signatures and can fund the shared address/QR code.
+6. After deployment, assign onchain roles to the new shared address. The owner
+   selects the action to **update permissions** to enable the collaborator on
+   the configured contract. Funding, balance, sharing and signature proof are
+   available before deployment.
 
-Privy consente di creare quorum e signer tramite API: non occorre creare una
-chiave comune nel dashboard. Servono email/passkey e **User pays → Base → USDC**
-per le commissioni. Gli identity token non sono richiesti per autorizzare il wallet.
+Privy supports creating quorums and signers through its API: no shared key needs
+to be created in the dashboard. Enable email/passkeys and **User pays → Base → USDC**
+for fees. Identity tokens are not required to authorize the wallet.
 
-L'access token verifica l'identità sulle API dell'app. Per ogni modifica o firma,
-il backend prepara la richiesta esatta con il Node SDK; il browser la autorizza
-con `useAuthorizationSignature`. La firma torna al Node SDK tramite `sign_fns`.
-Il canale dura al massimo 90 secondi ed è vincolato all'account e all'endpoint,
-utilizzabile da una sola operazione. Le chiavi restano nel SDK Privy del browser.
-Una pagina chiusa, un cambio account o una firma rifiutata non autorizzano l'invio.
-Servono una sola replica sempre attiva e nessun database; al riavvio, un canale
-interrotto richiede una nuova conferma. Le operazioni già inviate si verificano
-attraverso i loro riferimenti esistenti, senza ripeterle.
+The access token verifies identity on app APIs. For each change or signature,
+the backend prepares the exact request with the Node SDK; the browser authorizes
+it with `useAuthorizationSignature`. The signature returns to the Node SDK through
+`sign_fns`. The channel lasts at most 90 seconds, is bound to the account and
+endpoint, and can be used by only one operation. Keys stay in the browser's
+Privy SDK. Closing the page, switching accounts or rejecting a signature does
+not authorize submission. One always-on replica is required, with no database;
+after a restart, an interrupted channel requires a new confirmation. Already
+submitted operations are checked using their existing references, without resending.
 
-La precedente implementazione passava un identity token a `user_jwts`:
-Privy rispondeva `400 Invalid JWT token provided` su `/v1/wallets/authenticate`,
-sia per la firma di prova sia per l'aggiunta di un collaboratore. La prova reale
-ha rifiutato anche l'access token; abilitare gli identity token non risolveva.
-La firma nativa nel browser evita quello scambio e non cambia la proprietà.
+The previous implementation passed an identity token to `user_jwts`:
+Privy returned `400 Invalid JWT token provided` from `/v1/wallets/authenticate`
+for both signature proof and adding a collaborator. The live test also rejected
+an access token; enabling identity tokens did not resolve the issue. Native
+browser authorization avoids that exchange and does not change ownership.
 
-## Permessi
+## Permissions
 
-Il proprietario del wallet approva l'aggiunta/rimozione di signer con il proprio
-sessione Privy nel browser, autenticata anche sulle API dell'app. Il collaboratore ha un quorum personale e una policy controllata
-dal proprietario. Può gestire la slot e finanziare/prelevare premi quando il
-contratto lo consente. Sono esclusi cambi di proprietà, ruoli, rinunce ai ruoli,
-approvazioni di budget player e modifiche al wallet Privy. Le policy limitano
-Base, valore ETH diretto zero, funzioni admin ammesse sul contratto configurato
-e trasferimenti ERC20/ERC1155 diretti alla slot.
+The wallet owner approves adding/removing signers through their browser Privy
+session, also authenticated on the app APIs. A collaborator has a personal
+quorum and an owner-controlled policy. They can manage the slot and fund or
+withdraw prizes when the contract permits. Ownership changes, role changes,
+role renunciation, player budget approvals and Privy wallet changes are excluded.
+The contract-operation policies restrict calls to Base, zero direct ETH value,
+allowed admin functions on the configured contract and ERC20/ERC1155 transfers
+directed to the slot. Swap-specific permissions are described below.
 
-La proprietà onchain è dell'indirizzo condiviso: i limiti del collaboratore
-sono imposti dall'app e dalla policy Privy. Il contratto da solo non distingue
-quale persona usa quel wallet. Gli eventi indicano l'indirizzo comune.
+The shared address holds onchain ownership: the app and Privy policy enforce
+collaborator limits. The contract alone cannot distinguish which person uses
+the wallet. Events record the shared address.
 
-Per ogni lettura privata e invio, l'app ricontrolla wallet, proprietario,
-quorum e policy su Privy. La revoca impedisce nuovi invii, incluso il fallback
-ETH non ancora iniziato. Le transazioni già inoltrate non vengono annullate.
+For each private read and submission, the app rechecks the wallet, owner,
+quorum and policy on Privy. Revocation prevents new submissions, including an
+ETH fallback that has not started. Transactions already submitted are not cancelled.
 
-Le conferme sono vincolate all'utente che ha preparato l'operazione. Gli altri
-admin possono seguirne lo stato, ma non confermarla al suo posto. Un lock
-comune al wallet evita invii concorrenti delle due persone. I limiti di
-recupero senza hash restano quelli descritti in [gas.md](gas.md).
+Confirmations are bound to the user who prepared the operation. Other admins
+can follow its status but cannot confirm it on their behalf. A shared wallet
+lock prevents concurrent submissions by both people. Recovery limits when no
+hash is available remain as described in [gas.md](gas.md).
 
-## Persistenza e test
+## Persistence and testing
 
-Il wallet è ritrovato con `ADMIN_WALLET_EXTERNAL_ID`. Se la variabile è vuota o
-assente, l'external ID rimane `lucky_signal_shared_admin_v1`, preservando i wallet
-già creati. I membri sono letti dai signer/quorum Privy. Un riavvio non perde funding o accessi.
-Serve sempre una sola replica del server per il coordinamento delle scritture.
-Non è stato aggiunto un database.
+The wallet is located by `ADMIN_WALLET_EXTERNAL_ID`. If the variable is empty
+or absent, the external ID remains `lucky_signal_shared_admin_v1`, preserving
+existing wallets. Members are read from Privy signers/quorums. A restart does
+not lose funding or access. One server replica is still required to coordinate
+writes. No database has been added.
 
-### Cambio account dopo una prova
+### Changing accounts after a trial
 
-Creare una passkey tramite una nuova registrazione può creare un altro account
-Privy. L'account con cui si accede è distinto dal wallet condiviso, che ha un
-proprietario registrato su Privy. Cambiare `ADMIN_OWNER_USER_ID` non trasferisce
-quella proprietà: l'app blocca l'accesso se i due proprietari non corrispondono.
-Non vengono nominati proprietari automaticamente gli utenti più recenti.
+Registering again with a new passkey can create another Privy account. The login
+account is separate from the shared wallet, which has an owner recorded in Privy.
+Changing `ADMIN_OWNER_USER_ID` does not transfer that ownership: the app blocks
+access if the two owners differ. Newest users are not automatically appointed owners.
 
-Per inizializzare **un nuovo wallet con un nuovo indirizzo**, dopo aver deciso
-di non usare quello di prova:
+To initialize **a new wallet with a new address**, after deciding not to use
+the trial wallet:
 
-1. Accedere con l'account da mantenere e impostare il suo `did:privy:…` in
+1. Sign in with the account you intend to keep and set its `did:privy:…` in
    `ADMIN_OWNER_USER_ID`.
-2. Scegliere un nuovo `ADMIN_WALLET_EXTERNAL_ID`, per esempio
-   `rwa_slot_admin_production_v1`, distinto dagli identificatori già usati in
-   questa app Privy. Sono ammessi 1–128 caratteri: lettere, cifre, `_` e `-`.
-3. Riavviare il servizio con entrambe le variabili. Il proprietario accede a
-   `/admin` e conferma **Crea wallet condiviso**. Il quorum iniziale contiene
-   soltanto il suo account. Nessun altro utente può crearlo.
-4. Il collaboratore accede con il proprio account e comunica il suo codice;
-   il proprietario lo aggiunge dall'app. Entrambi usano l'indirizzo del nuovo
-   wallet, con funding comune e permessi distinti.
+2. Choose a new `ADMIN_WALLET_EXTERNAL_ID`, such as
+   `rwa_slot_admin_production_v1`, distinct from identifiers already used in
+   this Privy app. Allowed length: 1–128 characters, using letters, digits, `_` and `-`.
+3. Restart the service with both variables. The owner signs in to `/admin` and
+   confirms the action to **create a shared wallet**. The initial quorum contains
+   only their account. No other user can create it.
+4. The collaborator signs in with their own account and shares their code;
+   the owner adds them from the app. Both use the new wallet address, with
+   shared funding and separate permissions.
 
-Conservare questo external ID anche quando si aggiungono collaboratori o si
-aggiorna l'app. Il vecchio wallet, i suoi accessi e i suoi fondi restano intatti;
-non vengono trasferiti al nuovo. Aggiornare eventuali indirizzi di funding e
-ruoli onchain separatamente. Per mantenere invece il vecchio indirizzo serve
-un trasferimento autorizzato dal proprietario attuale su Privy, non un cambio
-di external ID.
+Keep this external ID when adding collaborators or updating the app. The old
+wallet, its access and its funds remain intact; they are not transferred to the
+new wallet. Update funding addresses and onchain roles separately. Keeping the
+old address instead requires a transfer authorized by its current Privy owner,
+not an external ID change.
 
-### Verifica
+### Validation
 
-`npm test` copre ownership, assenza di accesso implicito, utenti distinti con
-saldo/QR comune, policy, revoca, scope player/admin, conferme e richieste
-simultanee. Per il test manuale con Privy reale e due account usa:
+`npm test` covers ownership, no implicit access, distinct users with a shared
+balance/QR code, policies, revocation, player/admin scope, confirmations and
+simultaneous requests. For the manual test with real Privy and two accounts, run:
 
 ```sh
-LIVE_CHECK_ORIGIN=https://tuo-dominio node scripts/live-admin-check.mjs
+LIVE_CHECK_ORIGIN=https://your-domain.example node scripts/live-admin-check.mjs
 ```
 
-Lo script carica `.env.local` senza stamparlo e usa un external ID di test
-casuale, mai quello del wallet operativo. Crea due account e un wallet vuoto;
-firma messaggi benigni e revoca l'accesso del collaboratore alla fine.
-Le transazioni restano intercettate. Evidenza in
-`artifacts/live-shared-admin-check.json`. Non carica fondi né deploya contratti.
+The script loads `.env.local` without printing it and uses a random test external
+ID, never the operational wallet's ID. It creates two accounts and an empty wallet,
+signs benign messages and revokes collaborator access at the end. Transactions
+remain intercepted. Evidence is saved in `artifacts/live-shared-admin-check.json`.
+It neither adds funds nor deploys contracts.
 
-Il collaudo deve completare aggiunta, firma di entrambe le persone e revoca
-con il provider reale: un login riuscito o un test con provider simulato non
-provano che Privy accetti l'autorizzazione del wallet.
+The check must complete member addition, signatures by both people and revocation
+against the real provider: successful login or a mocked-provider test does not
+prove that Privy accepts wallet authorization.
 
-Collaudo del 2026-09-12 completato con la build locale: due registrazioni
-passkey indipendenti, wallet condiviso vuoto, aggiunta del collaboratore,
-firma verificata da entrambi sullo stesso indirizzo, persistenza dopo il
-riavvio del servizio e revoca. Anche il recupero della UI dopo una risposta
-persa è verificato; invii onchain e pagamento del gas restano simulati.
-Lo script crea account di prova nell'app Privy: non usare l'ultimo account
-registrato per dedurre chi debba essere `ADMIN_OWNER_USER_ID`.
+The 2026-09-12 check completed against the local build: two independent passkey
+registrations, an empty shared wallet, collaborator addition, verified signatures
+from both users for the same address, persistence after service restart and
+revocation. UI recovery after a lost response was also verified; onchain
+submissions and gas payment remain simulated. The script creates test accounts
+in the Privy app: do not use the most recently registered account to infer who
+should be `ADMIN_OWNER_USER_ID`.
 
-- [Privy: owner e signer](https://docs.privy.io/controls/authorization-keys/owners/overview)
-- [Privy: quorum con user ID](https://docs.privy.io/api-reference/key-quorums/create)
-- [Privy: firma nativa delle richieste](https://docs.privy.io/controls/authorization-keys/using-owners/sign/utility-functions)
-- [Privy: policy Ethereum](https://docs.privy.io/controls/policies/example-policies/ethereum)
+- [Privy: owners and signers](https://docs.privy.io/controls/authorization-keys/owners/overview)
+- [Privy: quorums with user IDs](https://docs.privy.io/api-reference/key-quorums/create)
+- [Privy: native request authorization](https://docs.privy.io/controls/authorization-keys/using-owners/sign/utility-functions)
+- [Privy: Ethereum policies](https://docs.privy.io/controls/policies/example-policies/ethereum)
 
 ### Swap capability
 
 LI.FI API swaps support both owner and collaborators, with USDC or native ETH input.
-Existing members need the owner to click **Aggiorna permessi**. The new policy grants
+Existing members need the owner to **update permissions**. The new policy grants
 constrained `eth_sendTransaction` approval/router calls, including before slot deploy;
 old exact policies retain their previous capabilities until explicitly upgraded.
 Gas uses the shared USDC balance with ETH fallback after a definitive rejection.

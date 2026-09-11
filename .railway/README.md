@@ -1,69 +1,69 @@
 # Railway
 
-Un progetto `rwa-slot-ethrome26`, ambiente `production`, servizio `web`.
-La configurazione in `railway.ts` usa l'SDK `railway/iac`; `npm ci` alla radice
-installa la versione fissata nel lockfile. Richiede Railway CLI >= 5.42.1.
-Il vecchio formato `railway.json` non viene usato per questo nuovo servizio.
+One project, `rwa-slot-ethrome26`, with the `production` environment and `web` service.
+The configuration in `railway.ts` uses the `railway/iac` SDK; running `npm ci` at
+the repository root installs the version pinned in the lockfile. Railway CLI
+>= 5.42.1 is required. This service does not use the older `railway.json` format.
 
-Deployment pubblico: [app](https://web-production-e2628.up.railway.app),
+Public deployment: [app](https://web-production-e2628.up.railway.app),
 [admin](https://web-production-e2628.up.railway.app/admin),
-[dashboard Railway](https://railway.com/project/c3367565-9058-4341-9795-e9de185dfea0).
-Primo deploy verificato dal commit `93b1164`: build Docker, healthcheck, QR
-di pairing e schermate di login. Il contratto e la chiave keeper restano da
-configurare; non sono state inviate transazioni durante il collaudo del deploy.
+[Railway dashboard](https://railway.com/project/c3367565-9058-4341-9795-e9de185dfea0).
+The first deployment was verified from commit `93b1164`: Docker build,
+healthcheck, pairing QR code and login screens. The contract and keeper key
+still need configuration; no transactions were sent during deployment testing.
 
-| Impostazione | Valore |
+| Setting | Value |
 | --- | --- |
 | GitHub | `francescocirulli/rwa-slot-ethrome26`, branch `main` |
 | Root directory | `/apps/web` |
-| Builder | Dockerfile, percorso `Dockerfile` relativo alla root del servizio |
-| Avvio | `node server.js`, definito nel Dockerfile |
-| Healthcheck | `/api/health`, timeout 60 secondi |
-| Rete | `0.0.0.0`, porta 3000, dominio HTTPS Railway |
-| Scalabilità | una replica; serverless/sleep disabilitato |
+| Builder | Dockerfile, path `Dockerfile` relative to the service root |
+| Start command | `node server.js`, defined in the Dockerfile |
+| Healthcheck | `/api/health`, 60-second timeout |
+| Network | `0.0.0.0`, port 3000, Railway HTTPS domain |
+| Scaling | One replica; serverless/sleep disabled |
 | Watch paths | `/apps/web/**` |
 
-Il Dockerfile riceve come contesto **apps/web**, non la radice della monorepo:
+The Dockerfile receives **apps/web**, not the monorepo root, as its build context:
 
 ```sh
 docker build -t rwa-slot-web apps/web
 docker run --rm -p 3000:3000 --env-file apps/web/.env.local rwa-slot-web
 ```
 
-Non servono segreti durante la build. L'app legge la configurazione Privy
-sul server al momento della richiesta; `.env*` è escluso dal contesto Docker.
+No secrets are required at build time. The server reads Privy configuration
+when handling requests; `.env*` is excluded from the Docker context.
 
-## Variabili
+## Variables
 
-Usare le variabili del servizio Railway. L'elenco completo, con spiegazioni,
-è in [`../apps/web/.env.example`](../apps/web/.env.example).
+Use Railway service variables. The full list, with explanations, is in
+[`../apps/web/.env.example`](../apps/web/.env.example).
 
-- `NEXT_PUBLIC_PRIVY_APP_ID`, `PRIVY_APP_SECRET`: app Privy già configurata.
-- `APP_ORIGIN`: URL HTTPS pubblico esatto, senza slash finale. Registrare
-  questo dominio anche fra le origini consentite di Privy, se vengono limitate.
-- `ADMIN_OWNER_USER_ID`: account proprietario del wallet admin condiviso.
-- `ADMIN_WALLET_EXTERNAL_ID`: identificatore stabile del wallet condiviso in
-  Privy. Vuoto conserva `lucky_signal_shared_admin_v1`. Cambiarlo seleziona un
-  altro wallet; non trasferisce proprietà o fondi. Vedi il
-  [ripristino della configurazione admin](../apps/web/docs/shared-admin.md#cambio-account-dopo-una-prova).
-- `PRIVY_GAS_MODE=usdc`: gas USDC con fallback ETH per i wallet Privy.
-- `BASE_RPC_URL`: endpoint Base mainnet; preferire un RPC dedicato in produzione.
-- `SLOT_CONTRACT_ADDRESS` e `SLOT_DEPLOYMENT_BLOCK`: vuoti finché il contratto
-  non è deployato. Login, wallet e swap funzionano anche senza contratto.
-- `SLOT_BACKEND_PRIVATE_KEY=REPLACE_ME`: placeholder disabilitato. Sostituire
-  con `0x` + 64 cifre esadecimali della EOA dedicata, finanziata in ETH su Base.
-  Per i free spin serve `GAME_MANAGER_ROLE`. Questa non è la chiave del wallet
-  Privy admin. Non usare nomi con prefisso `NEXT_PUBLIC_` per questo segreto.
-- `LIFI_API_KEY`: facoltativa, può rimanere vuota.
+- `NEXT_PUBLIC_PRIVY_APP_ID`, `PRIVY_APP_SECRET`: credentials for the configured Privy app.
+- `APP_ORIGIN`: exact public HTTPS URL without a trailing slash. Register this
+  domain in Privy's allowed origins too, if origin restrictions are enabled.
+- `ADMIN_OWNER_USER_ID`: owner account for the shared admin wallet.
+- `ADMIN_WALLET_EXTERNAL_ID`: stable identifier for the shared wallet in Privy.
+  Leaving it empty preserves `lucky_signal_shared_admin_v1`. Changing it selects
+  a different wallet; it does not transfer ownership or funds. See
+  [admin configuration recovery](../apps/web/docs/shared-admin.md#changing-accounts-after-a-trial).
+- `PRIVY_GAS_MODE=usdc`: USDC gas with ETH fallback for Privy wallets.
+- `BASE_RPC_URL`: Base mainnet endpoint; prefer a dedicated RPC in production.
+- `SLOT_CONTRACT_ADDRESS` and `SLOT_DEPLOYMENT_BLOCK`: leave empty until the
+  contract is deployed. Login, wallets and swaps work without the contract.
+- `SLOT_BACKEND_PRIVATE_KEY=REPLACE_ME`: disabled placeholder. Replace it with
+  `0x` plus 64 hexadecimal digits for a dedicated EOA funded with ETH on Base.
+  Free spins require `GAME_MANAGER_ROLE`. This is not the Privy admin wallet's
+  key. Do not use a `NEXT_PUBLIC_` prefix for this secret.
+- `LIFI_API_KEY`: optional; may remain empty.
 
-`PRIVY_APP_SECRET` e `SLOT_BACKEND_PRIVATE_KEY` sono variabili sealed su Railway.
-`preserve()` conserva le variabili già impostate, incluse le chiavi sostituite
-successivamente, senza inserirne il contenuto in Git.
+`PRIVY_APP_SECRET` and `SLOT_BACKEND_PRIVATE_KEY` are sealed Railway variables.
+`preserve()` keeps existing variables, including keys replaced later, without
+putting their values in Git.
 
-## Modifiche e deploy
+## Changes and deployment
 
-Da questa directory o dalla radice della monorepo, collegare la CLI al progetto
-e all'ambiente corretti, poi:
+From this directory or the monorepo root, link the CLI to the correct project
+and environment, then run:
 
 ```sh
 railway status
@@ -71,16 +71,15 @@ railway config plan
 railway config apply
 ```
 
-Controllare sempre il piano prima dell'apply. Questo file descrive l'intero
-ambiente: aggiungere qui eventuali nuovi servizi prima di applicare modifiche.
-Le modifiche di infrastruttura richiedono l'apply. Il codice dell'app arriva in
-produzione solo dopo il flusso branch di lavoro → PR in `dev` → PR `dev` in
-`main`; l'aggiornamento di `main` avvia il deploy dalla sorgente GitHub collegata.
-Non pushare direttamente su `main` e non usare un deploy manuale per aggirare
-questo flusso. Vedi [../CONTRIBUTING.md](../CONTRIBUTING.md).
+Always review the plan before applying it. The configuration file describes the
+entire environment: add any new services there before applying changes.
+Infrastructure changes require an apply. App code reaches production only through
+work branch → PR into `dev` → PR from `dev` into `main`; updating `main` triggers
+a deployment from the linked GitHub source. Do not push directly to `main` or
+use manual deployment to bypass this workflow. See [../CONTRIBUTING.md](../CONTRIBUTING.md).
 
-Per un deploy manuale, eseguire dalla **radice della monorepo**, in modo che
-Railway possa applicare la root directory configurata:
+For an explicitly authorized manual deployment, run from the **monorepo root**
+so Railway can apply the configured root directory:
 
 ```sh
 railway up --service web --environment production --detach -m "Deploy web"
@@ -88,13 +87,12 @@ railway logs --service web --build --lines 100
 railway logs --service web --lines 100
 ```
 
-Le sessioni e i lock sono in memoria. Un riavvio richiede un nuovo pairing;
-fondi, premi e giocate già onchain persistono nel contratto. Non aumentare le
-repliche né eseguire altrove un keeper con la stessa EOA.
+Sessions and locks are held in memory. A restart requires pairing again;
+funds, prizes and games already onchain persist in the contract. Do not increase
+the replica count or run another keeper with the same EOA elsewhere.
 
-Con un keeper reale attivo, fare i deploy in manutenzione: sospendere nuove
-giocate, attendere la chiusura delle giocate attive e fermare il deployment
-precedente prima di avviare il nuovo (`railway down --service web`, poi deploy).
-Overlap e draining sono impostati a zero, ma la fase di avvio di un rolling
-deploy può comunque eseguire due processi per un breve periodo: non è un lock
-distribuito. Dopo l'avvio il keeper recupera le giocate dal contratto.
+With a real keeper active, deploy during maintenance: pause new spins, wait for
+active games to finish and stop the previous deployment before starting the new
+one (`railway down --service web`, then deploy). Overlap and draining are set to
+zero, but rolling deployment startup can still briefly run two processes: this
+is not a distributed lock. After startup, the keeper recovers games from the contract.

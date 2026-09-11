@@ -1,25 +1,24 @@
-# Lucky Signal — stato del progetto
+# Lucky Signal — project status
 
-Arcade per iPad Air orizzontale, iOS 12.5.8 / Safari 12.1.2. Nome provvisorio
-Lucky Signal, stile inchiostro/crema/giallo acido/corallo, simboli SVG.
+Arcade for iPad Air in landscape, iOS 12.5.8 / Safari 12.1.2. Working name:
+Lucky Signal, with an ink/cream/acid-yellow/coral palette and SVG symbols.
 
-- Terminale single page a `/`, HTML/CSS/ES5 senza runtime Privy sul vecchio iPad.
-- Accesso e creazione wallet embedded da `/phone`, passkey oppure email OTP.
-- Pairing QR monouso, USDC su Base, indirizzo e QR ricezione, firma di prova.
-- Logout dopo 3 minuti di inattività globale; polling e animazioni non contano.
-- Console separata `/admin` con wallet Privy reale e ruoli letti dal contratto.
-- Integrazione `DigitalSlotMachine` dalla repo `foundry-slot`: giocate USDC,
-  budget limitato, free spin dal backend, reveal automatico, premi e storico.
-- Slot 3×5 animata durante entrambe le transazioni; risultato onchain confermato.
-- Nessun database. Pairing e chiavi temporanee in memoria, giocate e premi onchain.
-- Railway predisposto per una replica sempre attiva. Arduino ancora da collegare.
+- Single-page terminal at `/`, HTML/CSS/ES5 without the Privy runtime on the older iPad.
+- Embedded wallet login and creation at `/phone`, using a passkey or email OTP.
+- Single-use pairing QR, USDC on Base, address and receiving QR, signature proof.
+- Logout after 3 minutes of global inactivity; polling and animations do not count.
+- Separate `/admin` console with a real Privy wallet and roles read from the contract.
+- `DigitalSlotMachine` integration from the `foundry-slot` reference repo: USDC
+  spins, limited budget, backend free spins, automatic reveal, prizes and history.
+- Animated 3×5 slot during both transaction stages; confirmed onchain result.
+- No database. Pairing and temporary keys in memory; games and prizes onchain.
+- Railway configured for one always-on replica. Arduino integration is still pending.
 
-Il contratto non è deployato; le credenziali Privy sono già configurate per
-l'anteprima. Senza indirizzo del contratto, il login e il wallet restano attivi,
-mentre la console indica la configurazione mancante e non simula dati macchina.
+The contract is not deployed; Privy credentials are already configured for the
+preview. Without a contract address, login and wallets remain available while
+the console indicates the missing configuration and does not simulate machine data.
 
-L'utente ha chiesto di saltare Lazyweb. La repo sperimentale Privy e la repo
-Solidity sono state consultate in sola lettura.
+The experimental Privy and Solidity reference repositories were consulted read-only.
 
-Per configurazione, comportamento e verifiche vedere [README](../README.md).
-Per ABI, flusso in due tempi e operatività vedere [integrazione contratto](contracts.md).
+For setup, behavior and validation, see the [README](../README.md).
+For the ABI, two-stage flow and operations, see [contract integration](contracts.md).
