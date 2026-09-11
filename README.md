@@ -17,6 +17,32 @@ Le due componenti sono autonome: npm e il lockfile dell'app restano in
 richiede Solidity né le dipendenze dei contratti. Il package npm alla radice
 contiene comandi di comodo e l'SDK per la configurazione Railway.
 
+## Collaborazione
+
+Il flusso richiesto è **branch di lavoro → PR in `dev` → PR da `dev` in `main`**.
+Nessun commit o push diretto su `dev` o `main`. `main` alimenta la produzione;
+`dev` integra il lavoro del team e non ha ancora un deploy staging.
+
+Leggere [CONTRIBUTING.md](CONTRIBUTING.md) prima di contribuire. Le regole comuni
+per gli agenti sono in [AGENTS.md](AGENTS.md); le istruzioni specifiche sono in
+[`apps/web/AGENTS.md`](apps/web/AGENTS.md) e [`contracts/AGENTS.md`](contracts/AGENTS.md).
+Ogni `CLAUDE.md` importa il corrispondente `AGENTS.md`, senza duplicare le regole.
+I commit usano l'identità Git del contributore umano; niente co-autori AI o
+firme automatiche degli strumenti nei commit e nelle PR.
+
+## Architettura
+
+Il terminale iPad usa HTML/CSS/ES5 e genera un QR per `/phone`. Sul telefono
+l'utente accede a Privy e autorizza la sessione del terminale. Il backend Next.js
+coordina il pairing e i signer temporanei; l'inattività globale chiude la sessione
+dopo tre minuti. `/admin` usa account personali per operare sul wallet condiviso.
+
+Le giocate hanno due tempi: il wallet player invia la transazione iniziale, poi
+la EOA backend rivela il round. Nel frattempo la slot gira; lo stato del contratto
+e gli eventi determinano il risultato. L'admin firma le operazioni di gestione
+con il wallet Privy condiviso e usa LI.FI per gli swap. Il contratto mantiene
+giocate, premi e crediti; le sessioni e i lock dell'app sono in memoria.
+
 ## Sviluppo
 
 Node.js 22; Foundry serve solo per compilare/testare i contratti.

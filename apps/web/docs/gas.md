@@ -9,11 +9,12 @@ Privy gestisce l'approvazione al paymaster nella transazione. L'approvazione
 
 Il SDK React installato non espone `sponsor_options`. Le operazioni approvate
 dal telefono e dall'admin passano quindi dalle API del server. L'access token
-Privy autentica la richiesta; un identity token verificato per lo stesso user ID
-autorizza il **suo** wallet (personale o admin condiviso) con `user_jwts`.
-Abilitare **Return user data in an identity token** nel dashboard Privy,
-User management → Authentication → Advanced, e accedere di nuovo. I token
-non vengono conservati nelle richieste pendenti e non compaiono nei log.
+Privy autentica la richiesta; il browser autorizza i byte esatti preparati dal
+Node SDK con `useAuthorizationSignature`. Il server inoltra la firma con
+`sign_fns`, senza scambiare JWT per chiavi wallet. Ogni tentativo USDC/ETH
+richiede la propria firma sul payload corrispondente. Dopo la firma si
+ricontrollano accesso e scadenza prima dell'invio. Chiavi, token e firme non
+vengono registrati nei log.
 Il signer P-256 della sessione iPad resta limitato a `startSpin()`.
 
 ## Fallback

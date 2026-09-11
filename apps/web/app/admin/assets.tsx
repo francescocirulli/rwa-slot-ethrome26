@@ -6,13 +6,14 @@ import {RWA_ASSETS,PAYMENT_ASSET,ETH_ASSET,SWAP_INPUTS,assetUnits,type Asset} fr
 import type {Inventory} from '@/lib/admin/inventory';
 import type {SwapView} from '@/lib/admin/swaps';
 import type {SlotSnapshot} from '@/lib/slot/reader';
-import {walletAuthorizationHeaders} from '@/lib/wallet-authorization-client';
+import {useWalletRequest} from '@/lib/wallet-authorization-client';
 
 type Data=Inventory&{swapEnabled:boolean};
 const short=(address:string)=>address.slice(0,6)+'…'+address.slice(-4);
 const complete=(state:SwapView)=>['approved','succeeded','failed','rejected','expired'].includes(state.stage);
 export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onDeposit,onRefresh,onSwapBusy,onConfigure}:{tab:string;address:string;userId:string;slot:SlotSnapshot|null;contractBusy:boolean;canDeposit:boolean;onDeposit:(action:string,args:string[])=>Promise<void>;onRefresh:()=>void;onSwapBusy:(busy:boolean)=>void;onConfigure:(asset:Asset)=>void}){
   const {getAccessToken}=usePrivy();
+  const walletRequest=useWalletRequest();
   const [inventory,setInventory]=useState<Data|null>(null),[loadError,setLoadError]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const [inputAssetId,setInputAssetId]=useState('usdc');
   const [assetId,setAssetId]=useState('nvidia'),[amount,setAmount]=useState(''),[quote,setQuote]=useState<SwapView|null>(null),[operation,setOperation]=useState<SwapView|null>(null),[clock,setClock]=useState(Date.now());
@@ -24,8 +25,7 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
   const refreshAccount=useRef(onRefresh);refreshAccount.current=onRefresh;
   async function api(path:string,body?:unknown){
     const token=await getAccessToken();if(!token||!alive.current)throw new Error('Accedi di nuovo.');
-    const headers=path==='execute'?await walletAuthorizationHeaders():{};if(!alive.current)throw new Error('Account cambiato.');
-    const response=await fetch('/api/admin/assets/'+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,...headers,...(body?{'Content-Type':'application/json','X-Slot-Request':'1'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store',signal:AbortSignal.timeout(50000)});
+    const response=await (path==='execute'?walletRequest:fetch)('/api/admin/assets/'+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json','X-Slot-Request':'1'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store',signal:AbortSignal.timeout(50000)});
     const value=await response.json();if(!alive.current)throw new Error('Account cambiato.');if(!response.ok)throw new Error(value.error||'Operazione non disponibile.');return value;
   }
   apiRef.current=api;
@@ -41,7 +41,7 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
     const next:SwapView=await apiRef.current!('status?'+params);
     if(next.address.toLowerCase()!==address.toLowerCase())throw new Error('Wallet cambiato.');
     setError('');
-    // Polling can arrive while the identity-token request still precedes the POST.
+    // Polling can arrive while wallet authorization still precedes the POST.
     // Keep the recovery marker until that submission attempt has finished.
     if(next.stage==='quoted'){if(lock.current)return;sessionStorage.removeItem(storageKey);setOperation(null);setQuote(null);return;}
     remember(next);

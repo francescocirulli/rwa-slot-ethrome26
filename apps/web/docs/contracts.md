@@ -72,11 +72,12 @@ sfoglia gli ID globali in pagine da 20. Non serve un indexer persistente.
 ## Comandi admin
 
 La console legge i ruoli reali. Il backend prepara calldata da una lista chiusa
-di azioni, verifica gli input e simula usando l'indirizzo embedded ricavato dal
-JWT Privy. Il browser mostra la transazione da confermare, incluse le commissioni.
+di azioni, verifica gli input e simula usando l'indirizzo del wallet condiviso
+risolto dai permessi dell'account Privy autenticato. Il browser mostra la transazione da confermare, incluse le commissioni.
 Il backend conserva la richiesta immutabile, ricontrolla ruoli e parametri e
-inoltra l'invio a Privy usando l'identity token in `authorization_context.user_jwts`,
-verificato contro l'account dell'access token: firma il wallet admin condiviso,
+inoltra l'invio a Privy dopo che `useAuthorizationSignature` nel browser ha
+firmato i byte esatti preparati dal Node SDK. Il canale è vincolato all'account
+dell'access token e passa la firma tramite `sign_fns`: firma il wallet admin condiviso,
 senza usare la chiave del keeper o il signer dell'iPad. Il contratto
 applica nuovamente ruoli e precondizioni al mining.
 

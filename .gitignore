@@ -14,3 +14,5 @@ broadcast/
 *.log
 .railway/*.plan.json
 .railway/*.state.json
+CLAUDE.local.md
+**/.claude/settings.local.json

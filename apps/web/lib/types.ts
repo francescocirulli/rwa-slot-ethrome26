@@ -8,6 +8,7 @@ export const CHAIN_ID = 8453;
 
 export type Wallet = {id: string; address: string};
 export type Identity = {userId: string; wallets: Wallet[]};
+export type WalletAuthorization = {sign_fns: [(payload:Uint8Array)=>Promise<string>]};
 export type Grant = {
   id: string; signerId: string; policyId: string; walletId: string;
   address: string; message: string; active: boolean;
@@ -37,6 +38,6 @@ export interface WalletService {
   revoke(grant: Grant): void;
   preparePlay?(wallet: Wallet, userId: string, sessionId: string, code: string, contract: Address, chainId: number, budget: string): Promise<PlayGrant>;
   sendSpin?(grant: PlayGrant, idempotencyKey: string, mode: GasMode, assertValid: () => void): Promise<SubmittedSpin>;
-  sendOwned?(wallet: Wallet, token: string, transaction: {to: Address; data: `0x${string}`; chainId: number; value?: `0x${string}`}, idempotencyKey: string, mode: GasMode, onGasToken: (token: GasToken) => void, assertValid?:()=>void|Promise<void>): Promise<SubmittedSpin>;
+  sendOwned?(wallet: Wallet, authorization: WalletAuthorization, transaction: {to: Address; data: `0x${string}`; chainId: number; value?: `0x${string}`}, idempotencyKey: string, mode: GasMode, onGasToken: (token: GasToken) => void, assertValid?:()=>void|Promise<void>): Promise<SubmittedSpin>;
   resolveSpin?(submission: SubmittedSpin): Promise<Hash | undefined>;
 }

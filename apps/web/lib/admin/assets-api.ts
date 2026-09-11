@@ -4,7 +4,7 @@ import type {createSwapService} from './swaps';
 import type {createInventoryReader} from './inventory';
 import {swapError} from './swaps';
 import {SlotError} from '../slot/errors';
-import {walletAuthorizationToken} from '../wallet-authorization';
+import {withWalletAuthorization} from '../wallet-authorization';
 import type {Address} from 'viem';
 export function createAssetsHandler({admin,walletService,swaps,inventory,contract,origin}:{admin?:AdminAccessService;walletService?:WalletService;swaps?:ReturnType<typeof createSwapService>;inventory:ReturnType<typeof createInventoryReader>;contract:()=>Address|null;origin:string}){
   return async function handle(request:Request,action:'inventory'|'quote'|'execute'|'status'){
@@ -24,7 +24,7 @@ export function createAssetsHandler({admin,walletService,swaps,inventory,contrac
       let input;try{input=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw new SlotError('Input','JSON non valido.',400);}
       if(!input||typeof input!=='object')throw new SlotError('Input','Parametri non validi.',400);
       if(action==='quote')return reply(await swaps.quote(user,input.assetId,input.amount,input.inputAssetId));
-      return reply(await swaps.execute(user,await walletAuthorizationToken(request,user,walletService),input.id,input.confirm));
+      return reply(await withWalletAuthorization(request,user,authorization=>swaps.execute(user,authorization,input.id,input.confirm)));
     }catch(error){const failure=swapError(error);return reply({error:failure.message,code:failure.code},failure.status);}
   };
 }

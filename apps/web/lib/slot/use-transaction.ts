@@ -3,12 +3,13 @@ import {useEffect, useRef, useState} from 'react';
 import {usePrivy} from '@privy-io/react-auth';
 import type {Hex} from 'viem';
 import type {GasMode, GasToken} from './gas';
-import {walletAuthorizationHeaders} from '../wallet-authorization-client';
+import {useWalletRequest} from '../wallet-authorization-client';
 export type TransactionReview = {id:string;address:string;action:string;args:string[];expiresAt:number;transaction:{to:string;data:Hex;chainId:number;gasMode:GasMode}};
 type Pending = {id?:string;hash?:Hex};
 class TransactionApiError extends Error {constructor(message:string,public pending?:Pending){super(message);}}
 export function useContractTransaction(address:string,adminUserId?:string) {
   const {getAccessToken}=usePrivy();
+  const walletRequest=useWalletRequest();
   const [busy,setBusy]=useState(false),[pending,setPending]=useState<Pending|null>(null),[error,setError]=useState(''),[confirmed,setConfirmed]=useState(0);
   const [review,setReview]=useState<TransactionReview|null>(null),[gasToken,setGasToken]=useState<GasToken|null>(null);
   const lock=useRef(false),owner=useRef(address),alive=useRef(true),decision=useRef<((value:boolean)=>void)|null>(null);
@@ -23,8 +24,7 @@ export function useContractTransaction(address:string,adminUserId?:string) {
   function valid(){if(!alive.current||owner.current!==address)throw new Error('Account cambiato. Operazione interrotta.');}
   async function api(path:string,body?:unknown){
     valid();const token=await getAccessToken();valid();if(!token)throw new Error('Accedi di nuovo per verificare il wallet.');
-    const walletHeaders=path==='send'?await walletAuthorizationHeaders():{};valid();
-    const response=await fetch(endpoint+path,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${token}`,...walletHeaders,...(body===undefined?{}:{'Content-Type':'application/json','X-Slot-Request':'1'})},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(25000)});
+    const response=await (path==='send'?walletRequest:fetch)(endpoint+path,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${token}`,...(body===undefined?{}:{'Content-Type':'application/json','X-Slot-Request':'1'})},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(25000)});
     const value=await response.json();valid();if(!response.ok)throw new TransactionApiError(value.error||'Operazione non disponibile.',value.pending);return value;
   }
   function remember(value:Pending){

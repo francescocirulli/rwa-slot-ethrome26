@@ -1,3 +1,5 @@
+import {walletAuthorizations} from '../lib/wallet-authorization';
+async function transactionTestRequest(request:Request,userId:string,handle:(request:Request)=>Promise<Response>){if(!new URL(request.url).pathname.endsWith('/send'))return handle(request);const channels=walletAuthorizations(),headers=new Headers(request.headers),{id}=channels.create(userId,new URL(request.url).pathname);headers.set('X-Wallet-Authorization',id);const response=await handle(new Request(request,{headers}));if(!(await channels.poll(id,userId)).claimed)channels.cancel(id,userId);return response;}
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createContractApi} from '../lib/slot/transactions';
@@ -18,7 +20,7 @@ function fixture(sharedAdmin=false){
   const resolve=async(user:{userId:string})=>{if(revoked&&user.userId==='other')throw new SlotError('AdminAccess','Revoked',403);return {wallet:{id:'shared',address:'0x0000000000000000000000000000000000000033'},role:user.userId==='user'?'owner' as const:'operator' as const,operationsEnabled:true};};
   const api=createContractApi({origin,walletService:service,getSlot:()=>slot,now:()=>now,admin:sharedAdmin?{resolve,assertAction:async(user,action)=>{const access=await resolve(user);if(access.role==='operator'&&action==='grantRole')throw new SlotError('AdminAction','Owner only',403);return access;}}:undefined});
   async function call(kind:'prepare'|'send'|'status'|'cancel',body?:unknown,token='user',requestOrigin=origin,scope:'personal'|'admin'='personal'){
-    const r=await api.handle(new Request(origin+'/api/contract/'+kind+(kind==='status'?'?id='+body:''),{method:kind==='status'?'GET':'POST',headers:{Authorization:'Bearer '+token,Origin:requestOrigin,'Privy-Id-Token':token+'-identity','Content-Type':'application/json','X-Slot-Request':'1'},body:kind==='status'?undefined:JSON.stringify(body)}),kind,scope);return {status:r.status,body:await r.json()};
+    const r=await transactionTestRequest(new Request(origin+(scope==='admin'?'/api/admin/contract/':'/api/contract/')+kind+(kind==='status'?'?id='+body:''),{method:kind==='status'?'GET':'POST',headers:{Authorization:'Bearer '+token,Origin:requestOrigin,'Privy-Id-Token':token+'-identity','Content-Type':'application/json','X-Slot-Request':'1'},body:kind==='status'?undefined:JSON.stringify(body)}),token,request=>api.handle(request,kind,scope));return {status:r.status,body:await r.json()};
   }
   return {call,sends,revoke:()=>{revoked=true;},reorder:()=>{reordered=true;},release:()=>released(),finish:()=>{confirmed=true;},fail:(e:Error)=>{fail=e;},noRole:()=>{role=false;},expire:()=>{now+=300001;}};
 }
@@ -30,7 +32,7 @@ test('prepare is read-only; explicit confirmation uses the verified owner and im
   f.reorder(); // A refreshed identity may list another embedded wallet first.
   const request={id:p.body.id,confirm:true,address:other,action:'withdrawNative',args:['bad'],transaction:{to:other}};
   await Promise.all([f.call('send',request),f.call('send',request)]);await new Promise(resolve=>setTimeout(resolve,0));assert.equal(f.sends.length,1);
-  const sent=f.sends[0] as any;assert.equal(sent.wallet.address,address);assert.equal(sent.token,'user-identity');assert.equal(sent.tx.to,contract);assert.equal(sent.tx.data,p.body.transaction.data);assert.equal(sent.mode,'usdc');
+  const sent=f.sends[0] as any;assert.equal(sent.wallet.address,address);assert.equal(typeof sent.token.sign_fns[0],'function');assert.equal(sent.tx.to,contract);assert.equal(sent.tx.data,p.body.transaction.data);assert.equal(sent.mode,'usdc');
   f.release();await new Promise(resolve=>setTimeout(resolve,0));const pending=await f.call('status',p.body.id);assert.equal(pending.body.stage,'confirming');assert.equal(pending.body.hash,null);
   f.finish();const done=await f.call('status',p.body.id);assert.equal(done.body.stage,'confirmed');assert.equal(done.body.hash,hash);assert.equal(done.body.gasToken,'USDC');
   assert.equal(JSON.stringify(done.body).includes('provider-id'),false);await f.call('send',request);assert.equal(f.sends.length,1);
@@ -54,7 +56,7 @@ test('two admins use one wallet and lock, while confirmations remain bound to th
   assert.equal((await f.call('send',{id:p.body.id,confirm:true},'other')).status,404);
   assert.equal((await call('status',p.body.id)).body.canConfirm,false);
   await call('send',{id:p.body.id,confirm:true},'other');await new Promise(resolve=>setTimeout(resolve,0));
-  assert.equal(f.sends.length,1);assert.equal((f.sends[0] as any).wallet.id,'shared');assert.equal((f.sends[0] as any).token,'other-identity');
+  assert.equal(f.sends.length,1);assert.equal((f.sends[0] as any).wallet.id,'shared');assert.equal(typeof (f.sends[0] as any).token.sign_fns[0],'function');
   const pending=await call('prepare',action);assert.equal(pending.status,409);assert.equal(pending.body.pending.id,p.body.id);
   f.release();f.finish();await new Promise(resolve=>setTimeout(resolve,0));assert.equal((await call('status',p.body.id)).body.stage,'confirmed');
   assert.equal((await call('prepare',action)).status,200);
@@ -65,3 +67,5 @@ test('revoked collaborators cannot confirm prepared writes; ownership operations
   const p=await call('prepare',action);f.revoke();
   assert.equal((await call('send',{id:p.body.id,confirm:true})).status,403);assert.equal((await call('status',p.body.id)).status,403);assert.equal(f.sends.length,0);
 });
+
+test.afterEach(()=>walletAuthorizations().dispose());

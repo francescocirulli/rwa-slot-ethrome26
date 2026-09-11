@@ -1,3 +1,4 @@
+import {testAuthorization,testSignature} from './helpers/wallet-authorization';
 import {test, mock} from 'node:test';
 import {PrivyClient} from '@privy-io/node';
 import assert from 'node:assert/strict';
@@ -38,12 +39,12 @@ test('real Privy verifier enforces signature, audience, issuer, expiry and embed
   } finally {fetchMock.mock.restore();}
 });
 
-test('Privy transaction payload preserves native ETH input, USDC gas and the individual signer JWT',async()=>{
+test('Privy transaction payload preserves native ETH input, USDC gas and request-specific browser authorization',async()=>{
   const requests:any[]=[];
   const rpc=mock.method(PrivyClient.prototype,'wallets',()=>({ethereum:()=>({sendTransaction:async(id:string,body:any)=>{requests.push({id,body});return {hash:'',user_operation_hash:'0x'+'7'.repeat(64)};}})}) as any);
   try{
     const service=createWalletService('test-app','test-secret');
-    const result=await service.sendOwned!({id:'shared-wallet',address:'0x0000000000000000000000000000000000000099'},'individual-identity-token',{to:'0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE',data:'0x12345678',chainId:8453,value:'0xe35fa931a0000'},'native-swap','usdc',()=>{});
-    assert.equal(requests.length,1);const req=requests[0];assert.equal(req.id,'shared-wallet');assert.equal(req.body.params.transaction.value,'0xe35fa931a0000');assert.equal(req.body.params.transaction.chain_id,8453);assert.equal(req.body.sponsor,true);assert.deepEqual(req.body.sponsor_options,{asset:'usdc'});assert.deepEqual(req.body.authorization_context,{user_jwts:['individual-identity-token']});assert.equal(result.userOperationHash,'0x'+'7'.repeat(64));assert.equal(result.hash,undefined);
+    const result=await service.sendOwned!({id:'shared-wallet',address:'0x0000000000000000000000000000000000000099'},testAuthorization(),{to:'0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE',data:'0x12345678',chainId:8453,value:'0xe35fa931a0000'},'native-swap','usdc',()=>{});
+    assert.equal(requests.length,1);const req=requests[0];assert.equal(req.id,'shared-wallet');assert.equal(req.body.params.transaction.value,'0xe35fa931a0000');assert.equal(req.body.params.transaction.chain_id,8453);assert.equal(req.body.sponsor,true);assert.deepEqual(req.body.sponsor_options,{asset:'usdc'});assert.equal(await req.body.authorization_context.sign_fns[0](Buffer.from('payload')),testSignature('owner'));assert.equal(req.body.authorization_context.user_jwts,undefined);assert.equal(result.userOperationHash,'0x'+'7'.repeat(64));assert.equal(result.hash,undefined);
   }finally{rpc.mock.restore();}
 });

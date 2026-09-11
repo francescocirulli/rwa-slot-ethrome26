@@ -6,6 +6,9 @@ giocate a pagamento, free spin, reveal automatico e console admin onchain.
 Il contratto non è ancora deployato: senza indirizzo configurato, wallet e
 pairing funzionano e le operazioni di gioco restano disabilitate.
 
+Per contribuire leggere [../../CONTRIBUTING.md](../../CONTRIBUTING.md),
+[../../AGENTS.md](../../AGENTS.md) e le [regole web](AGENTS.md).
+
 ## Avvio
 
 Node.js 22. Copiare `.env.example` in `.env.local` e compilare le variabili
@@ -51,11 +54,10 @@ stesso wallet, saldo e QR per il funding. I ruoli onchain vengono assegnati a
 questo indirizzo condiviso. Il proprietario gestisce gli accessi; i collaboratori
 possono operare senza modificare proprietà o ruoli. Un semplice login non
 conferisce accesso. Configurazione e collaudo: [docs/shared-admin.md](docs/shared-admin.md).
-Abilitare in Privy **User management → Authentication → Advanced → Return user
-data in an identity token**, poi accedere di nuovo. `ADMIN_OWNER_USER_ID` indica
-l'account autorizzato a creare il wallet condiviso; il codice è visibile dopo
-il login nell'admin. Le operazioni wallet richiedono access token e identity
-token verificati per la stessa persona.
+`ADMIN_OWNER_USER_ID` indica l'account autorizzato a creare il wallet condiviso;
+il codice è visibile dopo il login nell'admin. L'access token autentica le API.
+La sessione Privy nel browser firma ogni richiesta wallet con
+`useAuthorizationSignature`; gli identity token non sono necessari.
 `ADMIN_WALLET_EXTERNAL_ID` seleziona il wallet condiviso: lasciarlo vuoto conserva
 quello esistente. Per inizializzare un wallet distinto dopo una prova con un altro
 account, seguire [la procedura dedicata](docs/shared-admin.md#cambio-account-dopo-una-prova).
