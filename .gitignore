@@ -6,7 +6,6 @@ test-results/
 playwright-report/
 *.tsbuildinfo
 .DS_Store
-.lazyweb/
 artifacts/
 cache/
 out/

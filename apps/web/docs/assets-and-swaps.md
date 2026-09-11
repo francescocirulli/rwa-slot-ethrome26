@@ -44,8 +44,9 @@ not needed. Swap and inventory reads work before slot deployment; funding requir
   `sponsor_options: {asset: 'usdc'}` for approval and swap. Only an explicit
   insufficient-token rejection before submission enables ETH fallback. Trade and
   app gas credits are not required by this LI.FI integration.
-- Keep **Return user data in an identity token** enabled. The access token authenticates
-  the account; a separately verified identity token authorizes its wallet request.
+- The access token authenticates the account. The browser authorizes the exact
+  Node SDK request bytes with `useAuthorizationSignature`; the server forwards
+  that signature through `sign_fns`. Identity tokens are not required.
 - Keep `ADMIN_OWNER_USER_ID` set and create the shared wallet from that account.
 - `LIFI_API_KEY` is optional and server-only. Public quotes work without it, subject
   to LI.FI rate limits. The API host is fixed to `https://li.quest`.
@@ -71,17 +72,18 @@ shows included LI.FI fees and the ETH gas estimate separately. This estimate is 
 Privy's final USDC gas charge. Sufficient funds must remain for input plus fees.
 
 When USDC allowance is insufficient, the first confirmed operation approves exactly
-the input amount to LI.FI. After its receipt, the UI shows **USDC autorizzati**, and
+the input amount to LI.FI. After its receipt, the UI shows that **USDC is approved**, and
 the user requests a new quote and explicitly confirms the swap. Approval alone is
 never reported as token acquisition. ETH input skips approval. No automatic deposit
 follows: use Inventory's existing reviewed funding action.
 
 ## Shared wallet permissions
 
-The owner and authorized collaborators execute using their own verified identity
-JWTs and the same wallet ID. No co-owner access, shared private key, or backend keeper
-key is needed. The owner updates existing collaborators through **Wallet admin →
-Aggiorna permessi**. This attaches the new owner-controlled LI.FI policy. New members
+The owner and authorized collaborators authenticate with their own access tokens
+and authorize requests through their own browser Privy sessions, using the same
+wallet ID. No co-owner access, shared private key, or backend keeper key is needed.
+The owner updates existing collaborators through the **update permissions** action
+in the admin wallet section. This attaches the new owner-controlled LI.FI policy. New members
 receive it immediately, including before slot deployment.
 
 Older exact policies remain recognized for visibility/signature proof and any

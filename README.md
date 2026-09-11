@@ -1,51 +1,52 @@
 # Lucky Signal — ETHRome 2026
 
-Monorepo della slot per iPad con wallet Privy e USDC su Base.
+Monorepo for the iPad slot machine with Privy wallets and USDC on Base.
 
-**Online:** [terminale iPad](https://web-production-e2628.up.railway.app) ·
+**Live:** [iPad terminal](https://web-production-e2628.up.railway.app) ·
 [admin](https://web-production-e2628.up.railway.app/admin) ·
-[progetto Railway](https://railway.com/project/c3367565-9058-4341-9795-e9de185dfea0).
+[Railway project](https://railway.com/project/c3367565-9058-4341-9795-e9de185dfea0).
 
-| Cartella | Contenuto |
+| Directory | Contents |
 | --- | --- |
-| [`apps/web`](apps/web) | Next.js, terminale iPad, login dal telefono, admin e backend keeper |
-| [`contracts`](contracts) | Contratti Solidity, test e script Foundry |
-| [`.railway`](.railway) | Configurazione del servizio web su Railway |
+| [`apps/web`](apps/web) | Next.js, iPad terminal, phone login, admin panel and backend keeper |
+| [`contracts`](contracts) | Solidity contracts, Foundry tests and scripts |
+| [`.railway`](.railway) | Railway web service configuration |
 
-Le due componenti sono autonome: npm e il lockfile dell'app restano in
-`apps/web`, Foundry e i suoi submodule restano in `contracts`. La build web non
-richiede Solidity né le dipendenze dei contratti. Il package npm alla radice
-contiene comandi di comodo e l'SDK per la configurazione Railway.
+The two components are independent: the app's npm dependencies and lockfile stay
+in `apps/web`; Foundry and its submodules stay in `contracts`. The web build does
+not require Solidity or contract dependencies. The root npm package provides
+convenience commands and the Railway configuration SDK.
 
-## Collaborazione
+## Collaboration
 
-Il flusso richiesto è **branch di lavoro → PR in `dev` → PR da `dev` in `main`**.
-Nessun commit o push diretto su `dev` o `main`. `main` alimenta la produzione;
-`dev` integra il lavoro del team e non ha ancora un deploy staging.
+The required workflow is **work branch → PR into `dev` → PR from `dev` into `main`**.
+Do not commit or push directly to `dev` or `main`. `main` feeds production;
+`dev` integrates the team's work and does not yet have a staging deployment.
 
-Leggere [CONTRIBUTING.md](CONTRIBUTING.md) prima di contribuire. Le regole comuni
-per gli agenti sono in [AGENTS.md](AGENTS.md); le istruzioni specifiche sono in
-[`apps/web/AGENTS.md`](apps/web/AGENTS.md) e [`contracts/AGENTS.md`](contracts/AGENTS.md).
-Ogni `CLAUDE.md` importa il corrispondente `AGENTS.md`, senza duplicare le regole.
-I commit usano l'identità Git del contributore umano; niente co-autori AI o
-firme automatiche degli strumenti nei commit e nelle PR.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before contributing. Shared agent rules
+are in [AGENTS.md](AGENTS.md); component instructions are in
+[`apps/web/AGENTS.md`](apps/web/AGENTS.md) and [`contracts/AGENTS.md`](contracts/AGENTS.md).
+Each `CLAUDE.md` imports its corresponding `AGENTS.md` without duplicating rules.
+Commits use the human contributor's Git identity, with no AI co-authors or
+automatic tool attribution in commits or PRs. Write repository Markdown in English.
 
-## Architettura
+## Architecture
 
-Il terminale iPad usa HTML/CSS/ES5 e genera un QR per `/phone`. Sul telefono
-l'utente accede a Privy e autorizza la sessione del terminale. Il backend Next.js
-coordina il pairing e i signer temporanei; l'inattività globale chiude la sessione
-dopo tre minuti. `/admin` usa account personali per operare sul wallet condiviso.
+The iPad terminal uses HTML/CSS/ES5 and generates a QR code for `/phone`. On the
+phone, the user signs in through Privy and authorizes the terminal session. The
+Next.js backend coordinates pairing and temporary signers; global inactivity
+ends the session after three minutes. `/admin` uses personal accounts to operate
+the shared wallet.
 
-Le giocate hanno due tempi: il wallet player invia la transazione iniziale, poi
-la EOA backend rivela il round. Nel frattempo la slot gira; lo stato del contratto
-e gli eventi determinano il risultato. L'admin firma le operazioni di gestione
-con il wallet Privy condiviso e usa LI.FI per gli swap. Il contratto mantiene
-giocate, premi e crediti; le sessioni e i lock dell'app sono in memoria.
+Spins have two stages: the player wallet sends the initial transaction, then the
+backend EOA reveals the round. The reels keep spinning while waiting; contract
+state and events determine the result. Admins sign management operations with
+the shared Privy wallet and use LI.FI for swaps. The contract stores games,
+prizes and credits; app sessions and locks are held in memory.
 
-## Sviluppo
+## Development
 
-Node.js 22; Foundry serve solo per compilare/testare i contratti.
+Use Node.js 22. Foundry is only required to build and test contracts.
 
 ```sh
 git clone --recurse-submodules https://github.com/francescocirulli/rwa-slot-ethrome26.git
@@ -53,45 +54,44 @@ cd rwa-slot-ethrome26
 npm ci
 npm run setup:web
 cp apps/web/.env.example apps/web/.env.local
-# Compilare apps/web/.env.local con la configurazione Privy.
+# Fill in apps/web/.env.local with your Privy configuration.
 npm run dev
 ```
 
-- `/`: terminale iPad Air orizzontale, iOS 12.5.8 / Safari 12.1.2.
-- `/phone`: autenticazione personale, wallet, pairing e budget.
-- `/admin`: wallet condiviso, collaboratori, swap LI.FI e inventory.
+- `/`: iPad Air terminal in landscape, iOS 12.5.8 / Safari 12.1.2.
+- `/phone`: personal authentication, wallet, pairing and budget.
+- `/admin`: shared wallet, collaborators, LI.FI swaps and inventory.
 
 ```sh
 npm test
 npm run build
-npm run test:browser      # prima: cd apps/web && npx playwright install chromium
-npm run test:chain        # richiede Anvil
-npm run test:contracts    # richiede Foundry e submodule
+npm run test:browser      # First install Chromium: npm exec --prefix apps/web -- playwright install chromium
+npm run test:chain        # Requires Anvil
+npm run test:contracts    # Requires Foundry and submodules
 ```
 
-Se il clone esiste già, `git submodule update --init --recursive` installa le
-dipendenze dei contratti. Non eseguire `forge install` da `apps/web`.
+For an existing clone, run `git submodule update --init --recursive` to install
+contract dependencies. Do not run `forge install` from `apps/web`.
 
-## Deploy Railway
+## Railway deployment
 
-Il servizio `web` usa `/apps/web` come root, il suo Dockerfile multi-stage,
-Next standalone e l'healthcheck `/api/health`. Le impostazioni sono in
-[`.railway/railway.ts`](.railway/railway.ts); procedura e variabili in
+The `web` service uses `/apps/web` as its root, the app's multi-stage Dockerfile,
+Next standalone output and the `/api/health` healthcheck. Settings are in
+[`.railway/railway.ts`](.railway/railway.ts); procedures and variables are in
 [`.railway/README.md`](.railway/README.md).
 
-I segreti vengono inseriti nelle variabili del servizio, mai nei file
-versionati o nell'immagine. `SLOT_BACKEND_PRIVATE_KEY=REPLACE_ME` è un
-placeholder esplicitamente disabilitato: non rappresenta un wallet e non può
-firmare transazioni. Sostituirlo con la chiave di una EOA dedicata quando il
-contratto sarà deployato. La chiave backend paga il gas in ETH; i wallet Privy
-usano USDC con fallback ETH secondo la configurazione dell'app.
+Set secrets in the service variables, never in tracked files or the image.
+`SLOT_BACKEND_PRIVATE_KEY=REPLACE_ME` is an explicitly disabled placeholder:
+it does not represent a wallet and cannot sign transactions. Replace it with
+a dedicated EOA's key once the contract is deployed. The backend wallet pays
+gas in ETH; Privy wallets use USDC with ETH fallback according to app configuration.
 
-Una sola replica sempre accesa, nessun database. Un riavvio chiude i pairing;
-le giocate già registrate si recuperano dal contratto. Prima di abilitare il
-keeper seguire anche le indicazioni sui deploy in `.railway/README.md`.
+Run one always-on replica, with no database. A restart ends pairings; games
+already recorded onchain can be recovered from the contract. Before enabling
+the keeper, also follow the deployment instructions in `.railway/README.md`.
 
-Dettagli: [app e wallet](apps/web/README.md),
-[contratti](contracts/README.md),
-[integrazione onchain](apps/web/docs/contracts.md),
-[wallet admin condiviso](apps/web/docs/shared-admin.md),
-[swap e inventory](apps/web/docs/assets-and-swaps.md).
+Details: [app and wallets](apps/web/README.md),
+[contracts](contracts/README.md),
+[onchain integration](apps/web/docs/contracts.md),
+[shared admin wallet](apps/web/docs/shared-admin.md),
+[swaps and inventory](apps/web/docs/assets-and-swaps.md).

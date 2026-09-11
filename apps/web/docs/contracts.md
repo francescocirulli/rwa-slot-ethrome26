@@ -1,47 +1,47 @@
-# Integrazione DigitalSlotMachine
+# DigitalSlotMachine integration
 
-ABI allineata a [`../../../contracts/abi/DigitalSlotMachine.json`](../../../contracts/abi/DigitalSlotMachine.json),
-compilata da `contracts/src/DigitalSlotMachine.sol` nella stessa monorepo.
-Il keccak256 del sorgente è registrato in `lib/slot/abi.ts` e nei fixture di test.
-Il sorgente dei contratti non è stato modificato. Non mancano interfacce necessarie
-al flusso implementato.
+The ABI matches [`../../../contracts/abi/DigitalSlotMachine.json`](../../../contracts/abi/DigitalSlotMachine.json),
+compiled from `contracts/src/DigitalSlotMachine.sol` in this monorepo.
+The source keccak256 is recorded in `lib/slot/abi.ts` and test fixtures.
+The contract source was not changed for the integration. No additional
+interfaces are required for the implemented flow.
 
-## Flusso in due tempi
+## Two-stage flow
 
-1. Il player autentica il proprio wallet embedded sul telefono e associa l'iPad.
-   Sceglie un budget, firma `USDC.approve(slot, budget)` e aggiunge un signer con
-   policy limitata a `startSpin()` su questa slot/rete, senza valore ETH.
-2. La leva/pulsante invia una richiesta autenticata dalla sessione iPad. Il
-   backend deriva il player dalla sessione, controlla stato, saldo, allowance,
-   servizio di reveal e consenso. Il signer invia `startSpin()` dal wallet
-   **player**. La chiamata ritorna subito uno stato da monitorare.
-3. L'ID viene dall'evento `SpinStarted` nella ricevuta, filtrato per contratto e
-   player. Il costo è addebitato in questa transazione, non nel reveal.
-4. Il keeper legge le giocate attive. A `targetBlock + 1` può inviare
-   `revealRound(gameId)` dalla propria EOA; `targetBlock` stesso è ancora presto.
-   Fino al reveal la griglia è in movimento.
-5. Il contratto salva il risultato e paga atomicamente il player originale.
-   L'app legge `getGame`, `getGameStatus`, `RoundRevealed`, `PrizePaid` e attende
-   due conferme prima di fermare la griglia. Due conferme sono una soglia UX
-   sulla chain L2, non equivalgono alla finalità Ethereum.
+1. The player authenticates their embedded wallet on the phone and pairs the
+   iPad. They choose a budget, sign `USDC.approve(slot, budget)` and add a signer
+   with a policy restricted to `startSpin()` on this slot/network, with zero ETH value.
+2. The lever/button sends a request authenticated by the iPad session. The
+   backend derives the player from that session and checks state, balance,
+   allowance, the reveal service and consent. The signer sends `startSpin()`
+   from the **player** wallet. The call immediately returns a status to monitor.
+3. The ID comes from the receipt's `SpinStarted` event, filtered by contract
+   and player. The ticket is charged in this transaction, not during reveal.
+4. The keeper reads active games. At `targetBlock + 1`, it can send
+   `revealRound(gameId)` from its own EOA; `targetBlock` itself is too early.
+   The grid keeps moving until reveal.
+5. The contract stores the result and pays the original player atomically.
+   The app reads `getGame`, `getGameStatus`, `RoundRevealed` and `PrizePaid`,
+   then waits for two confirmations before stopping the grid. Two confirmations
+   are an L2 UX threshold, not equivalent to Ethereum finality.
 
-Con crediti disponibili, `startFreeSpin(player)` è firmata dall'EOA backend con
-`GAME_MANAGER_ROLE`: destinatario vincolato alla sessione, nessun addebito USDC
-e nessuna approvazione token necessaria. Poi segue lo stesso reveal.
+When credits are available, the backend EOA signs `startFreeSpin(player)` with
+`GAME_MANAGER_ROLE`: the recipient is bound to the session, with no USDC charge
+or token approval required. The same reveal flow follows.
 
-Un logout distrugge l'autorizzazione per nuove giocate, ma una transazione già
-inviata può ancora essere inclusa. Il keeper conclude comunque il round per il
-player originale. Non usa sessioni browser per scegliere il destinatario.
+Logout destroys authorization for new games, but an already submitted transaction
+may still be included. The keeper finishes the round for the original player.
+It does not use browser sessions to choose the recipient.
 
-## Letture, eventi e griglia
+## Reads, events and grid
 
 `getContractSettings`, `getPrizeCatalog`, `getPlayerState`, `getGame`,
-`getGameStatus`, `getActiveGameIds`, inventari ERC20/ERC1155, `owner`, `hasRole`
-e trasferimenti owner pendenti sono letti via RPC lato server. URL RPC e chiavi
-non vengono passati al browser.
+`getGameStatus`, `getActiveGameIds`, ERC20/ERC1155 inventories, `owner`, `hasRole`
+and pending ownership transfers are read through server-side RPC.
+RPC URLs and keys are not passed to the browser.
 
-La griglia del contratto è **row-major**: indice `riga * 5 + colonna`. L'iPad
-converte nell'ordine dei suoi cinque rulli. Le tre linee sono:
+The contract grid is **row-major**: index `row * 5 + column`. The iPad converts
+it to the order of its five reels. The three paylines are:
 
 ```text
 [ 5,  6, 7,  8,  9]
@@ -49,80 +49,80 @@ converte nell'ordine dei suoi cinque rulli. Le tre linee sono:
 [10, 11, 7,  3,  4]
 ```
 
-Vengono evidenziate le prime `matchCount` celle della `winningLine`. Per ERC20
-un 3/5 paga metà importo 5/5; per ERC1155 e free spin la quantità è intera.
-Il risultato non viene ricostruito casualmente dal client né anticipato con
-`previewPendingResult`. Gli importi viaggiano come stringhe di interi, senza
-float per i calcoli monetari.
+The first `matchCount` cells of `winningLine` are highlighted. For ERC20,
+a 3/5 result pays half the 5/5 amount; ERC1155 and free spins pay the full
+quantity. The client does not randomly reconstruct the result or show it
+early through `previewPendingResult`. Amounts are transmitted as integer
+strings, without floating-point arithmetic for monetary calculations.
 
-`PrizePaid` conserva token, token ID, tipo e quantità realmente pagati. Lo
-storico non usa il catalogo corrente per calcolare premi passati. Per ERC20
-la formattazione legge `symbol` e `decimals`; se il token non li espone, mostra
-le unità minime. Le etichette grafiche dei simboli sono definite nell'app e
-corrispondono agli ID del design del contratto, inclusi placeholder 12–15.
+`PrizePaid` preserves the token, token ID, kind and actual amount paid. History
+does not use the current catalog to calculate past prizes. ERC20 formatting
+reads `symbol` and `decimals`; if the token does not expose them, it displays
+base units. Visual symbol labels are defined in the app and match the contract
+design IDs, including placeholders 12–15.
 
-Gli eventi di un reveal si cercano solo fra target e deadline (massimo 256
-blocchi). L'ultima giocata del player si recupera da `SpinStarted`, con pagine
-di 2000 blocchi, fino a 12 pagine per richiesta e ripresa alle letture successive.
-La cache verifica il block hash e rilegge un margine di 12 blocchi. Per wallet
-senza storico su un contratto molto vecchio la prima sincronizzazione richiede
-più polling; le nuove giocate restano bloccate fino al completamento. L'admin
-sfoglia gli ID globali in pagine da 20. Non serve un indexer persistente.
+Reveal events are searched only between the target and deadline (at most
+256 blocks). The player's latest game is recovered from `SpinStarted` in
+2,000-block pages, up to 12 pages per request, resuming on subsequent reads.
+The cache verifies block hashes and rereads a 12-block margin. For wallets
+without history on a very old contract, initial synchronization requires
+multiple polls; new games stay blocked until it finishes. Admins browse global
+IDs in pages of 20. No persistent indexer is required.
 
-## Comandi admin
+## Admin commands
 
-La console legge i ruoli reali. Il backend prepara calldata da una lista chiusa
-di azioni, verifica gli input e simula usando l'indirizzo del wallet condiviso
-risolto dai permessi dell'account Privy autenticato. Il browser mostra la transazione da confermare, incluse le commissioni.
-Il backend conserva la richiesta immutabile, ricontrolla ruoli e parametri e
-inoltra l'invio a Privy dopo che `useAuthorizationSignature` nel browser ha
-firmato i byte esatti preparati dal Node SDK. Il canale è vincolato all'account
-dell'access token e passa la firma tramite `sign_fns`: firma il wallet admin condiviso,
-senza usare la chiave del keeper o il signer dell'iPad. Il contratto
-applica nuovamente ruoli e precondizioni al mining.
+The console reads real roles. The backend prepares calldata from a closed set
+of actions, validates inputs and simulates using the shared wallet address
+resolved from the authenticated Privy account's permissions. The browser shows
+the transaction and fees for confirmation. The backend retains an immutable
+request, rechecks roles and parameters, and forwards submission to Privy after
+the browser's `useAuthorizationSignature` signs the exact Node SDK request bytes.
+The channel is bound to the access-token account and passes the signature through
+`sign_fns`: the shared admin wallet signs, without the keeper key or iPad signer.
+The contract enforces roles and preconditions again when the transaction is mined.
 
-- Pausa/riattivazione (`PAUSER_ROLE`).
-- Prezzo, tempi, probabilità, premi, assegnazione/saldo free spin (`GAME_MANAGER_ROLE`).
-- Prelievi ERC20/ERC1155/ETH (`TREASURER_ROLE`, pausa e zero round pendenti).
-- Ruoli e trasferimento amministrazione con ritardo (owner).
-- Deposito dei token già configurati tramite `transfer` / `safeTransferFrom`.
+- Pause/unpause (`PAUSER_ROLE`).
+- Price, timing, probabilities, prizes and free-spin grants/balances (`GAME_MANAGER_ROLE`).
+- ERC20/ERC1155/ETH withdrawals (`TREASURER_ROLE`, paused and zero pending rounds).
+- Roles and delayed administration transfer (owner).
+- Deposits of configured tokens through `transfer` / `safeTransferFrom`.
 
-L'owner può eseguire le operazioni dei ruoli. `startFreeSpin` e `revealRound`
-sono esclusi dalla lista delle transazioni admin: li gestisce il backend.
-Nessun endpoint permette di far firmare calldata arbitrarie all'EOA backend.
+The owner can perform role operations. `startFreeSpin` and `revealRound` are
+excluded from admin transactions: the backend handles them. No endpoint lets
+the backend EOA sign arbitrary calldata.
 
-Prezzo, catalogo e tempi sono modificabili soltanto senza round pendenti.
-Almeno tre simboli devono essere configurati e i pesi devono sommare a 1000.
-Un peso vale 0,1%. I form dichiarano le unità minime richieste: per USDC,
-1 USDC = 1000000. Il token di pagamento non può essere un premio ERC20.
+Price, catalog and timing can change only with no pending rounds. At least
+three symbols must be configured and weights must total 1000. One weight unit
+is 0.1%. Forms specify the required base units: for USDC, 1 USDC = 1000000.
+The payment token cannot be an ERC20 prize.
 
-## Keeper senza database
+## Keeper without a database
 
-Il servizio parte con l'instrumentation Node del server Next. Ogni ciclo legge
-`getActiveGameIds` in pagine di 100 a un blocco fisso, poi serve i round per
-deadline. Le transazioni backend condividono una coda e uno stream di nonce.
-L'hash viene calcolato prima dell'invio: se la risposta RPC si perde, viene
-ritrasmessa la stessa transazione firmata. Un nonce pendente impedisce nuove
-scritture backend fino alla sua risoluzione. Non viene effettuato fee bump
-automatico; l'admin vede l'hash pendente e gli errori del servizio.
+The service starts through the Next server's Node instrumentation. Each cycle
+reads `getActiveGameIds` in pages of 100 at a fixed block, then serves rounds
+by deadline. Backend transactions share a queue and nonce stream. The hash is
+calculated before submission: if the RPC response is lost, the same signed
+transaction is rebroadcast. A pending nonce blocks new backend writes until
+resolved. There is no automatic fee bump; admins see the pending hash and
+service errors.
 
-Le richieste player usano un lock per wallet e una chiave idempotente derivata
-da rete, contratto, player e ultima giocata osservata. Click duplicati e passaggi
-paid/free per la stessa richiesta non producono due biglietti. La chiave viene
-passata anche a Privy. Un esito ambiguo resta in verifica; non viene presentato
-come un fallimento certo che autorizza immediatamente un altro invio. Lo stato
-onchain prevale sui record temporanei delle richieste.
+Player requests use a per-wallet lock and an idempotency key derived from the
+network, contract, player and latest observed game. Duplicate clicks and
+paid/free switches for the same request do not create two tickets. The key is
+also passed to Privy. An ambiguous outcome remains under verification; it is
+not presented as a definitive failure that immediately permits another send.
+Onchain state takes precedence over temporary request records.
 
-Dopo un riavvio si perdono pairing e chiavi temporanee, ma il keeper recupera
-le giocate attive dal contratto. Se `block > revealDeadline`, chiama `expireRound`:
-libera le riserve e invalida la giocata. **Il contratto non rimborsa il biglietto
-scaduto**; la UI lo comunica. Il keeper deve quindi restare acceso e finanziato.
+A restart loses pairings and temporary keys, but the keeper recovers active
+games from the contract. If `block > revealDeadline`, it calls `expireRound`,
+releasing reserves and invalidating the game. **The contract does not refund
+an expired ticket**; the UI explains this. The keeper must stay online and funded.
 
-Richiesti una sola replica Railway sempre attiva e una EOA dedicata, non usata
-da altri processi. Un database distribuito servirebbe solo passando a più
-repliche o introducendo servizi che richiedono coordinamento persistente.
+Run one always-on Railway replica and a dedicated EOA unused by other processes.
+A distributed database would only be needed for multiple replicas or services
+requiring persistent coordination.
 
-## Configurazione da fornire dopo il deploy
+## Configuration after deployment
 
 ```dotenv
 SLOT_CONTRACT_ADDRESS=
@@ -133,30 +133,30 @@ PRIVY_GAS_MODE=usdc
 ADMIN_OWNER_USER_ID=
 ```
 
-La private key è `0x` + 64 caratteri esadecimali, esclusivamente server-side.
-Il token di pagamento deve essere USDC nativo Base. Dare il ruolo manager al
-backend per i free spin; il reveal è permissionless. L'admin Privy deve essere
-owner o ricevere i ruoli necessari. Finanziare ETH backend e riserve premi.
+The private key is `0x` plus 64 hexadecimal characters, server-only. The payment
+token must be native Base USDC. Grant the backend the manager role for free
+spins; reveal is permissionless. The Privy admin wallet must be the owner or
+have the required roles. Fund the backend with ETH and supply prize reserves.
 
-Configurare **User pays → USDC su Base** nel dashboard Privy. La modalità
-predefinita richiede gas in USDC al wallet Privy e passa a ETH soltanto dopo un
-rifiuto certo per saldo insufficiente, prima della submission. Il consenso sul
-telefono e la conferma admin includono questa scelta; il gas è aggiuntivo al
-budget. `PRIVY_GAS_MODE=eth` forza ETH. Il wallet backend rimane una EOA normale
-con gas ETH a proprio carico. La prova di `personal_sign` non consuma gas.
-Vedi [gas.md](gas.md) per invio, deduplicazione e limiti del recupero.
+Configure **User pays → USDC on Base** in the Privy dashboard. The default mode
+requests USDC gas from the Privy wallet and switches to ETH only after a definitive
+insufficient-balance rejection before submission. Phone consent and admin
+confirmation include this choice; gas is additional to the budget.
+`PRIVY_GAS_MODE=eth` forces ETH. The backend wallet remains a regular EOA that
+pays its own ETH gas. The `personal_sign` proof consumes no gas.
+See [gas.md](gas.md) for submission, deduplication and recovery limits.
 
-L'approvazione budget è limitata e non infinita. Logout revoca il signer, non
-l'allowance onchain; si può azzerare dal telefono. Una nuova visita richiede un
-nuovo consenso. `startSpin()` usa il prezzo vigente al mining e non accetta un
-parametro `maxPrice`: l'app verifica prima dell'invio e limita l'esposizione con
-l'allowance, ma non promette un prezzo bloccato atomicamente fra UI e mining.
+Budget approval is limited, not unlimited. Logout revokes the signer, not the
+onchain allowance; it can be reset from the phone. A new visit requires new
+consent. `startSpin()` uses the price in effect when mined and accepts no
+`maxPrice` parameter: the app checks before submission and limits exposure
+through allowance, but does not promise an atomic price lock between UI and mining.
 
-## Collaudo
+## Validation
 
-`npm run test:chain` avvia Anvil locale, deploya il bytecode esatto e testa i
-percorsi ERC20, ERC1155, free spin, scadenza, ruoli e ripartenza keeper. Le chiavi
-Anvil pubbliche sono confinate ai test; i fixture non sono importati dall'app.
-`npm run test:browser` verifica le fasi visuali con snapshot controllati.
-Il deploy reale e le nuove transazioni Privy su Base restano da collaudare dopo
-aver fornito la configurazione: non sono stati spesi fondi reali.
+`npm run test:chain` starts local Anvil, deploys the exact bytecode and tests
+ERC20, ERC1155, free spins, expiry, roles and keeper restart. Public Anvil keys
+are confined to tests; fixtures are not imported by the app.
+`npm run test:browser` verifies visual stages with controlled snapshots.
+The real deployment and new Privy transactions on Base still need testing once
+configuration is supplied: no real funds have been spent.
