@@ -54,7 +54,7 @@ an amount to buy and an amount to deposit:
   never accepts a minimum below the reviewed amount.
 - Deposit into the slot with the existing reviewed `fundERC20` action.
 
-Swaps and deposits remain separate Privy confirmations executed in sequence. A
+Swaps and deposits remain separate Privy confirmations executed in sequence. Each quick-fund approval or swap first shows the USDC input and minimum token output for explicit confirmation. Pending swap identifiers are saved before submission for recovery; unavailable reserve or balance reads stop the sequence. A
 failure stops the sequence and the table shows the last status for each prize.
 ERC1155 prizes are not covered and stay manual.
 

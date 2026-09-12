@@ -77,8 +77,14 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
     throw new Error('Impossibile stimare l’importo per '+item.ticker+'. Riprova.');
   }
   async function advance(value:SwapView):Promise<SwapView>{
-    let current:SwapView=await apiRef.current!('execute',{id:value.id,confirm:true});
-    for(let attempt=0;attempt<90&&!complete(current);attempt++){await delay(3000);current=await apiRef.current!('status?'+statusParams(current));}
+    const item=RWA_ASSETS.find(asset=>asset.id===value.assetId)!;
+    const message=(value.step==='approval'?'Approve USDC for this purchase':'Buy '+item.ticker)+'\n'+formatUnits(BigInt(value.input),6)+' USDC\nMinimum received: '+formatUnits(BigInt(value.minimum),item.decimals)+' '+item.ticker+'\nNetwork: Base · gas is additional. Continue?';
+    if(!window.confirm(message))throw new Error('Operation cancelled.');
+    if(value.expiresAt<=Date.now())throw new Error('Quote expired. Request a new quote.');
+    remember({...value,stage:'submitting',actionId:null,hashes:[]});
+    let current:SwapView=await apiRef.current!('execute',{id:value.id,confirm:true});remember(current);
+    for(let attempt=0;attempt<90&&!complete(current);attempt++){await delay(3000);current=await apiRef.current!('status?'+statusParams(current));remember(current);}
+    if(complete(current))sessionStorage.removeItem(storageKey);
     if(!complete(current))throw new Error('Operazione ancora in verifica. Controlla lo stato prima di ripetere.');
     if(['failed','rejected','expired'].includes(current.stage))throw new Error(current.error||'Operazione non completata.');
     return current;
@@ -101,16 +107,20 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
         if(!item.verified||item.wallet===null){setFundProgress(progress=>({...progress,[item.id]:'Saldo non verificabile'}));continue;}
         let data=await loadInventory();
         let balance=data.assets.find(a=>a.id===item.id)!;
-        const available=BigInt(balance.reserve?.available||'0');
+        if(!balance?.verified||balance.balance===null||!balance.reserve)throw new Error('Balance or slot reserves unavailable. Refresh before funding.');
+        const available=BigInt(balance.reserve.available);
         const toFund=item.required>available?item.required-available:0n;
         if(toFund===0n){setFundProgress(progress=>({...progress,[item.id]:'Già a riserva'}));continue;}
         let wallet=balance.balance===null?0n:BigInt(balance.balance);
         if(wallet<toFund){
           await acquire(item,toFund-wallet);
           data=await loadInventory();
-          wallet=BigInt(data.assets.find(a=>a.id===item.id)?.balance||'0');
+          balance=data.assets.find(a=>a.id===item.id)!;
+          if(!balance?.verified||balance.balance===null)throw new Error('Purchased balance unavailable. Refresh before funding.');
+          wallet=BigInt(balance.balance);
         }
-        const deposit=wallet<toFund?wallet:toFund;
+        if(wallet<toFund)throw new Error('Purchased balance is not available yet. Refresh before funding.');
+        const deposit=toFund;
         if(deposit>0n){
           setFundProgress(progress=>({...progress,[item.id]:'Deposito nella slot…'}));
           await onDeposit('fundERC20',[item.address,deposit.toString()]);

@@ -79,12 +79,12 @@ test('camera scanner decodes the iPad QR locally, stops the camera and requires 
   await page.goto('/phone-fixture');
   expect(await page.evaluate(()=>(window as any).cameraRequests)).toBe(0);
   await page.getByRole('button',{name:'Scansiona QR dell’iPad'}).click();
-  await expect(page.getByLabel('Il codice coincide.')).toBeVisible();
-  await expect(page.getByRole('button',{name:'Collega il wallet'})).toBeDisabled();
+  await expect(page.getByLabel('The code matches.')).toBeVisible();
+  await expect(page.getByRole('button',{name:'Link the wallet'})).toBeDisabled();
   expect(await page.evaluate(()=>(window as any).cameraTrack.readyState)).toBe('ended');
-  await expect(page.getByRole('button',{name:'Accedi con passkey'})).toBeHidden();
-  await page.getByLabel('Il codice coincide.').check();await page.getByRole('button',{name:'Collega il wallet'}).click();
-  await expect(page.getByRole('button',{name:'Termina collegamento all’iPad'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Sign in with passkey'})).toBeHidden();
+  await page.getByLabel('The code matches.').check();await page.getByRole('button',{name:'Link the wallet'}).click();
+  await expect(page.getByRole('button',{name:'End the iPad link'})).toBeVisible();
 });
 
 test('denied camera offers local photo scanning and rejects a foreign pairing origin',async({page})=>{
@@ -95,9 +95,9 @@ test('denied camera offers local photo scanning and rejects a foreign pairing or
   const secret='b'.repeat(64),image=async(origin:string)=>({name:'qr.png',mimeType:'image/png',buffer:await QRCode.toBuffer(origin+'/phone#pair='+secret,{width:512,margin:4})});
   await page.locator('input[type=file]').setInputFiles(await image('https://other.example'));
   await expect(page.getByText('Scansiona il QR mostrato da questa app sull’iPad.')).toBeVisible();
-  await expect(page.getByRole('button',{name:'Collega il wallet'})).toBeHidden();
+  await expect(page.getByRole('button',{name:'Link the wallet'})).toBeHidden();
   await page.locator('input[type=file]').setInputFiles(await image('http://localhost:3101'));
-  await expect(page.getByLabel('Il codice coincide.')).toBeVisible();await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(page.getByLabel('The code matches.')).toBeVisible();await expect(page.getByRole('dialog')).toBeHidden();
 });
 
 test('closing scanner while permission is pending stops a late camera stream',async({page})=>{

@@ -186,7 +186,7 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
         await slotWrite('grantFreeSpins',[player.address,2n]);await fundingEngine.tick();
         let sent=0;const charged=await client.readContract({address:payment,abi:erc20Abi,functionName:'balanceOf',args:[player.address]});
         const nonce=await client.getTransactionCount({address:keeper.address});
-        for(const mode of ['paid','free'] as const)await assert.rejects(fundingEngine.start(player.address,0n,mode,{assertSession:()=>{},maxPrice:1000000n,sendPaid:async()=>{sent++;return {};}}),/rifornendo/);
+        for(const mode of ['paid','free'] as const)await assert.rejects(fundingEngine.start(player.address,0n,mode,{assertSession:()=>{},maxPrice:1000000n,sendPaid:async()=>{sent++;return {};}}),{code:'InsufficientPrizeInventory'});
         assert.equal(sent,0);assert.equal(await client.getTransactionCount({address:keeper.address}),nonce);assert.equal((await fundingReader.player(player.address)).freeSpins,2n);assert.equal(await client.readContract({address:payment,abi:erc20Abi,functionName:'balanceOf',args:[player.address]}),charged);
         await reviewed('mintERC1155',[collection,'1','3','wallet']);
         await reviewed('fundERC1155',[collection,'1','1']);
