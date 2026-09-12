@@ -85,6 +85,21 @@ without history on a very old contract, initial synchronization requires
 multiple polls; new games stay blocked until it finishes. Admins browse global
 IDs in pages of 20. No persistent indexer is required.
 
+## Play availability and confirmed results
+
+The app reads prize reserves before enabling a new spin and the backend checks them
+again before either paid or free submission. It mirrors `_maximumPayout` and sums
+requirements when multiple symbols share one ERC20 or one ERC1155 collection/ID.
+Existing reservations cannot cover a new round. Missing RPC data blocks play until
+verification recovers. Contract simulation and onchain reservation remain the final
+check against state changes between the read and transaction inclusion.
+
+The terminal shows a replenishment notice instead of inviting a recharge when prize
+funding is insufficient. An already pending round keeps animating until its confirmed
+reveal. A confirmed win keeps its actual prize, amount and a BaseScan reveal transaction
+link visible even if new games are suspended. The link and prize clear on the next
+spin or logout. Jackpot artwork is limited to reel symbol 11; DGLD payouts remain Gold.
+
 ## Admin commands
 
 The console reads real roles. The backend prepares calldata from a closed set
@@ -102,6 +117,7 @@ The contract enforces roles and preconditions again when the transaction is mine
 - ERC20/ERC1155/ETH withdrawals (`TREASURER_ROLE`, paused and zero pending rounds).
 - Roles and delayed administration transfer (owner).
 - Deposits of configured tokens through `transfer` / `safeTransferFrom`.
+- ERC1155 mint to the shared wallet or slot, when the shared address owns the configured collection; ownership acceptance by the wallet owner account. See [inventory and mint](assets-and-swaps.md#inventory-and-erc1155-minting).
 
 The owner can perform role operations. `startFreeSpin` and `revealRound` are
 excluded from admin transactions: the backend handles them. Welcome grants

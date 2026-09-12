@@ -16,3 +16,4 @@ broadcast/
 CLAUDE.local.md
 **/.claude/settings.local.json
 arduino/**/arduino_secrets.h
+!arduino/.env.backend.example

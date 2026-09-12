@@ -1,3 +1,4 @@
+import {buildSync} from 'esbuild';
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -7,8 +8,13 @@ import {walletFixture} from '../fixtures';
 const relay = createRelay({origin: 'http://localhost:3101', walletService: walletFixture().service,
   readBalance: async () => ({amount: '128.50', updatedAt: Date.now(), stale: false})});
 const hardware = createHardware({origin: 'http://localhost:3101', token: 'browser-hardware-test-token-32-characters'});
+const bundle=buildSync({entryPoints:['tests/browser/inventory-fixture.tsx'],bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',define:{'process.env.NODE_ENV':'"test"'}});
 const server = createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://localhost:3101');
+  if(url.pathname==='/inventory-fixture'){res.setHeader('Content-Type','text/html');res.end('<html><head><link rel="stylesheet" href="/admin-fixture.css"></head><body><div id="root"></div><script src="/inventory-fixture.js"></script></body></html>');return;}
+  if(url.pathname==='/inventory-fixture.js'){res.setHeader('Content-Type','text/javascript');res.end(bundle.outputFiles[0].text);return;}
+  if(url.pathname==='/admin-fixture.css'){res.setHeader('Content-Type','text/css');res.end(await readFile(join(process.cwd(),'app/admin/style.css')));return;}
+  if(url.pathname.startsWith('/brands/')&&/^\/brands\/[a-z-]+\.(svg|png)$/.test(url.pathname)){res.setHeader('Content-Type',url.pathname.endsWith('.svg')?'image/svg+xml':'image/png');res.end(await readFile(join(process.cwd(),'public',url.pathname)));return;}
   if (url.pathname === '/api/health') {res.end('ok'); return;}
   if (url.pathname.startsWith('/api/relay/') || url.pathname.startsWith('/api/hardware/')) {
     const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));

@@ -19,7 +19,7 @@
       if (age < 900) operation = {stage: 'confirming', afterGameId: String(round - 1)};
       if (age >= 4300 && spent !== round) {spent = round; if (outcome === 'bonus') credits += 2;}
     }
-    return {configured: true, sessionId: 'demo', block: '103', settings: {ticketPrice: '50000', paused: false, totalOutcomeWeight: 1000, configuredPrizeCount: 12}, keeper: {configured: true, canStartFreeSpin: true, balanceWei: '1'},
+    return {configured: true, funding: {ready: true, assets: []}, sessionId: 'demo', block: '103', settings: {ticketPrice: '50000', paused: false, totalOutcomeWeight: 1000, configuredPrizeCount: 12}, keeper: {configured: true, canStartFreeSpin: true, balanceWei: '1'},
       player: {freeSpins: String(credits), allowance: '1000000', balance: String(cents >= 6 ? cents * 10000 : 0), latestGameId: String(round), historyReady: true, game: game, operation: operation}};
   }
   function balances() {el('balance').textContent = (cents / 100).toFixed(2).replace('.', ',');}

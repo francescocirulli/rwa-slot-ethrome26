@@ -221,3 +221,17 @@ precision, deployment mapping, Privy gas setup, collaborator permission
 upgrades and recovery behavior. Both owner and authorized collaborators can
 swap; gas uses the shared USDC balance with ETH fallback. Brand sources are
 recorded in [public/brands/SOURCES.md](public/brands/SOURCES.md).
+
+## Prize funding and ERC1155 management
+
+Inventory compares the shared Privy wallet with the slot's total, reserved and
+available balances, including ETH, USDC, RWA tokens and configured ERC1155 IDs.
+Deposit forms accept quantities; mint can create existing NFT IDs into the shared
+wallet or directly into the slot. Both use reviewed Privy transactions. The default
+collection is the deployed Base address; `SLOT_PRIZE1155_ADDRESS` is optional.
+Mint requires collection ownership and the updated collaborator policy. See
+[setup and ownership requirements](docs/assets-and-swaps.md#inventory-and-erc1155-minting).
+
+The terminal blocks new paid/free spins when prize reserves cannot cover a round
+or reserve reads are unavailable. Confirmed wins display the actual award and a
+BaseScan reveal link. Gold uses jackpot artwork only on the reels.

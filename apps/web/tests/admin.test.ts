@@ -8,7 +8,7 @@ import {createAdminService} from '../lib/admin/service';
 import {createAdminHandler} from '../lib/admin/api';
 import {ADMIN_WALLET_EXTERNAL_ID} from '../lib/admin/model';
 import {loadAdminWalletExternalId} from '../lib/admin/config';
-import {operatorPolicy,legacyOperatorPolicy,OPERATOR_ACTIONS,policyMatches} from '../lib/admin/policy';
+import {operatorPolicy,swapOperatorPolicy,legacyOperatorPolicy,OPERATOR_ACTIONS,policyMatches} from '../lib/admin/policy';
 import type {WalletService} from '../lib/types';
 const owner={userId:'did:privy:owner00001',wallets:[]},operator={userId:'did:privy:operator001',wallets:[]},outsider={userId:'did:privy:outsider001',wallets:[]};
 const key=privateKeyToAccount(('0x'+'1'.repeat(64)) as `0x${string}`),contract='0x0000000000000000000000000000000000000099' as Address;
@@ -153,4 +153,20 @@ test('every parameter condition uses an argument declared in its policy ABI',()=
     const [name,arg]=condition.field.split('.');const fn=(condition.abi as any[]).find(f=>f.type==='function'&&f.name===name);
     assert.ok(fn?.inputs.some((input:any)=>input.name===arg),condition.field+' must exist in the supplied ABI');
   }
+});
+
+
+test('previous swap policies preserve access without gaining mint; owner updates enable limited mint only',async()=>{
+  const f=fixture();await f.service.create(owner);f.deploy();await f.service.setMember(owner,testAuthorization(owner.userId),operator.userId);
+  const id=f.wallet().additional_signers[0].override_policy_ids[0];
+  f.policies.get(id).rules=swapOperatorPolicy(key.address,contract);
+  const access=await f.service.resolve(operator);assert.equal(access.operationsEnabled,true);assert.equal(access.swapEnabled,true);assert.equal(access.mintEnabled,false);
+  await assert.rejects(f.service.assertAction(operator,'mintERC1155'));
+  await f.service.setMember(owner,testAuthorization(owner.userId),operator.userId);
+  assert.equal((await f.service.assertAction(operator,'mintERC1155')).mintEnabled,true);
+  await assert.rejects(f.service.assertAction(operator,'acceptPrizeOwnership'));
+  const mint=operatorPolicy(key.address,contract).find(rule=>rule.name==='Mint prizes to shared wallet or slot')!;
+  assert.ok(mint.conditions.some(c=>c.field==='to'));
+  assert.ok(mint.conditions.some(c=>c.field==='function_name'&&c.value==='mint'));
+  assert.deepEqual(mint.conditions.find(c=>c.field==='mint.recipient')?.value,[key.address,contract]);
 });

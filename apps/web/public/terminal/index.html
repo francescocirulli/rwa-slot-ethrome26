@@ -32,17 +32,18 @@
           <div class="reels" aria-label="Quindici simboli arcade; gioco non ancora attivo">
             <div class="reel"><div class="cell"><img src="/symbols/symbol-2.svg" alt="NVIDIA"></div><div class="cell middle"><img src="/symbols/symbol-1.svg" alt="Free spin"></div><div class="cell"><img src="/symbols/symbol-0.svg" alt="Magnete"></div></div>
             <div class="reel"><div class="cell"><img src="/symbols/symbol-4.svg" alt="SpaceX"></div><div class="cell middle"><img src="/symbols/symbol-3.svg" alt="Gadget"></div><div class="cell"><img src="/symbols/symbol-5.svg" alt="Apple"></div></div>
-            <div class="reel"><div class="cell"><img src="/symbols/symbol-6.svg" alt="Alphabet"></div><div class="cell middle"><img src="/symbols/symbol-11.svg" alt="Gold"></div><div class="cell"><img src="/symbols/symbol-8.svg" alt="ENS"></div></div>
+            <div class="reel"><div class="cell"><img src="/symbols/symbol-6.svg" alt="Alphabet"></div><div class="cell middle"><img src="/symbols/jackpot.svg" alt="Jackpot"></div><div class="cell"><img src="/symbols/symbol-8.svg" alt="ENS"></div></div>
             <div class="reel"><div class="cell"><img src="/symbols/symbol-7.svg" alt="Amazon"></div><div class="cell middle"><img src="/symbols/symbol-9.svg" alt="Urbe Hub Day Pass"></div><div class="cell"><img src="/symbols/symbol-10.svg" alt="T-shirt"></div></div>
-            <div class="reel"><div class="cell"><img src="/symbols/symbol-11.svg" alt="Gold"></div><div class="cell middle"><img src="/symbols/symbol-2.svg" alt="NVIDIA"></div><div class="cell"><img src="/symbols/symbol-1.svg" alt="Free spin"></div></div>
+            <div class="reel"><div class="cell"><img src="/symbols/jackpot.svg" alt="Jackpot"></div><div class="cell middle"><img src="/symbols/symbol-2.svg" alt="NVIDIA"></div><div class="cell"><img src="/symbols/symbol-1.svg" alt="Free spin"></div></div>
           </div>
           <div class="machine-bottom"><span class="line-marks" aria-hidden="true">▰ ▰ ▰ ▰ ▰</span><span id="machine-status">IL PROSSIMO COLPO È TUO.</span><span class="line-marks" aria-hidden="true">▰ ▰ ▰ ▰ ▰</span></div>
         </div>
         <div class="cabinet-footer"><div><span id="cabinet-label" class="overline">IL TUO POSTO TI ASPETTA</span><p id="cabinet-copy">Collega il wallet dal telefono.</p></div><span id="game-unconfigured" class="coming-soon">CONTRATTO DA COLLEGARE <b>↗</b></span></div>
         <div id="game-controls" class="game-controls" hidden>
-          <div class="game-progress" role="status"><span class="overline" id="game-phase">IL TUO TURNO</span><strong id="game-title">Prendi posto.</strong><p id="game-detail">Collega il wallet per giocare.</p></div>
+          <div class="game-progress" role="status"><img id="won-prize" class="won-prize" alt="" hidden><span class="overline" id="game-phase">IL TUO TURNO</span><strong id="game-title">Prendi posto.</strong><p id="game-detail">Collega il wallet per giocare.</p><a id="game-tx" class="game-tx" target="_blank" rel="noopener noreferrer" hidden></a></div>
           <div class="game-actions"><button id="spin-paid" class="primary-button" type="button" disabled>GIOCA <span id="ticket-label">— USDC</span></button><button id="spin-free" class="free-spin-button" type="button" disabled>USA FREE SPIN <span id="free-spin-count">—</span></button></div>
         </div>
+        <div id="game-availability" class="game-availability" role="status" hidden></div>
       </section>
       <aside class="control-panel" aria-label="Collegamento e gestione wallet">
         <div class="panel-top"><span class="overline">PLAYER CONSOLE</span><span id="connection-light" class="status-tag">VERIFICA</span></div>

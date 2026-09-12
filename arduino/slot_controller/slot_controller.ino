@@ -129,6 +129,7 @@ void networkLoop() {
       uint8_t bytes[256]; int count=backend.read(bytes,min(available,256));
       for (int i=0;i<count;i++) response.feed((char)bytes[i]);
     }
+    if (response.status && response.status != 200) {httpStatus=response.status; Serial.print("Backend HTTP "); Serial.println(httpStatus); networkFailed(); return;}
     if (!response.done && !backend.connected()) response.end();
     if (response.failed || millis()-requestAt>=1800) {networkFailed(); return;}
     if (response.done) acceptResponse();

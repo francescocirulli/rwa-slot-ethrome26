@@ -12,3 +12,6 @@ const placeholders=[
 ];
 for(const [id,label,color,body]of placeholders)await writeFile('public/symbols/symbol-'+id+'.svg',tile(label,color,body));
 await writeFile('public/brands/usdc.svg','<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="31" fill="#2775ca"/><text x="32" y="46" fill="white" font-family="Arial,sans-serif" font-size="41" text-anchor="middle">$</text><path d="M18 17a22 22 0 0 0 0 30M46 17a22 22 0 0 1 0 30" stroke="white" stroke-width="3" fill="none"/></svg>');
+
+// Reel-only artwork. symbol-11 remains Gold in inventories and payout details.
+await writeFile('public/symbols/jackpot.svg',tile('JACKPOT','#edce65','<path d="m22 25 8 7 10-14 10 14 8-7-4 19H26Z" fill="#fff3ab" stroke="#3f3247" stroke-width="2.5"/><rect x="18" y="36" width="44" height="23" rx="5" fill="#3f3247"/><text x="40" y="53" text-anchor="middle" font-family="Arial,sans-serif" font-size="19" font-weight="900" fill="#e9fb6b">777</text><path d="m16 12 2 4 4 2-4 2-2 4-2-4-4-2 4-2zm48 5 2 3 4 2-4 2-2 4-2-4-3-2 3-2z" fill="#3f3247"/>'));
