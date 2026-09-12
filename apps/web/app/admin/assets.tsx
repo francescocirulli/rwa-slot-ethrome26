@@ -4,7 +4,7 @@ import {usePrivy} from '@privy-io/react-auth';
 import {formatUnits} from 'viem';
 import {RWA_ASSETS,PAYMENT_ASSET,ETH_ASSET,SWAP_INPUTS,assetUnits,type Asset} from '@/lib/assets';
 import {AdminInventory,type AdminInventoryData} from './inventory';
-import {buildQuickFundPlan,type QuickFundItem} from '@/lib/admin/quick-fund';
+import {buildQuickFundPlan,parseFundingTurns,restoreQuickFundBatch,type QuickFundBatch,type QuickFundItem} from '@/lib/admin/quick-fund';
 import type {SwapView} from '@/lib/admin/swaps';
 import type {SlotSnapshot} from '@/lib/slot/reader';
 import {useWalletRequest} from '@/lib/wallet-authorization-client';
@@ -21,11 +21,14 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
   const [inventory,setInventory]=useState<Data|null>(null),[loadError,setLoadError]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const [inputAssetId,setInputAssetId]=useState('usdc');
   const [assetId,setAssetId]=useState('nvidia'),[amount,setAmount]=useState(''),[quote,setQuote]=useState<SwapView|null>(null),[operation,setOperation]=useState<SwapView|null>(null),[clock,setClock]=useState(Date.now());
-  const [turns,setTurns]=useState(1),[fundProgress,setFundProgress]=useState<Record<string,string>>({});
+  const [turnsInput,setTurnsInput]=useState('1'),[fundBatch,setFundBatch]=useState<QuickFundBatch|null>(null),[batchReady,setBatchReady]=useState('');
+  const turns=parseFundingTurns(turnsInput);
+  const [fundProgress,setFundProgress]=useState<Record<string,string>>({});
   const [funding,setFunding]=useState(false),[fundStatus,setFundStatus]=useState(''),[fundReview,setFundReview]=useState<SwapView|null>(null);
   const decision=useRef<((accepted:boolean)=>void)|null>(null),inventoryRequest=useRef<{path:string;promise:Promise<Data>}|null>(null),operationRef=useRef<SwapView|null>(null),scopeRef=useRef(tab);scopeRef.current=tab;operationRef.current=operation;
   const alive=useRef(true),lock=useRef(false),apiRef=useRef<(path:string,body?:unknown)=>Promise<any>>(null),refreshRef=useRef<()=>Promise<void>>(null);
   const storageKey='slot-swap:'+userId+':'+address.toLowerCase();
+  const batchStorageKey='slot-quick-fund:'+userId+':'+address.toLowerCase()+':'+(slot?.address?.toLowerCase()||'unconfigured');
   const inputAsset=SWAP_INPUTS.find(a=>a.id===inputAssetId)!;
   const asset=RWA_ASSETS.find(a=>a.id===assetId)!,pending=!!operation&&!complete(operation)&&operation.stage!=='quoted';
   const refreshAccount=useRef(onRefresh);refreshAccount.current=onRefresh;
@@ -53,6 +56,14 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
   async function reload(){try{await loadInventory();}catch(e){if(alive.current)setLoadError((e as Error).message);}}
   refreshRef.current=reload;
   useEffect(()=>{alive.current=true;try{const saved=JSON.parse(sessionStorage.getItem(storageKey)||'null');if(saved&&typeof saved.id==='string'&&saved.address?.toLowerCase()===address.toLowerCase())setOperation(saved);}catch{}return()=>{alive.current=false;decision.current?.(false);decision.current=null;};},[storageKey,address]);
+  useEffect(()=>{
+    try{const batch=restoreQuickFundBatch(sessionStorage.getItem(batchStorageKey));setFundBatch(batch);if(batch)setTurnsInput(String(batch.turns));setBatchReady(batchStorageKey);}
+    catch{setError('Impossibile recuperare il rifornimento. Abilita lo storage del browser e ricarica la pagina.');}
+  },[batchStorageKey]);
+  function saveBatch(batch:QuickFundBatch|null){
+    if(batch)sessionStorage.setItem(batchStorageKey,JSON.stringify(batch));else sessionStorage.removeItem(batchStorageKey);
+    setFundBatch(batch);
+  }
   useEffect(()=>{if(!['swap','inventory'].includes(tab))return;void refreshRef.current!();},[tab]);
   useEffect(()=>{if(!quote)return;const timer=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[quote]);
   useEffect(()=>{onSwapBusy(pending||busy);},[pending,busy,onSwapBusy]);
@@ -136,11 +147,14 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
     throw new Error('Autorizzazione USDC non completata per '+item.ticker+'.');
   }
   async function fundTurns(){
+    if(turns===null||batchReady!==batchStorageKey)throw new Error('Inserisci un numero intero di turni da 1 a 99.');
     setFunding(true);setFundProgress({});setFundStatus('Verifico quanto manca…');setQuote(null);
     try{
       let data=await waitInventory(value=>!!value.funding);
-      const plan=buildQuickFundPlan({turns,funding:data.funding,assets:data.assets});
+      const plan=buildQuickFundPlan({turns,funding:data.funding,assets:data.assets,targets:fundBatch?.targets});
       if(!plan.length)throw new Error('Nessun premio RWA configurato.');
+      if(fundBatch&&plan.length!==Object.keys(fundBatch.targets).length)throw new Error('Il catalogo è cambiato. Termina questo rifornimento prima di crearne uno nuovo.');
+      if(!fundBatch)saveBatch({turns,targets:Object.fromEntries(plan.map(item=>[item.address.toLowerCase(),item.required.toString()]))});
       for(const [index,item] of plan.entries()){
         try{
           setFundStatus('Premio '+(index+1)+' di '+plan.length+' · '+item.ticker);
@@ -161,7 +175,8 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
           setFundProgress(progress=>({...progress,[item.id]:'Completato'}));
         }catch(e){setFundProgress(progress=>({...progress,[item.id]:(e as Error).message}));throw e;}
       }
-      setFundStatus('Rifornimento completato · '+(turns===1?'1 turno':turns+' turni')+' di premi RWA pronti.');
+      saveBatch(null);
+      setFundStatus('Rifornimento completato · '+(turns===1?'1 turno aggiunto':turns+' turni aggiunti')+'. Puoi avviare una nuova ricarica.');
     }catch(cause){setFundStatus('Rifornimento interrotto. Riprendi per completare i premi mancanti.');throw cause;}finally{setFunding(false);setFundReview(null);}
   }
   const usdcBalance=inventory?.assets.find(a=>a.id==='usdc');
@@ -169,9 +184,9 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
   const swapAllowed=!!inventory?.swapEnabled&&!loadError&&!pending&&!contractBusy&&!busy;
   const operationAsset=RWA_ASSETS.find(a=>a.id===operation?.assetId);
   const quickFunding=inventory?.funding??null;
-  const quickPlan=buildQuickFundPlan({turns,funding:quickFunding,assets:inventory?.assets??[]});
+  const quickPlan=buildQuickFundPlan({turns:turns??0,funding:quickFunding,assets:inventory?.assets??[],targets:fundBatch?.targets});
   const quickPending=quickPlan.filter(item=>item.toFund>0n);
-  const quickAllowed=!pending&&!contractBusy&&!busy&&canDeposit&&!!slot&&(quickPending.length>0||!quickFunding);
+  const quickAllowed=turns!==null&&batchReady===batchStorageKey&&!pending&&!contractBusy&&!busy&&canDeposit&&!!slot&&(!!fundBatch||quickPending.length>0||!quickFunding);
   return <><FundingConfirmation review={fundReview} onDecision={accepted=>decision.current?.(accepted)}/><div hidden={!['swap','inventory'].includes(tab)}>
     {loadError&&<p className="admin-error" role="alert">{loadError}<button className="admin-text" onClick={()=>void reload()}>Refresh</button></p>}
     {error&&<p className="admin-error" role="alert">{error}</p>}
@@ -188,14 +203,16 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
     {tab==='swap'&&<section className="admin-card quick-fund-card">
       <div className="card-heading"><span className="eyebrow">01 / RIFORNIMENTO RAPIDO</span><span className="real-badge">6 PREMI RWA · USDC</span></div>
       <h2>Riempi la slot.<br/><em>Anche più turni.</em></h2>
-      <p>Scegli i turni e avvia. Conferma le firme richieste: acquisti, depositi e aggiornamenti dei saldi proseguono automaticamente.</p>
+      <p>Scegli quanti turni aggiungere alle riserve attuali. Puoi ricaricare più volte. Conferma le firme richieste: acquisti e depositi proseguono automaticamente.</p>
       {<>
         <div className="quick-fund-controls">
-          <label htmlFor="quick-fund-turns">Turni da rifornire<input id="quick-fund-turns" type="number" min={1} max={99} inputMode="numeric" value={turns} disabled={busy||pending||contractBusy} onChange={event=>setTurns(Math.max(1,Math.min(99,Math.floor(Number(event.target.value)||1))))}/></label>
-          <button className="admin-primary" disabled={!quickAllowed} onClick={()=>void run(fundTurns)}>{funding?'Rifornimento in corso…':'Rifornisci '+(turns===1?'1 turno':turns+' turni')+' ↗'}</button>
+          <label htmlFor="quick-fund-turns">Turni da aggiungere<input id="quick-fund-turns" type="number" min={1} max={99} step={1} inputMode="numeric" value={turnsInput} aria-invalid={turns===null} aria-describedby="quick-fund-input-help" disabled={busy||pending||contractBusy||!!fundBatch} onChange={event=>{setTurnsInput(event.target.value);setFundStatus('');setFundProgress({});}}/></label>
+          <button className="admin-primary" disabled={!quickAllowed} onClick={()=>void run(fundTurns)}>{funding?'Rifornimento in corso…':fundBatch?'Riprendi rifornimento ↗':'Aggiungi '+(turns===1?'1 turno':(turns??'—')+' turni')+' ↗'}</button>
         </div>
+        <p id="quick-fund-input-help" className={turns===null?'admin-error':'fine-print'}>Inserisci un numero intero da 1 a 99. Ogni nuova ricarica aggiunge questi turni alle riserve già presenti.</p>
+        {fundBatch&&<p className="fine-print">Rifornimento da completare: {fundBatch.turns} turni. La ripresa mantiene lo stesso obiettivo e salta i depositi già confermati. <button className="admin-text" disabled={busy||pending||contractBusy} onClick={()=>{saveBatch(null);setFundStatus('Rifornimento terminato. I depositi confermati restano nella slot.');setFundProgress({});setError('');}}>Termina questo rifornimento</button></p>}
         {fundStatus&&<p role="status" aria-live="polite">{fundStatus}</p>}
-        {quickPlan.length?<div className="quick-fund-table-wrap"><table className="quick-fund-table"><thead><tr><th>Premio</th><th>Richiesto</th><th>Disponibile</th><th>Da comprare</th><th>Da depositare</th><th><span className="sr-only">Stato</span></th></tr></thead><tbody>{quickPlan.map(item=><tr key={item.id}><td><img src={item.logo} alt=""/><b>{item.ticker}</b></td><td>{formatUnits(item.required,item.decimals)}</td><td>{formatUnits(item.available,item.decimals)}</td><td>{item.toBuy>0n?formatUnits(item.toBuy,item.decimals)+' via USDC':'—'}</td><td>{formatUnits(item.toDeposit,item.decimals)}</td><td>{item.wallet===null?'Saldo non verificabile':fundProgress[item.id]||(item.toFund===0n?'Già a riserva':item.toBuy>0n?'In coda · compra e deposita':'In coda · deposita')}</td></tr>)}</tbody></table></div>:<p className="fine-print">{quickFunding?'Nessun premio RWA configurato.':'Verificheremo saldi e riserve all’avvio.'}</p>}
+        {quickPlan.length?<div className="quick-fund-table-wrap"><table className="quick-fund-table"><thead><tr><th>Premio</th><th>Riserva obiettivo</th><th>Disponibile in slot</th><th>Da comprare</th><th>Da depositare</th><th><span className="sr-only">Stato</span></th></tr></thead><tbody>{quickPlan.map(item=><tr key={item.id}><td><img src={item.logo} alt=""/><b>{item.ticker}</b></td><td>{formatUnits(item.required,item.decimals)}</td><td>{formatUnits(item.available,item.decimals)}</td><td>{item.toBuy>0n?formatUnits(item.toBuy,item.decimals)+' via USDC':'—'}</td><td>{formatUnits(item.toDeposit,item.decimals)}</td><td>{item.wallet===null?'Saldo non verificabile':(fundBatch?fundProgress[item.id]:null)||(item.toFund===0n?'Già a riserva':item.toBuy>0n?'In coda · compra e deposita':'In coda · deposita')}</td></tr>)}</tbody></table></div>:<p className="fine-print">{quickFunding?'Nessun premio RWA configurato.':'Verificheremo saldi e riserve all’avvio.'}</p>}
         <p className="fine-print">Un turno copre la riserva massima di una giocata per i sei premi RWA. I premi NFT si riforniscono da Inventario. Le autorizzazioni USDC e gli swap restano transazioni separate e verificabili su Base.</p>
       </>}
     </section>}

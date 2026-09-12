@@ -36,6 +36,7 @@ contract ConfigureBasePaytable is Script {
         require(slot.totalOutcomeWeight() == 101, "ConfigureBasePaytable: unexpected initial total");
 
         vm.startBroadcast(deployerKey);
+        slot.setNoWinWeight(10);
         slot.configurePrize(0, DigitalSlotMachine.PrizeKind.ERC1155, PRIZE_COLLECTION, 5, ERC1155_PRIZE_AMOUNT, 94, 62); // MAGNET
         slot.configurePrize(1, DigitalSlotMachine.PrizeKind.FreeSpin, address(0), 0, FREE_SPIN_PRIZE_AMOUNT, 73, 48); // FREE_SPIN
         slot.configurePrize(2, DigitalSlotMachine.PrizeKind.ERC20, NVIDIA, 0, STOCK_PRIZE_AMOUNT, 48, 32); // STOCK1
@@ -48,9 +49,13 @@ contract ConfigureBasePaytable is Script {
         slot.configurePrize(9, DigitalSlotMachine.PrizeKind.ERC1155, PRIZE_COLLECTION, 3, ERC1155_PRIZE_AMOUNT, 0, 67); // URBE_HUB_DAY_PASS
         slot.configurePrize(10, DigitalSlotMachine.PrizeKind.ERC1155, PRIZE_COLLECTION, 4, ERC1155_PRIZE_AMOUNT, 0, 45); // SHIRT
         slot.configurePrize(11, DigitalSlotMachine.PrizeKind.ERC20, GOLD, 0, GOLD_PRIZE_AMOUNT, 0, 13); // GOLD
+        slot.configurePrize(12, DigitalSlotMachine.PrizeKind.ERC1155, PRIZE_COLLECTION, 6, ERC1155_PRIZE_AMOUNT, 0, 20); // BOOKS
+        slot.configurePrize(13, DigitalSlotMachine.PrizeKind.ERC1155, PRIZE_COLLECTION, 7, ERC1155_PRIZE_AMOUNT, 0, 21); // WATER_BOTTLE
+        slot.configurePrize(14, DigitalSlotMachine.PrizeKind.ERC1155, PRIZE_COLLECTION, 8, ERC1155_PRIZE_AMOUNT, 0, 50); // CAPS
         vm.stopBroadcast();
 
-        require(slot.configuredPrizeCount() == 12, "ConfigureBasePaytable: incomplete catalog");
+        require(slot.configuredPrizeCount() == 15, "ConfigureBasePaytable: incomplete catalog");
+        require(slot.noWinWeight() == 10, "ConfigureBasePaytable: unexpected final no-win weight");
         require(slot.totalOutcomeWeight() == 1_000, "ConfigureBasePaytable: incomplete probability total");
     }
 }

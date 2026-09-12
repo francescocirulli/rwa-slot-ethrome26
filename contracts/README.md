@@ -34,8 +34,8 @@ can appear at most once per column.
 
 ## Confirmed paytable
 
-Probabilities use 1,000 buckets, so one weight unit is exactly 0.1%. Jackpot is currently excluded and its former
-0.1% has been added to `NOTHING`.
+Probabilities use 1,000 buckets, so one weight unit is exactly 0.1%. Jackpot is currently excluded. The physical
+prize expansion reduces `NOTHING` to 1% and assigns the released 9.1% to Books, Water Bottle, and Caps.
 
 | Symbol ID | Frontend label | 3/5 weight | 3/5 probability | 5/5 weight | 5/5 probability | Prize kind |
 |---:|---|---:|---:|---:|---:|---|
@@ -51,13 +51,16 @@ Probabilities use 1,000 buckets, so one weight unit is exactly 0.1%. Jackpot is 
 | 9 | URBE_HUB_DAY_PASS | 0 | — | 67 | 6.7% | ERC-1155 |
 | 10 | SHIRT | 0 | — | 45 | 4.5% | ERC-1155 |
 | 11 | GOLD | 0 | — | 13 | 1.3% | ERC-20 |
-| — | NOTHING | — | — | 101 | 10.1% | none |
+| 12 | BOOKS | 0 | — | 20 | 2.0% | ERC-1155 |
+| 13 | WATER_BOTTLE | 0 | — | 21 | 2.1% | ERC-1155 |
+| 14 | CAPS | 0 | — | 50 | 5.0% | ERC-1155 |
+| — | NOTHING | — | — | 10 | 1.0% | none |
 
 Totals:
 
 - 3/5 outcomes: 404 buckets, or 40.4%.
-- 5/5 outcomes: 495 buckets, or 49.5%.
-- Nothing: 101 buckets, or 10.1%.
+- 5/5 outcomes: 586 buckets, or 58.6%.
+- Nothing: 10 buckets, or 1.0%.
 - Complete table: 1,000 buckets, or 100%.
 
 Names such as `STOCK1` and `STOCK2`, artwork, and descriptions are frontend metadata. The contract stores stable
@@ -79,9 +82,13 @@ The Base mainnet deployment maps the stable labels to these assets:
 | URBE_HUB_DAY_PASS | `LSPRIZE` (`0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`) | 3 | 1 | — |
 | SHIRT | `LSPRIZE` (`0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`) | 4 | 1 | — |
 | GOLD | `DGLD` (`0xe908475f8Beb7A138B0dc6eb5A05cb27068ffB9A`) | — | 0.001 | — |
+| BOOKS | `LSPRIZE` (`0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`) | 6 | 1 | — |
+| WATER_BOTTLE | `LSPRIZE` (`0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`) | 7 | 1 | — |
+| CAPS | `LSPRIZE` (`0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`) | 8 | 1 | — |
 
-This catalog was configured on Base mainnet at blocks `51,216,125` through `51,216,136`. Its onchain state is
-`configuredPrizeCount == 12`, `catalogVersion == 12`, and `totalOutcomeWeight == 1,000`.
+The original catalog was configured on Base mainnet at blocks `51,216,125` through `51,216,136`; the physical
+prize expansion was applied at block `51,226,098`. Its onchain state is `configuredPrizeCount == 15`,
+`catalogVersion == 16`, `noWinWeight == 10`, and `totalOutcomeWeight == 1,000`.
 
 ## Prize configuration
 
@@ -110,7 +117,7 @@ Prize behavior:
 The configured weights plus `noWinWeight` must equal exactly 1,000 before any paid or free spin can start.
 `getPrizeCatalog()` returns the complete configured catalog in one frontend-friendly call, while
 `getOutcomeForRoll()` makes every probability bucket directly auditable. At least three prize symbols must be
-configured because each column needs three distinct symbols; the confirmed paytable configures twelve.
+configured because each column needs three distinct symbols; the confirmed paytable configures fifteen.
 
 ## ERC-1155 prize collection
 
@@ -125,12 +132,15 @@ same fully on-chain metadata format:
 | 3 | Urbe Hub day pass |
 | 4 | Shirt |
 | 5 | Magnet |
+| 6 | Books |
+| 7 | Water Bottle |
+| 8 | Caps |
 
 The collection owner can call `mint(recipient, tokenId, amount)` or `mintBatch(...)` for existing IDs. New
 sequential IDs start from 5 on a fresh deployment and can be created with an initial receiver, supply, and complete
-metadata URI through `createAndMint(recipient, amount, metadataURI)`. On Base mainnet, Magnet occupies ID 5 and
-`nextTokenId` is now 6. The four constructor-defined IDs begin with zero supply and are minted only when inventory
-is required; the first Magnet unit was minted directly to the slot contract.
+metadata URI through `createAndMint(recipient, amount, metadataURI)`. On Base mainnet, the three expansion rewards
+occupy IDs 6 through 8 and `nextTokenId` is now 9. Their JSON metadata and SVG artwork are both base64 data URIs.
+The slot held exactly 20 units of every collection ID from 1 through 8 immediately after the expansion.
 
 ## Solvency
 
@@ -235,7 +245,7 @@ probability denominator, and the 256-block maximum window are protocol rules rat
 - Slot machine: [`0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c`](https://base.blockscout.com/address/0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c) (verified source)
 - Ticket: `0.05 USDC` (`50,000` base units)
 - Slot owner: `0xC81f6728a10B20a8981d5C2601Aa185417229035`
-- Initial game manager and ERC-1155 owner: `0x8e251547f0fD650e0573711EF733F13eBA1505aD`
+- Initial game manager and current ERC-1155 owner: `0x8e251547f0fD650e0573711EF733F13eBA1505aD`
 
 The deployed slot was built from the source pinned in
 [`deployments/base-mainnet.json`](deployments/base-mainnet.json). It predates
@@ -249,9 +259,9 @@ forge test
 forge script script/DeployBase.s.sol:DeployBase --rpc-url "$BASE_RPC_URL" --broadcast
 ```
 
-The deployment starts with the 10.1% no-win weight and an otherwise empty paytable. Configure all 12 entries with
-their real token addresses, token IDs, and prize amounts, fund every prize, and confirm
-`totalOutcomeWeight() == 1000` before opening spins.
+The deployment starts with the 10.1% no-win weight and an otherwise empty paytable. The configuration script first
+reduces it to 1%, then configures all 15 entries with their real token addresses, token IDs, and prize amounts.
+Fund every prize and confirm `totalOutcomeWeight() == 1000` before opening spins.
 
 Machine-readable addresses and deployment transactions are recorded in
 [`deployments/base-mainnet.json`](deployments/base-mainnet.json). Standalone frontend ABIs are available in

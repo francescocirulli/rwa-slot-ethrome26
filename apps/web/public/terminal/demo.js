@@ -19,7 +19,7 @@
       if (age < 900) operation = {stage: 'confirming', afterGameId: String(round - 1)};
       if (confirmed && spent !== round) {spent = round; if (result.payout && result.payout.kind === 3) credits += 1;}
     }
-    return {configured: true, funding: {ready: true, assets: []}, sessionId: 'demo', block: String(!round || age < 900 ? 100 : age < 2100 ? 102 : age < 4300 ? 103 : 104), settings: {ticketPrice: '50000', paused: false, totalOutcomeWeight: 1000, configuredPrizeCount: 12}, keeper: {configured: true, canStartFreeSpin: true, balanceWei: '1'},
+    return {configured: true, funding: {ready: true, assets: []}, sessionId: 'demo', block: String(!round || age < 900 ? 100 : age < 2100 ? 102 : age < 4300 ? 103 : 104), settings: {ticketPrice: '50000', paused: false, totalOutcomeWeight: 1000, configuredPrizeCount: model.prizes.length}, keeper: {configured: true, canStartFreeSpin: true, balanceWei: '1'},
       player: {freeSpins: String(credits), allowance: '1000000', balance: String(cents >= 6 ? cents * 10000 : 0), latestGameId: String(round), historyReady: true, game: game, operation: operation}};
   }
   function balances() {el('balance').textContent = (cents / 100).toFixed(2); el('credit-display').textContent = el('balance').textContent;}
@@ -57,7 +57,7 @@
   show('transition-panel', false); show('welcome', true);
   el('welcome').innerHTML = '<div class="step-label">DEMO / NO REAL FUNDS</div><h2>Try your<br>luck.</h2><p class="panel-copy">Same slot, same odds as the contract, no transactions.<br>Simulate the login and pull the lever.</p><button id="demo-login" class="primary-button" type="button">ENTER AS DEMO PLAYER ↗</button><p class="qr-note">The QR code and wallet are used in live mode.</p>';
   var panel = document.createElement('div'); panel.className = 'demo-panel';
-  var options = '<option value="random">Random · contract odds</option><option value="loss">No prize · 10.1%</option>';
+  var options = '<option value="random">Random · contract odds</option><option value="loss">No prize · 1.0%</option>';
   for (var symbol = 0; symbol < model.prizes.length; symbol++) {
     var prize = model.prizes[symbol], stock = prize.kind === 1 && symbol !== 11, label = symbol === 11 ? 'JACKPOT (GOLD)' : prize.label;
     if (prize.three) options += '<option value="' + symbol + '-3">' + (stock ? prize.label + '_Dividend' : label + ' · 3/5') + ' · ' + (prize.three / 10).toFixed(1) + '%</option>';

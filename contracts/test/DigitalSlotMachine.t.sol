@@ -250,7 +250,11 @@ contract DigitalSlotMachineTest is Test {
     }
 
     function testWelcomeGrantRequiresManagerAndRejectsZeroAddress() public {
-        vm.expectRevert(abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, OPERATOR, slot.GAME_MANAGER_ROLE()));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, OPERATOR, slot.GAME_MANAGER_ROLE()
+            )
+        );
         vm.prank(OPERATOR);
         slot.grantWelcomeFreeSpins(FREE_PLAYER);
         assertFalse(slot.welcomeFreeSpinsGranted(FREE_PLAYER));
@@ -308,9 +312,10 @@ contract DigitalSlotMachineTest is Test {
         _assertOutcome(999, 2, 5);
     }
 
-    function testConfirmedTwelveSymbolPaytableTotals() public {
+    function testConfirmedFifteenSymbolPaytableTotals() public {
         DigitalSlotMachine paytableSlot = new DigitalSlotMachine(address(this), address(this), usdc, TICKET_PRICE);
 
+        paytableSlot.setNoWinWeight(10);
         paytableSlot.configurePrize(0, DigitalSlotMachine.PrizeKind.ERC1155, address(prize1155), 1, 1, 94, 62); // MAGNET
         paytableSlot.configurePrize(1, DigitalSlotMachine.PrizeKind.FreeSpin, address(0), 0, 1, 73, 48); // FREE_SPIN
         paytableSlot.configurePrize(2, DigitalSlotMachine.PrizeKind.ERC20, address(prizeToken), 0, 10 ether, 48, 32); // STOCK1
@@ -323,6 +328,9 @@ contract DigitalSlotMachineTest is Test {
         paytableSlot.configurePrize(9, DigitalSlotMachine.PrizeKind.ERC1155, address(prize1155), 4, 1, 0, 67); // URBE_HUB_DAY_PASS
         paytableSlot.configurePrize(10, DigitalSlotMachine.PrizeKind.ERC1155, address(prize1155), 5, 1, 0, 45); // SHIRT
         paytableSlot.configurePrize(11, DigitalSlotMachine.PrizeKind.ERC20, address(prizeToken), 0, 1 ether, 0, 13); // GOLD
+        paytableSlot.configurePrize(12, DigitalSlotMachine.PrizeKind.ERC1155, address(prize1155), 6, 1, 0, 20); // BOOKS
+        paytableSlot.configurePrize(13, DigitalSlotMachine.PrizeKind.ERC1155, address(prize1155), 7, 1, 0, 21); // WATER_BOTTLE
+        paytableSlot.configurePrize(14, DigitalSlotMachine.PrizeKind.ERC1155, address(prize1155), 8, 1, 0, 50); // CAPS
 
         (, DigitalSlotMachine.Prize[] memory prizes) = paytableSlot.getPrizeCatalog();
         uint256 threeMatchTotal;
@@ -332,10 +340,10 @@ contract DigitalSlotMachineTest is Test {
             fiveMatchTotal += prizes[index].fiveMatchWeight;
         }
 
-        assertEq(prizes.length, 12);
+        assertEq(prizes.length, 15);
         assertEq(threeMatchTotal, 404);
-        assertEq(fiveMatchTotal, 495);
-        assertEq(paytableSlot.noWinWeight(), 101);
+        assertEq(fiveMatchTotal, 586);
+        assertEq(paytableSlot.noWinWeight(), 10);
         assertEq(paytableSlot.totalOutcomeWeight(), 1_000);
     }
 

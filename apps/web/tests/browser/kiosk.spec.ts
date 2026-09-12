@@ -69,3 +69,14 @@ test('demo freezes one diagonal 3/5, waits for confirmation and credits exactly 
   await expect(page.locator('.cell.winner')).toHaveCount(3);
   for(let c=0;c<5;c++)expect(new Set([first.player.game.symbols[c],first.player.game.symbols[c+5],first.player.game.symbols[c+10]]).size).toBe(3);
 });
+
+for(const [symbol,name] of [[12,'BOOKS'],[13,'WATER BOTTLE'],[14,'CAPS']] as const)test('terminal reveals '+name+' with five matching tiles and the correct prize',async({page})=>{
+  await page.goto('/?demo=1');await page.locator('#demo-login').click();
+  await page.locator('#demo-outcome').selectOption(symbol+'-5');await page.locator('#spin-free').click();
+  await expect(page.locator('.cell[data-result-symbol]')).toHaveCount(0);
+  await expect(page.locator('#game-title')).toContainText('You won 1 '+name,{timeout:12000});
+  await expect(page.locator('.cell.winner img[alt="'+name+'"]')).toHaveCount(5);
+  await expect(page.locator('#won-prize')).toHaveAttribute('src','/symbols/symbol-'+symbol+'.svg');
+  expect(await page.locator('#won-prize').evaluate((image:HTMLImageElement)=>image.complete&&image.naturalWidth>0)).toBe(true);
+  await page.screenshot({path:'artifacts/prize-'+symbol+'-terminal.png'});
+});

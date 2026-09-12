@@ -164,3 +164,14 @@ test('paid play rechecks USDC before preparing permission when displayed balance
   await expect(page.getByRole('alert').filter({hasText:'Add USDC on Base'})).toBeVisible();
   expect(prepared).toBe(0);await expect(page.getByRole('dialog')).toBeHidden();
 });
+
+for(const [name,id] of [['Books','6'],['Water Bottle','7'],['Caps','8']])test('phone reviews and transfers '+name+' with its exact ERC1155 ID',async({page})=>{
+  await setup(page);await page.goto('/phone-fixture');
+  await page.getByRole('button',{name:'Send '+name}).click();
+  await page.getByLabel('External recipient address').fill(recipient);await page.getByLabel('NFT quantity (whole)').fill('2');
+  await page.getByRole('button',{name:'Review transfer'}).click();
+  await expect(page.getByRole('dialog').getByText('2 NFT · ID '+id,{exact:true})).toBeVisible();
+  expect(await page.locator('body').getAttribute('data-submitted')).toBeNull();
+  await page.getByRole('button',{name:'Confirm from my wallet'}).click();
+  await expect(page.locator('body')).toHaveAttribute('data-submitted',JSON.stringify({action:'transferERC1155',args:[BASE_PRIZE_COLLECTION,id,recipient,'2']}));
+});

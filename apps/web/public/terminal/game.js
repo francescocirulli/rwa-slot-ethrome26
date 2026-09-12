@@ -3,7 +3,7 @@
   'use strict';
   var currentSession = null, revision = 0, snapshot = null, fetching = false, sending = false, timer, online = true, shownResult = '', settleTimer, hardwareState = '', observedPending = false, configuredState = null;
   var lines = [[5,6,7,8,9], [0,1,7,13,14], [10,11,7,3,4]];
-  var labels = ['MAGNET','FREE SPIN','NVIDIA','HOPERA','SPACEX','APPLE','ALPHABET','AMAZON','ENS','URBE PASS','T-SHIRT','GOLD','SYMBOL 12','SYMBOL 13','SYMBOL 14','SYMBOL 15'];
+  var labels = ['MAGNET','FREE SPIN','NVIDIA','HOPERA','SPACEX','APPLE','ALPHABET','AMAZON','ENS','URBE PASS','T-SHIRT','GOLD','BOOKS','WATER BOTTLE','CAPS','SYMBOL 15'];
   function el(id) {return document.getElementById(id);}
   function show(id, value) {el(id).hidden = !value;}
   function xhr(path, body, callback) {
