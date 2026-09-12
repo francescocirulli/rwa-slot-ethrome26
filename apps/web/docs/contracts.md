@@ -77,28 +77,40 @@ reads `symbol` and `decimals`; if the token does not expose them, it displays
 base units. Visual symbol labels are defined in the app and match the contract
 design IDs, including Books (12), Water Bottle (13), Caps (14), and the reserved placeholder 15.
 
-Reveal events are searched only between the target and deadline (at most
-256 blocks). The player's latest game is recovered from `SpinStarted` in
-2,000-block pages, up to 12 pages per request, resuming on subsequent reads.
-The cache verifies block hashes and rereads a 12-block margin. For wallets
-without history on a very old contract, initial synchronization requires
-multiple polls; new games stay blocked until it finishes. Admins browse global
-IDs in pages of 20. No persistent indexer is required.
+The paired play endpoint does not call `eth_getLogs`. It reads current and
+confirmation-depth player state, USDC balance/allowance, settings, and the current
+round. A round ID is retained from an observed active game or a verified start
+receipt. The keeper also retains the IDs it recovers before revealing. Browser
+reloads reuse this process state; after a process restart sessions must pair again
+and recover active games only. Previously completed rounds belong in admin history.
+
+A result is displayed only when `getGame` at the configured confirmation depth
+contains the result. A known keeper reveal receipt supplies `PrizePaid` details and
+the transaction link after checking its successful status, recipient/game and
+canonical block hash. Receipt or token-metadata failures do not block a confirmed
+grid. An outside reveal can settle the UI without a receipt hash; no amount is
+inferred from the current prize catalog. An unreadable current round locks new
+spins while still returning readable wallet balances.
+
+Admin history continues to scan bounded event ranges: reveal events within the
+reveal window and player spins in resumable pages. Automatic welcome grants retain
+the separate marked-history check for duplicate prevention; the play poll only
+reads its in-memory status. A bonus scan failure cannot hide existing free spins.
 
 ## Play availability and confirmed results
 
-The app reads prize reserves before enabling a new spin and the backend checks them
-again before either paid or free submission. It mirrors `_maximumPayout` and sums
-requirements when multiple symbols share one ERC20 or one ERC1155 collection/ID.
-Existing reservations cannot cover a new round. Missing RPC data blocks play until
-verification recovers. Contract simulation and onchain reservation remain the final
-check against state changes between the read and transaction inclusion.
+Reserve checks run before paid/free submission, rather than on every paired poll.
+The backend mirrors `_maximumPayout` and sums requirements when multiple symbols
+share one ERC20 or one ERC1155 collection/ID. Existing reservations cannot cover a
+new round. Missing reserve data rejects the new request. Simulation and onchain
+reservation remain the final check against changes before transaction inclusion.
+The terminal displays the submission error and retains balances and completed
+results. It no longer presents reserve RPC failures as indefinite initialization.
 
-The terminal shows a replenishment notice instead of inviting a recharge when prize
-funding is insufficient. An already pending round keeps animating until its confirmed
-reveal. A confirmed win keeps its actual prize, amount and a BaseScan reveal transaction
-link visible even if new games are suspended. The link and prize clear on the next
-spin or logout. Jackpot artwork is limited to reel symbol 11; DGLD payouts remain Gold.
+Per-wallet write coordination, idempotent start receipts, session authorization
+and the confirmation-depth active-game check remain required. An uncertain send
+never permits a second ticket. Jackpot artwork is limited to reel symbol 11;
+DGLD payouts remain Gold.
 
 ## Admin commands
 

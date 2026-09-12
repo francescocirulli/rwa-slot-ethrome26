@@ -3,7 +3,7 @@
   'use strict';
   if (window.slotDemo) return;
   var session = null, generation = 0, deadline = 0, lastServerTime = 0;
-  var polling = false, pairing = false, leaving = false, signing = false, connected = true, timer, balanceTimer;
+  var polling = false, pairing = false, leaving = false, signing = false, connected = true, timer, balanceTimer, gameBalance = false;
   var lastActivity = 0, feedback = '', needsPair = false;
   function emitSession(data) { var event = document.createEvent('CustomEvent'); event.initCustomEvent('slot-session', false, false, data); window.dispatchEvent(event); }
   function el(id) { return document.getElementById(id); }
@@ -66,7 +66,7 @@
     el('sign-button').disabled = true; el('deposit-toggle').disabled = true;
     document.body.className = '';
     el('balance-status').textContent = 'Reading balance on Base…';
-    window.clearTimeout(balanceTimer);
+    window.clearTimeout(balanceTimer); balanceTimer = null; gameBalance = false;
   }
   function draw() {
     if (!session || leaving) return;
@@ -113,28 +113,36 @@
   function render(data) {
     if (leaving) return;
     if (session && session.id === data.id && data.serverTime < lastServerTime) return;
-    var becameActive = data.state === 'active' && (!session || session.id !== data.id || session.state !== 'active');
     if (!session || session.id !== data.id) clearUser();
     session = data; updateDeadline(data); draw(); emitSession(data);
-    if (becameActive) refreshBalance();
   }
+  function displayBalance(balance) {
+    if (balance.amount !== null) {
+      var parts = balance.amount.split('.'), fraction = (parts[1] || '') + '00';
+      el('balance').textContent = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + fraction.slice(0, 2);
+      el('credit-display').textContent = el('balance').textContent;
+      el('balance').title = balance.amount + ' USDC';
+      el('balance').style.fontSize = parts[0].length > 6 ? '28px' : '';
+    }
+    el('balance-status').textContent = balance.stale ? (balance.amount === null ? 'Balance unavailable · retrying shortly' : 'Last known balance · update pending') : 'USDC on Base · balance up to date';
+  }
+  window.addEventListener('slot-balance', function (event) {
+    var data = event.detail;
+    if (!session || session.id !== data.sessionId || session.state !== 'active' || leaving) return;
+    if (data.unavailable) {gameBalance = false; if (!balanceTimer) refreshBalance(); return;}
+    gameBalance = true; window.clearTimeout(balanceTimer); balanceTimer = null;
+    displayBalance({amount: data.amount, stale: false});
+  });
   function refreshBalance() {
     window.clearTimeout(balanceTimer);
     if (!session || session.state !== 'active' || leaving) return;
-    var id = session.id;
+    var id = session.id; balanceTimer = -1;
     request('/tablet/balance', null, function (error, result, status) {
-      if (!session || session.id !== id) return;
+      if (!session || session.id !== id || gameBalance) return;
       if (status === 401) { leave('expired'); return; }
       if (!error && result.sessionId === id) {
         var balance = result.balance;
-        if (balance.amount !== null) {
-          var parts = balance.amount.split('.'), fraction = (parts[1] || '') + '00';
-          el('balance').textContent = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + fraction.slice(0, 2);
-          el('credit-display').textContent = el('balance').textContent;
-          el('balance').title = balance.amount + ' USDC';
-          el('balance').style.fontSize = parts[0].length > 6 ? '28px' : '';
-        }
-        el('balance-status').textContent = balance.stale ? (balance.amount === null ? 'Balance unavailable · retrying shortly' : 'Last known balance · update pending') : 'USDC on Base · balance up to date';
+        displayBalance(balance);
       } else el('balance-status').textContent = 'Last known balance · waiting for connection';
       balanceTimer = window.setTimeout(refreshBalance, 12000);
     });

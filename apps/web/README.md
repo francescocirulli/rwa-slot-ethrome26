@@ -162,10 +162,18 @@ if the phone is closed or the session has ended. The contract pays the prize to
 the original player. Results are neither fabricated nor shown early through
 `previewPendingResult`.
 
-Current state comes from read calls; historical prizes come from `RoundRevealed`
-and `PrizePaid`. The keeper recovers pending games through `getActiveGameIds`
-after each restart. **No database.** Details, ABI mapping, limits and configuration:
-[docs/contracts.md](docs/contracts.md).
+The paired phone/iPad poll reads only current USDC balance, allowance, free spins,
+settings and the current round. It does not scan spin or welcome history, read the
+prize catalog, or poll reserves. The iPad uses this same response for its USDC display;
+the separate balance endpoint is a fallback when game reads are unavailable.
+Results come from `getGame` at the confirmation depth. Known keeper receipts add
+exact prize amounts and a transaction link; missing receipt details do not block a
+confirmed result. Welcome history runs separately from play, and reserve checks run
+before submission. Historical results remain available in admin.
+
+The keeper recovers pending games through `getActiveGameIds` after each restart.
+A new session recovers an active round from `getPlayerState`; it does not restore
+old completed rounds. **No database.** Details: [docs/contracts.md](docs/contracts.md).
 
 The earlier `personal_sign` proof remains available when no contract is connected.
 It uses a separate policy limited to the exact message with a nonce/session,
@@ -314,9 +322,11 @@ inventory/deposit/mint forms, prize configuration, history, terminal reels and
 win displays. The terminal help and offline demo use their 2.0%, 2.1% and 5.0%
 five-match odds, with 1.0% no prize. Live payouts and reserves come from the contract.
 
-The terminal blocks new paid/free spins when prize reserves cannot cover a round
-or reserve reads are unavailable. Confirmed wins display the actual award and a
-BaseScan reveal link. Gold uses jackpot artwork only on the reels.
+The backend rejects paid/free submissions when reserves cannot cover a round or
+reserve reads fail. These checks do not block idle balance reads or settlement
+polling. Confirmed wins include the exact award and BaseScan link when the keeper
+receipt is available; otherwise they show the confirmed grid and win/loss without
+inventing a payout amount. Gold uses jackpot artwork only on the reels.
 
 ### Phone approval and funding
 

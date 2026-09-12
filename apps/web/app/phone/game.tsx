@@ -6,8 +6,8 @@ import {portfolioApprovalError, approvalFundingError} from '@/lib/approval-fundi
 import type {Portfolio} from '@/lib/portfolio';
 import type {PhoneTransaction} from './wallet';
 import type {SessionView} from '@/lib/types';
-import type {SlotSnapshot} from '@/lib/slot/reader';
-type GameState = SlotSnapshot & {keeper: {configured: boolean; canStartFreeSpin: boolean}};
+import type {SlotEngine} from '@/lib/slot/engine';
+type GameState = Awaited<ReturnType<SlotEngine['playView']>>;
 export function PhoneGame({session, api, onSession, transaction, portfolio}: {portfolio:Portfolio|null|undefined;transaction:PhoneTransaction; session: SessionView; api: (path: string, data?: unknown, auth?: boolean) => Promise<any>; onSession: (session: SessionView) => void}) {
   const [state, setState] = useState<GameState | null>(null), [budget, setBudget] = useState('5'), [consent, setConsent] = useState(false);
   const [error, setError] = useState(''), [working, setWorking] = useState(false);
@@ -24,7 +24,7 @@ export function PhoneGame({session, api, onSession, transaction, portfolio}: {po
   if (!state) return null;
   const player = state.player, grant = session.playGrant, active = grant?.active;
   const fundingError=portfolioApprovalError(portfolio,true);
-  const roundBusy=!!player?.game?.pending;
+  const roundBusy=!!player?.busy;
   const amount = grant ? formatUnits(BigInt(grant.budget), 6) : budget;
   async function authorize() {
     if (working || !consent || transaction.busy || transaction.pending || roundBusy || fundingError || !portfolio?.canTransact) return;
@@ -32,7 +32,7 @@ export function PhoneGame({session, api, onSession, transaction, portfolio}: {po
     try {
       if (!/^\d+(\.\d{1,6})?$/.test(amount) || parseUnits(amount, 6) <= 0n) throw new Error('Enter a valid USDC budget (up to 6 decimals).');
       const latest = await api('/phone/game');
-      if (!latest.configured || !latest.player || latest.player.game?.pending) throw new Error('Refresh the game state before approving.');
+      if (!latest.configured || !latest.player || latest.player.busy) throw new Error('Refresh the game state before approving.');
       const balanceError=approvalFundingError(latest.player.balance == null ? null : BigInt(latest.player.balance), portfolio.eth === null ? null : parseEther(portfolio.eth), latest.gasMode, BigInt(latest.settings.ticketPrice));
       if (balanceError) throw new Error(balanceError);
       const prepared: SessionView = grant ? session : await api('/phone/play/prepare', {budget: parseUnits(amount, 6).toString(), gasConsent: 'usdc-then-eth-v1'});

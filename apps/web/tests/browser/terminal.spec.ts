@@ -204,27 +204,29 @@ test('a paired wallet can enter demo when the contract is not configured', async
   await phone.close();
 });
 
-test('funding blocks both spin types, recovers after replenishment and keeps Gold payout distinct from jackpot reels',async({page,browser})=>{
+test('minimal polling needs no reserves or history and keeps confirmed Gold results visible',async({page,browser})=>{
   const phone=await phoneContext(browser);
-  let funding:boolean|null=false,won=false;
+  let unavailable=false,won=false;
   await page.route('**/api/relay/tablet/game',async route=>{
     const response=await page.request.get('http://localhost:3101/api/relay/tablet');const session=await response.json();
     const game=won?{id:'2',pending:false,hasResult:true,confirmed:true,won:true,status:'won',symbols:Array(15).fill(11),matchCount:5,winningLine:0,winningSymbol:11,payout:{kind:1,token:'0xe908475f8beb7a138b0dc6eb5a05cb27068ffb9a',formattedAmount:'0.01',tokenSymbol:'DGLD'},transactionHash:'0x'+'b'.repeat(64)}:null;
-    await route.fulfill({json:{configured:true,sessionId:session.id,block:'120',funding:funding===null?null:{ready:funding,assets:[]},settings:{ticketPrice:'1000000',paused:false,totalOutcomeWeight:1000,configuredPrizeCount:3},keeper:{configured:true,canStartFreeSpin:true,balanceWei:'1000000'},player:{freeSpins:'2',allowance:'10000000',balance:'20000000',latestGameId:won?'2':'0',historyReady:true,game,operation:null}}});
+    await route.fulfill({json:{configured:true,sessionId:session.id,block:'120',settings:{ticketPrice:'1000000',paused:false,totalOutcomeWeight:1000,configuredPrizeCount:3},keeper:{configured:true,canStartFreeSpin:true,balanceWei:'1000000'},player:{gameUnavailable:unavailable,busy:unavailable,freeSpins:'2',allowance:'10000000',balance:'20000000',latestGameId:won?'2':'0',historyReady:true,game,operation:null}}});
   });
   await link(page,phone);
   await expect(page.locator('.reels img[src="/symbols/jackpot.svg"]')).toHaveCount(2);
-  await expect(page.locator('#game-availability')).toContainText('Prize restock');
-  await expect(page.locator('#play-consent-title')).toHaveText('Waiting for the machine.');
-  await expect(page.locator('#spin-free')).toBeDisabled();await expect(page.locator('#spin-paid')).toBeDisabled();
-  await page.screenshot({path:'artifacts/terminal-funding.png'});
-  funding=true;await expect(page.locator('#spin-free')).toBeEnabled();await expect(page.locator('#game-availability')).toBeHidden();
-  funding=null;await expect(page.locator('#spin-free')).toBeDisabled();await expect(page.locator('#game-availability')).toContainText('Checking prize reserves');
-  funding=false;won=true;await expect(page.locator('#game-title')).toHaveText('You won 0.01 Gold (DGLD)!');
+  await expect(page.locator('#spin-free')).toBeEnabled();
+  await expect(page.locator('#game-availability')).toBeHidden();
+  await expect(page.locator('#balance')).toHaveText('20.00');
+  unavailable=true;
+  await expect(page.locator('#spin-free')).toBeDisabled();
+  await expect(page.locator('#game-availability')).toContainText('current round is unavailable');
+  await expect(page.locator('#free-spin-balance')).toHaveText('2');
+  unavailable=false;won=true;
+  await expect(page.locator('#game-title')).toHaveText('You won 0.01 Gold (DGLD)!');
   await expect(page.locator('.reels img[src="/symbols/jackpot.svg"]')).toHaveCount(15);
   await expect(page.locator('#won-prize')).toHaveAttribute('src','/symbols/symbol-11.svg');
   await expect(page.locator('#game-tx')).toHaveAttribute('href','https://basescan.org/tx/0x'+'b'.repeat(64));
-  await expect(page.locator('#game-availability')).toContainText('Prize restock');
+  await expect(page.locator('#game-availability')).toBeHidden();
   for(const height of [768,650]){await page.setViewportSize({width:1024,height});await page.screenshot({path:`artifacts/terminal-gold-${height}.png`});expect(await page.evaluate(()=>document.documentElement.scrollHeight)).toBeLessThanOrEqual(height);}
   await phone.close();
 });
