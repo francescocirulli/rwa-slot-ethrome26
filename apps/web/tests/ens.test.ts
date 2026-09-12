@@ -13,8 +13,8 @@ function fixture(){
  const c:EnsClaim={id:claimId,label:'frank',name:'frank.wallstreetslot.eth',owner:testAccount.address,resolver:zeroAddress,completed:false,stage:'voucher'};
  const service={names:async(owner:Address)=>{assert.equal(owner,testAccount.address);return [];},claims:async()=>[c],getClaim:async()=>c,
  available:async()=>({available:true}),reserve:async(owner:Address)=>{assert.equal(owner,testAccount.address);reserves++;return c;},
- prepareVoucher:async()=>({to:zeroAddress,data:'0x1234',chainId:8453}),fulfill:async()=>{completed++;return c;}} as unknown as EnsService;
- const walletService={...f.service,sendOwned:async(_wallet:unknown,authorization:any)=>{sends++;await authorization.sign_fns[0](new Uint8Array([1,2,3]));return {transactionId:'test-transaction'};}};
+ prepareVoucher:async()=>{if(c.stage!=='voucher')throw Error('Already consumed');return {to:zeroAddress,data:'0x1234',chainId:8453};},fulfill:async()=>{completed++;return c;}} as unknown as EnsService;
+ const walletService={...f.service,sendOwned:async(_wallet:unknown,authorization:any,transaction:any,_key:string,mode:string)=>{assert.equal(transaction.chainId,8453);assert.equal(mode,'usdc');sends++;await authorization.sign_fns[0](new Uint8Array([1,2,3]));return {transactionId:'test-transaction'};}};
  const api=createEnsApi({service,walletService,origin,writes});
  async function call(body?:unknown,token='player-a',headers:Record<string,string>={}){
    const req=new Request(origin+'/api/ens?address='+zeroAddress,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,Origin:origin,'Content-Type':'application/json','X-Slot-Request':'1',...headers},body:body?JSON.stringify(body):undefined});
@@ -33,7 +33,7 @@ test('ENS names are scoped to verified personal wallets; auth/origin/consent fai
  assert.equal(f.counts().reserves,1);
 });
 test('ENS review shares the spin/transfer lock by lowercase address and cancellation releases it',async()=>{
- const f=fixture(),p=await f.call({action:'prepare',claimId});assert.equal(p.status,200);
+ const f=fixture(),p=await f.call({action:'prepare',claimId});assert.equal(p.status,200);assert.equal(p.body.registrationPayer,'backend');assert.equal(p.body.gasMode,'usdc');
  await assert.rejects(f.writes.acquire(testAccount.address.toLowerCase(),'spin',async()=>false),/operation in progress/);
  assert.equal((await f.call({action:'prepare',claimId})).status,409);
  assert.equal((await f.call({action:'cancel',id:p.body.id})).status,200);
@@ -84,9 +84,22 @@ test('provider error payloads never appear in ENS responses',async()=>{
 test('generated ENS deployment artifacts match Solidity sources',async()=>{
  const {readFile}=await import('node:fs/promises'),{createHash}=await import('node:crypto');
  const artifacts=JSON.parse(await readFile(new URL('../scripts/ens-artifacts.json',import.meta.url),'utf8'));
- for(const name of ['SlotENSRegistrar','ENSVoucherRedemption']){
+ for(const name of ['SlotENSRegistrar']){
   const source=await readFile(new URL('../../../contracts/src/'+name+'.sol',import.meta.url));
   assert.equal(artifacts[name].sourceHash,createHash('sha256').update(source).digest('hex'));
   assert.ok(artifacts[name].bytecode.startsWith('0x'));
  }
+});
+
+test('a voucher consumed after review cannot be sent again and a failed preflight releases the lock',async()=>{
+ const f=fixture(),p=await f.call({action:'prepare',claimId});f.c.stage='ready';
+ assert.equal((await f.call({action:'send',id:p.body.id,confirm:true})).status,503);
+ assert.equal(f.counts().sends,0);await f.writes.acquire(testAccount.address.toLowerCase(),'spin',async()=>false);
+});
+
+test('a submission reference survives an unfinalized reorg and cannot prepare a second voucher transfer',async()=>{
+ const f=fixture(),p=await f.call({action:'prepare',claimId});await f.call({action:'send',id:p.body.id,confirm:true});
+ f.c.stage='finalizing-base';await f.call({action:'status',id:p.body.id});f.c.stage='voucher';
+ assert.equal((await f.call({action:'prepare',claimId})).status,409);
+ assert.equal((await f.call({action:'status',id:p.body.id})).status,200);assert.equal(f.counts().sends,1);
 });

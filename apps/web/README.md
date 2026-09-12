@@ -405,6 +405,7 @@ retain the original transaction; a balance of zero never authorizes another bonu
 
 Optional ENS voucher redemption registers `*.wallstreetslot.eth` on Sepolia
 using the existing backend EOA. The player receives the ENS name and pays no
-Sepolia gas. Existing Base ENS vouchers are permanently locked, not burned;
-the reviewed Base transaction uses the player's normal gas payment path.
+Sepolia gas. Existing Base ENS vouchers are transferred to `0x000000000000000000000000000000000000dEaD`, not burned;
+the player's Base transfer follows the app's existing USDC/ETH fee mode.
+The phone confirms the voucher once, then follows backend registration automatically.
 See [ENS setup, costs and recovery](docs/ens.md) before enabling the feature.

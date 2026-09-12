@@ -271,11 +271,13 @@ See [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) for the outcome-generation and in
 
 ## ENS voucher redemption
 
-`ENSVoucherRedemption` permanently locks one existing ENS prize (ID 2) with a
-backend-signed reservation permit. The original collection cannot burn tokens.
+The existing ENS prize (ID 2) is transferred directly to
+`0x000000000000000000000000000000000000dEaD` on Base. No Base redemption
+contract is deployed. The transfer calldata binds the reservation and the
+backend verifies the finalized receipt and ERC1155 event before fulfilling it.
+This transfer does not burn the token or reduce its supply.
 `SlotENSRegistrar` uses the real ENSv2 UserRegistry and PermissionedResolver on
-Sepolia, with a backend-attested Base consumption ID. The player owns the name
-and resolver; the backend controls the parent namespace. See the
-[ENS setup and trust model](../apps/web/docs/ens.md) for deployment, fees,
-finality and recovery requirements. These contracts are separate deployments;
-the slot and existing prize collection are unchanged.
+Sepolia, with a backend-attested Base transaction/log identifier that can be
+used only once. The player owns the name and resolver; the backend controls the
+parent namespace. See the [ENS setup and trust model](../apps/web/docs/ens.md)
+for configuration, fees, finality and recovery requirements.

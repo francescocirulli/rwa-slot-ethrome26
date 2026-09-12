@@ -1,12 +1,13 @@
-import {createPublicClient,http,encodeAbiParameters,encodeFunctionData,keccak256,toHex,zeroAddress,zeroHash,namehash,type Address,type Hex} from 'viem';
+import {createPublicClient,http,encodeAbiParameters,encodeFunctionData,keccak256,toHex,zeroHash,namehash,type Address,type Hex} from 'viem';
 import {sepolia} from 'viem/chains';
 import {createBaseReadClient} from '../base-read-client';
 import {BASE_PRIZE_COLLECTION,prizeCollectionAbi} from '../prize-collection';
 import {SlotError} from '../slot/errors';
 import {ensContracts,ENS_PARENT,ENS_BACKEND,normalizeLabel,type EnsConfig} from './config';
-import {ensRegistrarAbi,redemptionAbi,ensRegistryAbi} from './abi';
+import {ensRegistrarAbi,ensRegistryAbi} from './abi';
 import {createEnsSender} from './sender';
 import {createEnsWorker} from './worker';
+import {createVoucherSource,voucherTransaction} from './source';
 export type EnsClaim={id:Hex;label:string;name:string;completed:boolean;stage:'voucher'|'finalizing-base'|'ready'|'registered';owner:Address;resolver:Address};
 export type EnsName={name:string;owner:Address;expiry:string;resolvedAddress:Address|null};
 export function createEnsService(config:EnsConfig,key?:Hex){
@@ -15,7 +16,8 @@ export function createEnsService(config:EnsConfig,key?:Hex){
   const sender=key?createEnsSender(config.rpcUrl,key):undefined;
   const registrar={address:config.registrar,abi:ensRegistrarAbi};
   const registry={address:config.registry,abi:ensRegistryAbi};
-  const sink={address:config.redemption,abi:redemptionAbi};
+  const pageBlocks=/^[1-9][0-9]*$/.test(process.env.SLOT_LOG_PAGE_BLOCKS||'')?BigInt(process.env.SLOT_LOG_PAGE_BLOCKS!):1000n;
+  const source=createVoucherSource({client:base,registrar:config.registrar,fromBlock:config.sourceBlock,pageBlocks});
   const labels=new Map<string,string>();let cursor=config.deploymentBlock;let scan:Promise<void>|undefined;
   const ownerLocks=new Map<string,Promise<unknown>>();
   async function exclusive<T>(owner:Address,fn:()=>Promise<T>):Promise<T>{
@@ -24,11 +26,10 @@ export function createEnsService(config:EnsConfig,key?:Hex){
   }
   async function check(){
     if(await client.getChainId()!==11155111||await base.getChainId()!==8453)throw new SlotError('EnsChain','ENS network configuration mismatch.',503);
-    const [backend,actualRegistry,parent,sourceBackend,collection,subregistry]=await Promise.all([
+    const [backend,actualRegistry,parent,subregistry]=await Promise.all([
       client.readContract({...registrar,functionName:'backend'}),client.readContract({...registrar,functionName:'registry'}),client.readContract({...registrar,functionName:'parentNode'}),
-      base.readContract({...sink,functionName:'backend'}),base.readContract({...sink,functionName:'collection'}),
       client.readContract({address:ensContracts.ETHRegistry.address,abi:ensRegistryAbi,functionName:'getSubregistry',args:['wallstreetslot']})]);
-    if(backend.toLowerCase()!==ENS_BACKEND.toLowerCase()||sourceBackend.toLowerCase()!==backend.toLowerCase()||collection.toLowerCase()!==BASE_PRIZE_COLLECTION.toLowerCase()||
+    if(backend.toLowerCase()!==ENS_BACKEND.toLowerCase()||
        actualRegistry.toLowerCase()!==config.registry.toLowerCase()||subregistry.toLowerCase()!==config.registry.toLowerCase()||parent!==namehash(ENS_PARENT)||
        sender&&sender.account.address.toLowerCase()!==backend.toLowerCase())throw new SlotError('EnsConfig','ENS contracts or backend wallet do not match the configured deployment.',503);
   }
@@ -37,16 +38,8 @@ export function createEnsService(config:EnsConfig,key?:Hex){
     if(c.owner.toLowerCase()!==owner.toLowerCase())throw new SlotError('EnsClaim','Claim unavailable for this wallet.',404);
     let stage:EnsClaim['stage']=c.completed?'registered':'voucher';
     if(!c.completed){
-      const [sourceOwner,labelHash,block]=await base.readContract({...sink,functionName:'consumptions',args:[id]});
-      if(sourceOwner!==zeroAddress){
-        if(sourceOwner.toLowerCase()!==owner.toLowerCase()||labelHash!==keccak256(toHex(c.label)))throw new SlotError('EnsSource','Voucher proof does not match the reserved name.',409);
-        const finalized=await base.getBlock({blockTag:'finalized'});
-        stage='finalizing-base';
-        if(block<=finalized.number){
-          const proof=await base.readContract({...sink,functionName:'consumptions',args:[id],blockNumber:finalized.number});
-          if(proof[0].toLowerCase()===owner.toLowerCase()&&proof[1]===labelHash&&proof[2]===block)stage='ready';
-        }
-      }
+      const found=await source.find(id,owner,keccak256(toHex(c.label)));
+      if(found)stage=found.finalized?'ready':'finalizing-base';
     }
     return {id,label:c.label,name:c.label+'.'+ENS_PARENT,owner:c.owner,resolver:c.resolver,completed:c.completed,stage};
   }
@@ -101,25 +94,27 @@ export function createEnsService(config:EnsConfig,key?:Hex){
         client.readContract({...registrar,functionName:'expiry'})]);
       if(parent.status!==2||parent.latestOwner.toLowerCase()!==ENS_BACKEND.toLowerCase()||expiry>parent.expiry||expiry<BigInt(Math.floor(Date.now()/1000)+3600))throw new SlotError('EnsExpiry','ENS registration needs operator renewal before this voucher can be consumed.',503);
       const c=await getClaim(id,owner);if(c.stage!=='voucher')throw new SlotError('EnsConsumed','Voucher already consumed. Continue registration.',409);
-      const deadline=BigInt(Math.floor(Date.now()/1000)+600),labelHash=keccak256(toHex(c.label));
-      const digest=await base.readContract({...sink,functionName:'authorizationHash',args:[id,owner,labelHash,deadline]});
-      const signature=await signer().account.signMessage({message:{raw:digest}});
-      const payload=encodeAbiParameters([{type:'bytes32'},{type:'bytes32'},{type:'uint64'},{type:'bytes'}],[id,labelHash,deadline,signature]);
-      return {to:BASE_PRIZE_COLLECTION,chainId:8453,data:encodeFunctionData({abi:prizeCollectionAbi,functionName:'safeTransferFrom',args:[owner,config.redemption,2n,1n,payload]})};
+      signer();
+      return voucherTransaction(config.registrar,owner,id,keccak256(toHex(c.label)));
     },
     async fulfill(owner:Address,id:Hex){return exclusive(owner,async()=>{
       await check();const c=await getClaim(id,owner);if(c.completed)return c;
       if(c.stage!=='ready')throw new SlotError('EnsPending',c.stage==='voucher'?'Consume your voucher first.':'Waiting for Base finality. Your voucher is recorded; do not send another.',409);
-      const source=keccak256(encodeAbiParameters([{type:'uint256'},{type:'address'},{type:'bytes32'}],[8453n,config.redemption,id]));
-      await signer().send(config.registrar,encodeFunctionData({abi:ensRegistrarAbi,functionName:'fulfill',args:[id,source]}));return getClaim(id,owner);
+      const verified=await source.find(id,owner,keccak256(toHex(c.label)));
+      if(!verified?.finalized)throw new SlotError('EnsPending','Waiting for a finalized voucher proof.',409);
+      await signer().send(config.registrar,encodeFunctionData({abi:ensRegistrarAbi,functionName:'fulfill',args:[id,verified.proof.source]}));return getClaim(id,owner);
     });},
   };
-  const pageBlocks=/^[1-9][0-9]*$/.test(process.env.SLOT_LOG_PAGE_BLOCKS||'')?BigInt(process.env.SLOT_LOG_PAGE_BLOCKS!):1000n;
   const worker=createEnsWorker({fromBlock:config.sourceBlock,pageBlocks,
-    head:async()=>(await base.getBlock({blockTag:'finalized'})).number,
+    // Keep the proof index warm even before anyone opens the phone or redeems.
+    head:async()=>(await source.indexFinalized()).finalizedNumber,
     events:async(fromBlock,toBlock)=>{
-      const events=await base.getLogs({address:config.redemption,event:redemptionAbi[4],fromBlock,toBlock});
-      return events.flatMap(e=>e.args.claimId&&e.args.owner?[{id:e.args.claimId,owner:e.args.owner}]:[]);
+      const result=[];
+      for(const proof of await source.events(fromBlock,toBlock)){
+        const claim=await client.readContract({...registrar,functionName:'claim',args:[proof.id]});
+        if(!claim.completed&&claim.owner.toLowerCase()===proof.owner.toLowerCase()&&keccak256(toHex(claim.label))===proof.labelHash)result.push({id:proof.id,owner:proof.owner});
+      }
+      return result;
     },
     complete:async({id,owner})=>{await service.fulfill(owner,id);},
   });

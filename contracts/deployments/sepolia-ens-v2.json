@@ -21,11 +21,7 @@
       "transactionHash": "0xbc1820effe74d3427324758ad242ee2d80e68bedfd7b6eb255fc19075142c32e"
     }
   },
-  "baseRedemption": {
-    "status": "pending-coordinated-maintenance"
-  },
   "contractSourceHashes": {
-    "ENSVoucherRedemption": "d1ce11c53ed585e1e6e615076545bbb493646ceceace34e6af5acb8fbf62cb85",
     "SlotENSRegistrar": "58a874b04f8b0a420256dd84937a9b3b0174a3366b6297372e23e10d97847723"
   },
   "confirmedTransactions": [
@@ -139,13 +135,24 @@
     "stagedWithoutDeployment": [
       "SEPOLIA_RPC_URL",
       "ENS_SUBREGISTRY_ADDRESS",
-      "ENS_DEPLOYMENT_BLOCK"
-    ],
-    "featureEnabled": false,
-    "remaining": [
+      "ENS_DEPLOYMENT_BLOCK",
       "ENS_REGISTRAR_ADDRESS",
-      "ENS_REDEMPTION_ADDRESS",
-      "ENS_REDEMPTION_BLOCK"
-    ]
+      "ENS_BASE_FROM_BLOCK"
+    ],
+    "enabledOnNextRelease": true,
+    "productionENSReleasePerformed": false,
+    "remaining": []
+  },
+  "baseVoucherProof": {
+    "mode": "erc1155-transfer-with-bound-claim",
+    "chainId": 8453,
+    "collection": "0x8D411D8efCDb0d528E4F6659B44223264Fd0B719",
+    "tokenId": 2,
+    "quantity": 1,
+    "destination": "0x000000000000000000000000000000000000dEaD",
+    "gasMode": "PRIVY_GAS_MODE (usdc with eth fallback by default)",
+    "fromBlock": 51230901,
+    "baseContractDeploymentRequired": false,
+    "submission": "player personal wallet (direct or verified Kernel UserOperation)"
   }
 }

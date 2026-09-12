@@ -1,27 +1,28 @@
 # ENSv2 voucher redemption
 
-The phone wallet can redeem one existing Base `SlotPrize1155` ENS Registration
+The phone wallet redeems one existing Base `SlotPrize1155` ENS Registration
 voucher (token ID 2) for a name under `wallstreetslot.eth` on **Ethereum Sepolia**.
-The parent name and Sepolia transactions use the existing backend EOA
-`0x8e251547f0fD650e0573711EF733F13eBA1505aD`, configured through
-`SLOT_BACKEND_PRIVATE_KEY`. The shared Privy admin wallet is not used.
-The player's personal Privy wallet receives ownership of the subname.
+Parent registration and Sepolia gas use the existing backend EOA
+`0x8e251547f0fD650e0573711EF733F13eBA1505aD` through the sealed
+`SLOT_BACKEND_PRIVATE_KEY`. The player's personal Privy wallet owns the subname.
+The shared Privy admin wallet is not involved.
 
-## Deployment status
+## Deployment and activation
 
-The implementation is opt-in. Empty `ENS_REGISTRAR_ADDRESS` disables the feature.
-The parent was registered on Sepolia with the existing backend EOA on September
-12, 2026 (UTC). The deployment manifest records public addresses, source hashes and
-confirmed receipts: [Sepolia deployment](../../../contracts/deployments/sepolia-ens-v2.json).
-Base redemption and production activation remain pending coordinated maintenance
-and the normal PR release workflow. No real player voucher has been consumed.
-ENSv2 is beta software; this integration pins the official Sepolia deployment
-from `ensdomains/contracts-v2` commit
+The parent, UserRegistry, parent resolver and `SlotENSRegistrar` are already
+live on Sepolia. Ownership and resolution were verified with the real
+`setup-check.wallstreetslot.eth` name. That operator smoke test used a synthetic
+attestation, not a real Base voucher. Public addresses, source hashes and the
+13 successful setup transactions are recorded in the
+[deployment manifest](../../../contracts/deployments/sepolia-ens-v2.json).
+ENSv2 beta addresses are pinned to `ensdomains/contracts-v2` commit
 `97a57293f3b4279d94b571e678edb53ce62638f4` in `lib/ens/upstream.json`.
 
-## Current activation state
+**No new Base contract is required.** App releases still follow the existing
+single-keeper deployment procedure. Release the app through a PR into `dev`, then a release PR from `dev` into `main`. This work
+branch is not authorization to merge or deploy production.
 
-Sepolia setup uses these public values:
+Configure these variables together before activation:
 
 | Variable | Value |
 | --- | --- |
@@ -29,170 +30,136 @@ Sepolia setup uses these public values:
 | `ENS_SUBREGISTRY_ADDRESS` | `0x6D9E4b4a02D966D460D5fFBA87fDE09a7Ba34b21` |
 | `ENS_REGISTRAR_ADDRESS` | `0x84f6ddfe529d5f38af2a95e38b6a23f9b4cdaa69` |
 | `ENS_DEPLOYMENT_BLOCK` | `11691693` |
+| `ENS_BASE_FROM_BLOCK` | `51230901` |
 
-The RPC, subregistry and deployment block were staged on Railway with
-`--skip-deploys`. `ENS_REGISTRAR_ADDRESS` is deliberately still unset there:
-setting it enables the feature and requires a deployed Base redemption contract
-and `ENS_REDEMPTION_ADDRESS` / `ENS_REDEMPTION_BLOCK` together. No production
-app deployment was performed as part of ENS setup.
+These five values are staged on Railway with `--skip-deploys`; production
+activation still requires the app release. The sealed backend key is unchanged.
 
-Base deployment requires the admin to pause the slot, drain active games and
-coordinate stopping backend writes. The existing backend does not have the
-slot's `PAUSER_ROLE`. Do not assert `--keeper-stopped` while it is still active.
-After Base deployment, configure all remaining values and release the phone
-implementation through the PR into `dev`, then the release PR into `main`.
+An empty `ENS_REGISTRAR_ADDRESS` disables ENS while keeping login/wallets working.
+Set `ENS_BASE_FROM_BLOCK` once and preserve it across restarts and releases:
+raising it can hide a player's unfinished transfer. Source scans use
+`SLOT_LOG_PAGE_BLOCKS` when set, otherwise 1000 blocks. Scans are bounded and
+report catch-up or RPC errors instead of claiming no voucher was transferred.
+Do not replace the existing sealed backend key or run a second keeper.
 
 ## Voucher semantics and costs
 
-The deployed prize collection has no burn function and is not upgradeable.
-`ENSVoucherRedemption` therefore **permanently locks** one existing token. It has
-no withdrawal, upgrade or owner-controlled rescue path. Do not describe this as
-an ERC1155 burn. A true burn would require a new voucher collection and a
-separate migration decision; existing slot prizes and their collection remain
-unchanged by this integration.
+The current ERC1155 collection has no public burn function and rejects transfers
+to the zero address. The user instead authorizes a direct `safeTransferFrom`
+of one token ID 2 to `0x000000000000000000000000000000000000dEaD`.
+This is a conventional discard address, not a burn function or a redemption
+contract. The token remains in that address's balance and supply does not shrink.
+Treat the transfer as irreversible; the application has no recovery path.
 
-The user explicitly authorizes a Base `safeTransferFrom` with the existing Privy
-request-signing flow. Base gas is still paid by the player in USDC with ETH
-fallback, or ETH according to `PRIVY_GAS_MODE`. Sepolia transactions are paid by
-the backend and require no Sepolia balance or network switch from the player.
+The phone asks for one voucher confirmation. Registration on Sepolia is free
+for the player: the existing backend EOA signs, sends and pays for every
+reservation and registration. The player needs no Sepolia funds or network switch.
+The Base voucher transfer is sent from the player's personal wallet through the
+existing Privy flow. Its network fee follows `PRIVY_GAS_MODE`: USDC with ETH
+fallback after a definite balance rejection by default, or ETH-only when
+configured. The review discloses this Base fee without an extra gas selector.
+There is no Privy App Pays requirement and no new funding or wallet delegation.
+
+**Use the phone redemption flow.** Generic/manual transfers to the discard
+address do not qualify. The source transaction must carry the exact versioned
+payload binding destination chain 11155111, the deployed registrar, claim ID and
+label hash. A direct transaction must originate from the authenticated beneficiary. For
+Privy ERC4337 transactions, the backend attributes the event to the successful
+UserOperation of that beneficiary using the EntryPoint execution boundaries,
+sender and nonce. Supported Kernel execution contains exactly one voucher call,
+optionally accompanied by a Base USDC gas approval. ERC1155 batch transfers,
+operator transfers, arbitrary call batches, other token IDs/quantities, another
+collection/registrar, extra calldata and mismatched receipts are rejected.
+Invalid transfers can still succeed on the ERC1155 contract and lose the token;
+validation of redemption eligibility is performed by this backend, not by Base.
 
 ## Flow and trust boundaries
 
-1. Authenticate the phone's Privy access token and select its personal wallet.
-2. Check a label (3–32 ASCII letters/digits/hyphens, no leading/trailing hyphen).
-3. After confirmation, the backend reserves a claim on `SlotENSRegistrar`.
-   One unfinished claim per wallet is allowed by the API. Names cannot be
-   changed after reservation, and reservations do not expire automatically.
-4. Review the exact name, one voucher, recipient wallet, permanent consumption
-   and Base fee currency. The backend signs a short-lived reservation permit
-   binding Base chain ID, redemption contract, collection, token ID, claim,
-   label and player. This signature grants no wallet access.
-5. The player authorizes the exact Privy request bytes. The Base contract
-   validates the permit and records `consumptions(claimId)` atomically with
-   receiving one voucher. Other collections, quantities, batches, expired
-   permits and replayed claims revert.
-6. Wait for **Base finalized state**, then verify the consumption again at that
-   finalized block. This may take several minutes. No new voucher is needed.
-7. The backend worker automatically attests that finalized
-   consumption to the Sepolia registrar, even if the phone is closed. The phone
-   also offers **Register name · Free** as an explicit retry. It creates an actual ENSv2 name, a
-   per-name PermissionedResolver proxy, the address record, and gives the
-   resolver roles to the player while revoking its own roles. This Sepolia
-   transaction is atomic and consumes the source identifier only once.
+1. Authenticate the phone's Privy access token and personal wallet.
+2. Select a 3–32 character ASCII label using letters, digits and internal hyphens.
+3. Confirm an onchain reservation on the existing Sepolia registrar. One
+   unfinished claim per wallet is allowed by the API; names cannot be changed
+   after reservation and reservations do not expire automatically.
+4. Review the irreversible Base transfer and authorize the exact Privy request
+   bytes. The API rechecks eligibility immediately before wallet submission and
+   shares the address-keyed write coordinator with spins/transfers.
+5. Find the canonical Base `TransferSingle` event and successful receipt. Check
+   transaction sender, target, calldata, collection, event contents and block
+   hash. Unfinalized proofs are reread rather than cached across reorgs.
+6. Wait for Base **finalized** state and revalidate the proof. The source ID is
+   `keccak256(abi.encode(uint256(8453), collection, txHash, uint256(logIndex)))`.
+   The transaction payload ties that source to exactly one reservation.
+7. The worker calls `SlotENSRegistrar.fulfill(claimId, sourceId)`. Its onchain
+   source deduplication prevents reuse. The call atomically registers the name,
+   creates its resolver, sets the address record, grants the player resolver
+   roles and revokes the registrar's resolver roles. The phone polls until the
+   registered name appears; the worker retries without another player action.
 
-This is a trusted backend relay, not a trustless bridge. Sepolia cannot read
-Base state by itself. The backend can attest source consumption and retains
-administrative control of the parent registry. A player owns their subname and
-its resolver, but continued namespace availability depends on the parent name,
-its renewal and the administrator's registry configuration.
+The backend is a trusted cross-chain attestor: Sepolia does not independently
+verify Base consensus. The backend also controls the parent namespace. The
+player owns the subname and resolver, but availability depends on the parent,
+its renewal and registry configuration.
 
-## Recovery and coordination
+## Recovery and operation
 
-Claims, voucher consumption, names and resolver permissions are persistent
-onchain state. A service restart after voucher consumption can reconstruct the
-claim without a database and complete it without consuming another token.
-Failed Sepolia registration rolls back source consumption in the registrar.
-Its reserve/fulfill calls are idempotent and reject changed beneficiaries or
-reused source identifiers.
+A worker in the existing always-on service scans finalized collection events
+from `ENS_BASE_FROM_BLOCK`, verifies that proofs match real reservations and
+retries incomplete claims even when the phone is closed. A restart reconstructs
+proofs and claims from both chains without a database or another token transfer.
+Completed claims are skipped. Pending events survive transient RPC failures by
+retrying the same page; unfinalized reorgs cannot authorize Sepolia fulfillment.
 
-The in-process worker scans finalized Base consumption events in bounded pages,
-retries pending claims, and rebuilds from the deployment block after restart.
-Completed claims are skipped through onchain state.
+ENS has one serialized Sepolia sender which retains the exact signed bytes on
+ambiguous submissions. Run one service replica. Player Base submissions use the
+existing Privy signing flow and coordinator; polling does not extend pairing.
+If a restart loses an ambiguous Privy request before its transaction reference
+is returned and no transfer is yet onchain, reconcile it in Privy before
+retrying. The phone retains its pending marker rather than silently resending.
 
-Run one existing always-on service replica. ENS has one serialized Sepolia
-sender. It preserves the exact signed transaction on ambiguous submission,
-checks pending nonces, and does not create a second transaction automatically.
-The Base voucher review uses the same address-keyed write coordinator as player
-spins/transfers. Polling does not extend a paired iPad session.
+The UI indexes names in this namespace, checks current ownership and displays
+forward resolution. It does not enumerate every Sepolia name or automatically
+set a primary/reverse name. Provider errors are never displayed as an empty
+verified name balance.
 
-Privy requests awaiting submission remain in memory, like the existing wallet
-flow. If the service restarts before returning a transaction reference and the
-voucher has not appeared onchain, manually reconcile that request in Privy
-before retrying. The phone deliberately retains its pending marker rather than
-silently sending again. This limit does not affect recovery of a voucher already
-recorded on Base. Do not clear pending markers merely because an RPC timed out.
+The API refuses transfer preparation if parent ownership changes, the configured
+expiry exceeds the parent's, or less than an hour remains. Renew the parent and
+call `SlotENSRegistrar.extendExpiry` for future registrations; existing child
+names need renewal through the registry separately.
 
-Labels/names are indexed in bounded registry event pages and ownership is checked
-against current registry state, including transfers. Stable label hashes are
-used instead of mutable ENSv2 token IDs. The UI lists this namespace, not every
-name on Sepolia; primary/reverse names are not changed automatically. RPC errors
-are reported as unavailable, never as a verified empty balance.
+## Operator scripts and validation
 
-## Setup
+From `apps/web`, `npm run ens:inspect` checks the parent read-only.
+`npm run ens:setup` registers/configures the parent only with explicit live
+transaction authorization and the existing backend key. The current deployment
+is already complete: when resuming operator setup, pass the existing registrar
+and registry addresses, plus `ENS_PARENT_RESOLVER` from the manifest, to avoid
+unnecessary deployments. Reconcile public receipts before retrying uncertain
+operations. Keep the sealed key where it resides; never export or log it.
 
-Obtain explicit authorization before live transactions and follow repository
-branch/PR rules. Do not deploy the web service from a work branch.
-
-From `apps/web`:
-
-```sh
-node scripts/build-ens-artifacts.mjs
-npm run ens:inspect
-npm run ens:setup
-```
-
-`ens:inspect` is read-only and works without a private key. `ens:setup` requires
-the existing backend key, rejects another wallet, checks chain ID 11155111, and
-uses the public RPC `https://ethereum-sepolia-rpc.publicnode.com` by default.
-Prefer running the operator script where the sealed key already exists.
-Do not print/copy that key into shell arguments, logs or committed files.
-
-The script registers the parent through ENSv2's commit/reveal registrar for one
-year, minting only the needed MockUSDC test payment token. When the commitment
-needs to mature, it returns a public `resumeAfter` timestamp; resume after it.
-It then creates and connects a UserRegistry, sets the parent address record,
-deploys `SlotENSRegistrar`, and grants only its registry registrar role.
-
-Record emitted public addresses immediately. Set `ENS_SUBREGISTRY_ADDRESS`,
-`ENS_PARENT_RESOLVER` (operator recovery only) and `ENS_REGISTRAR_ADDRESS` when
-resuming setup after their deployment. Unknown transaction outcomes require
-receipt reconciliation before rerunning. Setup never starts another Base keeper.
-
-Deploy `ENSVoucherRedemption(existingCollection, existingBackend)` on Base only
-within an authorized, coordinated maintenance window. The live Base keeper and
-an operator script must not race to allocate the same EOA nonce. The slot itself
-and its prize configuration do not need modification for permanent-lock
-redemption. Configure the new Base contract and its deployment block explicitly.
-
-Set the variables from `.env.example` after both deployments:
-
-- `SEPOLIA_RPC_URL`
-- `ENS_REGISTRAR_ADDRESS`, `ENS_SUBREGISTRY_ADDRESS`, `ENS_DEPLOYMENT_BLOCK`
-- `ENS_REDEMPTION_ADDRESS`, `ENS_REDEMPTION_BLOCK`
-
-Do not replace the sealed `SLOT_BACKEND_PRIVATE_KEY`. UserRegistry and parent
-ownership, deployment addresses, resolver permissions and source collection
-must match before enabling redemption. The API refuses voucher consumption
-within an hour of configured expiry, when it exceeds parent expiry, or when the
-parent has changed owners. After renewing the parent, the operator can extend
-future registration expiry via `SlotENSRegistrar.extendExpiry`; existing names
-need renewal through the registry separately.
-
-## Validation
+`npx tsx scripts/test-ens-live.ts` verifies the existing synthetic smoke name
+read-only when `ENS_REGISTRAR_ADDRESS` is set. Its `--apply` mode requires live
+transaction authorization and is not a real Base voucher test.
 
 ```sh
 npm test
 npm run build
 npm run test:chain
+npm run test:ens:chain
 npm run test:ens:browser
 forge test --root ../../contracts
 forge test --root ../../contracts --match-contract SlotENSForkTest \
   --fork-url https://ethereum-sepolia-rpc.publicnode.com
 ```
 
-The fork test uses actual ENSv2 factory, registry and resolver contracts with
-local state changes only. It is skipped in ordinary non-fork Foundry runs.
-Tests do not consume a real player's voucher or sign through live Privy.
-
-For an explicitly authorized live Sepolia smoke test, set
-`ENS_REGISTRAR_ADDRESS` from the manifest and run
-`npx tsx scripts/test-ens-live.ts --apply` where the existing backend key resides.
-It registers `setup-check.wallstreetslot.eth` for the backend using a clearly
-identified synthetic attestation. This checks the real registrar, ownership,
-resolver permissions and Universal Resolver, but does **not** test Base voucher
-consumption or live Privy authorization. Omit `--apply` to verify without writes.
+The dedicated Anvil test uses the actual collection bytecode to check the zero
+address rejection, discard transfer, receipt proof, restart recovery and reorg.
+The fork test exercises the actual ENSv2 factory, registry and resolver using
+local state changes only. Tests do not consume a real player's voucher or sign
+through live Privy. UserOperation proof fixtures cover the Privy Kernel wrapper
+and its USDC approval; a live player redemption has not been performed.
 
 Sources: [ENSv2 deployments](https://docs.ens.domains/learn/deployments/),
 [subname registrars](https://docs.ens.domains/ensv2/tutorial-contract-developers/),
 [resolver permissions](https://docs.ens.domains/ensv2/permissioned-resolver/),
-[indexing](https://docs.ens.domains/ensv2/indexing/).
+[ERC1155 transfer rules](https://eips.ethereum.org/EIPS/eip-1155),
+[Privy gas sponsorship](https://docs.privy.io/wallets/gas-and-asset-management/gas/overview).

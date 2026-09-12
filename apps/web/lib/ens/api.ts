@@ -45,6 +45,7 @@ export function createEnsApi({service,walletService,origin,gasMode='usdc',writes
       if(action==='prepare'){
         if(!isHex(body.claimId)||body.claimId.length!==66)throw new SlotError('Input','Invalid claim.',400);
         for(const [id,r] of reviews)if(r.stage==='prepared'&&r.expires<Date.now()){reviews.delete(id);writes.release(r.wallet.address.toLowerCase(),id);}
+        if([...reviews.values()].some(r=>r.wallet.id===wallet.id&&r.claimId===body.claimId&&['sending','submitted','uncertain'].includes(r.stage)))throw new SlotError('EnsPending','Your redemption is already being confirmed.',409);
         if(reviews.size>=256)throw new SlotError('EnsBusy','Too many pending ENS requests.',503);
         const claim=await service.getClaim(body.claimId,owner),id=randomBytes(32).toString('hex');
         await writes.acquire(owner.toLowerCase(),id,async()=>{
@@ -59,7 +60,7 @@ export function createEnsApi({service,walletService,origin,gasMode='usdc',writes
           reviews.set(id,r);
           // Expired, unsubmitted reviews must not lock spins/transfers indefinitely.
           const timer=setTimeout(()=>{if(r.stage==='prepared'){reviews.delete(id);writes.release(owner.toLowerCase(),id);}},91000);timer.unref();
-          return reply({id,claimId:r.claimId,name:claim.name,address:owner,quantity:1,gasMode,expires:r.expires});
+          return reply({id,claimId:r.claimId,name:claim.name,address:owner,quantity:1,registrationPayer:'backend',gasMode,expires:r.expires});
         }catch(error){writes.release(owner.toLowerCase(),id);throw error;}
       }
       const r=typeof body.id==='string'?reviews.get(body.id):undefined;
@@ -70,7 +71,8 @@ export function createEnsApi({service,walletService,origin,gasMode='usdc',writes
       }
       if(action==='status'){
         const claim=await service.getClaim(r.claimId,owner);
-        if(claim.stage!=='voucher'){writes.release(owner.toLowerCase(),r.id);reviews.delete(r.id);}
+        if(claim.stage!=='voucher')writes.release(owner.toLowerCase(),r.id);
+        if(claim.stage==='ready'||claim.stage==='registered')reviews.delete(r.id);
         if(r.submission&&walletService.resolveSpin){try{await walletService.resolveSpin(r.submission);}catch(error){if(definiteSendFailure(error)){r.stage='failed';writes.release(owner.toLowerCase(),r.id);}}}
         return reply({stage:r.stage,claim,submission:r.submission});
       }
@@ -78,14 +80,17 @@ export function createEnsApi({service,walletService,origin,gasMode='usdc',writes
       if(r.stage!=='prepared')return reply({stage:r.stage,submission:r.submission});
       if(r.expires<Date.now())throw new SlotError('EnsReview','Review expired. Prepare again.',409);
       if(!walletService.sendOwned)throw new SlotError('Config','Wallet signing unavailable.',503);
-      r.stage='sending';
+      r.stage='sending';let attempted=false;
       try{
         const assertValid=async()=>{const current=await walletService.authenticate(token);if(!current.wallets.some(w=>w.id===wallet.id&&w.address.toLowerCase()===owner.toLowerCase()))throw new SlotError('Auth','Wallet access changed.',403);};
         await assertValid();
+        const currentTransaction=await service.prepareVoucher(owner,r.claimId);
+        if(currentTransaction.to!==r.transaction.to||currentTransaction.data!==r.transaction.data||currentTransaction.chainId!==r.transaction.chainId)throw new SlotError('EnsReview','Voucher review changed. Prepare again.',409);
         // Both client confirmation and the exact Privy request bytes are authorized.
+        attempted=true;
         r.submission=await withWalletAuthorization(request,user,authorization=>walletService.sendOwned!(wallet,authorization,r.transaction,'ens-voucher:'+r.claimId,gasMode,()=>{},assertValid));
         r.stage='submitted';return reply({stage:r.stage,submission:r.submission});
-      }catch(error){r.stage=definiteSendFailure(error)?'failed':'uncertain';if(r.stage==='failed')writes.release(owner.toLowerCase(),r.id);throw error;}
+      }catch(error){r.stage=!attempted||definiteSendFailure(error)?'failed':'uncertain';if(r.stage==='failed')writes.release(owner.toLowerCase(),r.id);throw error;}
     }catch(error){
       if(error instanceof SlotError)return reply({error:error.message,code:error.code},error.status);
       // Provider errors can contain auth payloads, RPC endpoints and signatures.
