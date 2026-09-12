@@ -59,9 +59,9 @@
   var panel = document.createElement('div'); panel.className = 'demo-panel';
   var options = '<option value="random">Random · contract odds</option><option value="loss">No prize · 10.1%</option>';
   for (var symbol = 0; symbol < model.prizes.length; symbol++) {
-    var prize = model.prizes[symbol], label = symbol === 11 ? 'JACKPOT (GOLD)' : prize.label;
-    if (prize.three) options += '<option value="' + symbol + '-3">' + label + ' · 3/5 · ' + (prize.three / 10).toFixed(1) + '%</option>';
-    if (prize.five) options += '<option value="' + symbol + '-5">' + label + ' · 5/5 · ' + (prize.five / 10).toFixed(1) + '%</option>';
+    var prize = model.prizes[symbol], stock = prize.kind === 1 && symbol !== 11, label = symbol === 11 ? 'JACKPOT (GOLD)' : prize.label;
+    if (prize.three) options += '<option value="' + symbol + '-3">' + (stock ? prize.label + '_Dividend' : label + ' · 3/5') + ' · ' + (prize.three / 10).toFixed(1) + '%</option>';
+    if (prize.five) options += '<option value="' + symbol + '-5">' + (stock ? prize.label + '_Stock' : label + ' · 5/5') + ' · ' + (prize.five / 10).toFixed(1) + '%</option>';
   }
   panel.innerHTML = '<label for="demo-outcome">Next demo outcome</label><select id="demo-outcome">' + options + '</select><button id="demo-empty" class="text-button" type="button">Drain credits</button><button id="demo-reset" class="text-button" type="button">Reset demo</button>';
   document.querySelector('.control-panel').appendChild(panel);

@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 test('admin compares both balances, selects ERC1155 quantity and mint destination, and sees ownership limits',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.setViewportSize({width:1280,height:900});await page.goto('/inventory-fixture');
-  const gadget=page.locator('.collectible-card').filter({has:page.getByRole('heading',{name:'Gadget',exact:true})});
+  const gadget=page.locator('.collectible-card').filter({has:page.getByRole('heading',{name:'Hopera',exact:true})});
   await expect(gadget).toContainText('Shared wallet');await expect(gadget).toContainText('7 NFT');await expect(gadget).toContainText('10 NFT');await expect(gadget).toContainText('Reserved for spins');
   await gadget.getByRole('button',{name:'Deposit NFT'}).click();
   const form=page.getByRole('region',{name:'Prepare deposit or mint'});
