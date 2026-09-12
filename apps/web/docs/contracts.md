@@ -3,8 +3,9 @@
 The ABI matches [`../../../contracts/abi/DigitalSlotMachine.json`](../../../contracts/abi/DigitalSlotMachine.json),
 compiled from `contracts/src/DigitalSlotMachine.sol` in this monorepo.
 The source keccak256 is recorded in `lib/slot/abi.ts` and test fixtures.
-The contract source was not changed for the integration. No additional
-interfaces are required for the implemented flow.
+The constructor accepts a separate initial game manager so the deployment EOA
+can operate games without owning the contract. No additional interfaces are
+required for the implemented player flow.
 
 ## Two-stage flow
 
@@ -124,9 +125,15 @@ requiring persistent coordination.
 
 ## Configuration after deployment
 
+The current Base mainnet slot is
+[`0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c`](https://base.blockscout.com/address/0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c),
+deployed at block `51208577`. It uses native Base USDC and a `0.05 USDC`
+ticket. Addresses and transaction hashes are recorded in
+[`../../../contracts/deployments/base-mainnet.json`](../../../contracts/deployments/base-mainnet.json).
+
 ```dotenv
-SLOT_CONTRACT_ADDRESS=
-SLOT_DEPLOYMENT_BLOCK=
+SLOT_CONTRACT_ADDRESS=0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c
+SLOT_DEPLOYMENT_BLOCK=51208577
 SLOT_BACKEND_PRIVATE_KEY=
 BASE_RPC_URL=https://mainnet.base.org
 PRIVY_GAS_MODE=usdc
@@ -158,5 +165,6 @@ through allowance, but does not promise an atomic price lock between UI and mini
 ERC20, ERC1155, free spins, expiry, roles and keeper restart. Public Anvil keys
 are confined to tests; fixtures are not imported by the app.
 `npm run test:browser` verifies visual stages with controlled snapshots.
-The real deployment and new Privy transactions on Base still need testing once
-configuration is supplied: no real funds have been spent.
+The Base deployment is live but still has an empty prize catalog and zero
+prize inventory. Do not enable real spins until all prizes and weights are
+configured, funded and checked on-chain.
