@@ -24,7 +24,8 @@
     if (!view || view.status === 'disabled') {countdown.textContent = '';return;}
     if (view.status !== 'live' || Date.now() - received > 15000) {countdown.textContent = 'Waiting for connection';return;}
     var remaining = Math.max(0, view.remainingSeconds - Math.floor((Date.now() - received) / 1000));
-    countdown.textContent = remaining ? (view.season ? 'Next season · ' : 'First season · ') + Math.floor(remaining / 60) + ':' + ('0' + remaining % 60).slice(-2) : 'Waiting for season change';
+    var formatted = remaining >= 86400 ? Math.floor(remaining / 86400) + 'd ' + Math.floor(remaining % 86400 / 3600) + 'h ' + Math.floor(remaining % 3600 / 60) + 'm' : remaining >= 3600 ? Math.floor(remaining / 3600) + 'h ' + Math.floor(remaining % 3600 / 60) + 'm ' + remaining % 60 + 's' : Math.floor(remaining / 60) + ':' + ('0' + remaining % 60).slice(-2);
+    countdown.textContent = remaining ? (view.season ? 'Next season · ' : 'First season · ') + formatted : 'Waiting for season change';
   }
   function render(next) {
     view = next; received = Date.now();
@@ -38,7 +39,7 @@
       wins.textContent = String(row.wins);points.textContent = String(row.points);
       tr.appendChild(player);tr.appendChild(wins);tr.appendChild(points);rows.appendChild(tr);
     }
-    if (!view.rows.length && view.status === 'live' && view.season) status.textContent = 'No spins in this season yet.';
+    if (!view.rows.length && view.status === 'live' && view.season && !view.indexing) status.textContent = 'No spins in this season yet.';
     clock();
   }
   function connect() {

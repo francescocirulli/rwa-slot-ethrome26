@@ -71,7 +71,7 @@ Use Railway service variables. The full list, with explanations, is in
   `ARKIV_API_KEY`, and the expected public `ARKIV_WRITER_ADDRESS`. Keep the sealed
   `SLOT_BACKEND_PRIVATE_KEY` unchanged. Set a fixed `ARKIV_SEASON_ANCHOR_BLOCK`
   on Tiramisu and `ARKIV_BASE_FROM_BLOCK` on Base at activation; preserve both
-  across restarts. `ARKIV_SEASON_BLOCKS=60` gives roughly two-minute demo seasons,
+  across restarts. `ARKIV_SEASON_BLOCKS=1296000` gives roughly 30-day seasons (60 for the demo),
   with `ARKIV_HISTORY_DAYS=30` for spin history. The writer needs GLM on Tiramisu.
   Base ingestion drains bounded pages serially while catching up, then checks
   every eight seconds. See [Arkiv setup](../arkiv/README.md).

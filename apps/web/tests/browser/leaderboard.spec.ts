@@ -7,6 +7,9 @@ test('iPad and phone share pushed standings; countdown cannot invent a season re
   const phone=await context.newPage();await phone.setViewportSize({width:390,height:844});
   const requests:string[]=[];page.on('request',req=>{if(req.url().includes('/api/leaderboard'))requests.push(req.url());});
   await page.goto('/');await phone.goto('/phone-fixture');
+  const shortcut=phone.getByRole('navigation',{name:'Phone sections'}).getByRole('link',{name:'Leaderboard ↗'});
+  await expect(shortcut).toBeInViewport();await shortcut.click();
+  await expect(phone.getByRole('region',{name:'Season leaderboard'})).toBeInViewport();
   await page.getByRole('button',{name:'Season leaderboard',exact:true}).click();
   await expect(page.locator('#leaderboard-rows')).toContainText('100');
   await expect(phone.getByRole('region',{name:'Season leaderboard'})).toContainText('100');
@@ -21,6 +24,9 @@ test('iPad and phone share pushed standings; countdown cannot invent a season re
   await expect(page.locator('#leaderboard-rows tr')).toHaveCount(0);
   await expect(phone.getByRole('region',{name:'Season leaderboard'})).toContainText('No spins in this season yet.');
   expect(requests).toEqual(['http://localhost:3101/api/leaderboard/stream']);
+  await request.post('/fixture/season',{data:{...season('3'),remainingSeconds:2591990}});
+  await expect(page.locator('#leaderboard-countdown')).toContainText('29d 23h 59m');
+  await expect(phone.getByRole('region',{name:'Season leaderboard'})).toContainText('29d 23h 59m');
   await page.screenshot({path:'artifacts/arkiv-season-ipad.png'});
   await phone.getByRole('region',{name:'Season leaderboard'}).screenshot({path:'artifacts/arkiv-season-phone.png'});
   await page.locator('#leaderboard-close').click();await expect(page.locator('#leaderboard-dialog')).toBeHidden();

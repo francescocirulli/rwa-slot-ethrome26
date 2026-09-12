@@ -89,3 +89,26 @@ with a dated change log and explicit controlling source, would remove uncertaint
 
 These are not reported as passed. The branch includes read-only diagnostic and
 expiry-evidence scripts, setup instructions and automated local coverage.
+
+## Live write failure: uppercase attribute names (2026-09-12)
+
+Environment: SDK 0.8.1, Tiramisu chain 7738577. The initial production query and
+WebSocket checks passed, but the first confirmed Base round (#17, block 51229696)
+was not stored. Gas estimation for a create batch failed before broadcast because
+`gameId` contains uppercase `I` at byte 4. The SDK's `EntityMutationError` claimed
+that `A-Z` was part of the accepted charset, contradicting the deployed node.
+The same fields had been accepted in read predicates, so an empty query was not
+a sufficient write compatibility check.
+
+Reproduction: build a create with a `gameId` attribute and estimate `execute`
+against the entity contract. The node returns a name-character revert. Rename
+attributes to lowercase snake_case (`game_id`, `source_chain`, `played_at`,
+`prize_kind`, `season_end`): the same confirmed result then passes gas estimation.
+The diagnostic transport blocks broadcast, so no duplicate transaction is sent.
+
+Workaround: use lowercase attribute names consistently in writes and queries;
+keep camelCase only inside JSON payloads. No existing Arkiv entities required
+migration because every attempted production create had failed before broadcast.
+The Base replay cursor remains at the original activation block, allowing recovery.
+Read-only connectivity checks should be complemented by create gas estimation;
+SDK charset validation and revert explanations should match the live node.
