@@ -34,3 +34,21 @@ test('swap user-operation recovery respects capped RPC ranges and advances a fiv
     await chain.userOperation(hash,wallet,first.nextBlock);assert.deepEqual(ranges,[[1n,5n],[6n,10n]]);
   }finally{if(saved===undefined)delete process.env.SLOT_LOG_PAGE_BLOCKS;else process.env.SLOT_LOG_PAGE_BLOCKS=saved;}
 });
+
+test('daily quota errors fall back for shared and slot reads; real transaction rejections remain terminal',async()=>{
+  const {createSlotReader}=await import('../lib/slot/reader');
+  let message='daily request limit reached - upgrade your account',secondaryCalls=0;
+  const primary=createServer(async(req,res)=>{const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk));const payload=JSON.parse(Buffer.concat(chunks).toString());const reply=(x:{id:number})=>({id:x.id,jsonrpc:'2.0',error:{code:-32003,message}});res.setHeader('Content-Type','application/json');res.end(JSON.stringify(Array.isArray(payload)?payload.map(reply):reply(payload)));});
+  const secondary=createServer(async(req,res)=>{secondaryCalls++;const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk));const payload=JSON.parse(Buffer.concat(chunks).toString());const reply=(x:{id:number})=>({id:x.id,jsonrpc:'2.0',result:'0x64'});res.setHeader('Content-Type','application/json');res.end(JSON.stringify(Array.isArray(payload)?payload.map(reply):reply(payload)));});
+  await Promise.all([new Promise<void>(r=>primary.listen(0,'127.0.0.1',r)),new Promise<void>(r=>secondary.listen(0,'127.0.0.1',r))]);
+  const url=(s:typeof primary)=>'http://127.0.0.1:'+(s.address() as {port:number}).port;
+  const saved=process.env.BASE_RPC_FALLBACK_URLS;process.env.BASE_RPC_FALLBACK_URLS=url(secondary);
+  try{
+    const slot=createSlotReader({address:'0x0000000000000000000000000000000000000011',paymentToken:'0x0000000000000000000000000000000000000022',deploymentBlock:1n,chainId:8453,rpcUrl:url(primary),rpcUrls:[url(primary),url(secondary)],confirmations:2,gasMode:'eth'});
+    const clients=[createBaseReadClient(url(primary)),slot.client];
+    for(const client of clients)assert.equal(await client.getBlockNumber({cacheTime:0}),100n);
+    assert.equal(secondaryCalls,2);message='transaction rejected';
+    for(const client of clients)await assert.rejects(client.getBlockNumber({cacheTime:0}));
+    assert.equal(secondaryCalls,2);
+  }finally{if(saved===undefined)delete process.env.BASE_RPC_FALLBACK_URLS;else process.env.BASE_RPC_FALLBACK_URLS=saved;primary.closeAllConnections();secondary.closeAllConnections();await Promise.all([new Promise(r=>primary.close(r)),new Promise(r=>secondary.close(r))]);}
+});

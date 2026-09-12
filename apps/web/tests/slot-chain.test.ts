@@ -178,7 +178,7 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
       const collection=await deploy(artifact.abi,artifact.bytecode.object,[owner.address]);
       const fundedSlot=await deploy(slotAbi,fixtures.slotBytecode,[owner.address,keeper.address,payment,1000000n]);
       const block=await client.getBlockNumber({cacheTime:0});
-      const fundingReader=createSlotReader({...config,address:fundedSlot,deploymentBlock:block,prizeCollection:collection});
+      const fundingReader=createSlotReader({...config,rpcUrl:'http://127.0.0.1:1',rpcUrls:['http://127.0.0.1:1',rpc],address:fundedSlot,deploymentBlock:block,prizeCollection:collection});
       const fundingEngine=createSlotEngine(fundingReader,toHex(keeper.getHdKey().privateKey!) as Hex);
       const slotWrite=async(functionName:string,args:unknown[]=[])=>{const h=await adminWallet.writeContract({address:fundedSlot,abi:slotAbi as Abi,functionName,args});await client.waitForTransactionReceipt({hash:h});};
       const reviewed=async(action:string,args:string[])=>{const tx=await prepareAction(fundingReader,owner.address,action,args);const h=await adminWallet.sendTransaction({to:tx.to,data:tx.data,value:0n});assert.equal((await client.waitForTransactionReceipt({hash:h})).status,'success');};
