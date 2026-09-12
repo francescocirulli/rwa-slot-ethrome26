@@ -15,7 +15,7 @@ function Fixture(){
   ]}} as never;
   return <main className="admin-main" style={{margin:0,padding:24}}>
     <output data-testid="submitted">{submitted.join('\n')}</output>
-    <AdminAssets tab="swap" address={address} userId="did:privy:test" slot={slot} contractBusy={false} canDeposit onDeposit={async(action,args)=>{setSubmitted(previous=>[...previous,JSON.stringify({action,args})]);}} onRefresh={()=>{}} onSwapBusy={()=>{}} onConfigure={()=>{}}/>
+    <AdminAssets tab="swap" address={address} userId="did:privy:test" slot={slot} contractBusy={false} canDeposit onDeposit={async(action,args)=>{const response=await fetch('/fixture/deposit',{method:'POST',body:JSON.stringify({action,args})});if(!response.ok)throw new Error('Deposit failed');setSubmitted(previous=>[...previous,JSON.stringify({action,args})]);}} onRefresh={()=>{}} onSwapBusy={()=>{}} onConfigure={()=>{}}/>
   </main>;
 }
 createRoot(document.getElementById('root')!).render(<Fixture/>);

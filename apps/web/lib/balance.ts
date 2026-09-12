@@ -1,9 +1,8 @@
-import {createPublicClient, erc20Abi, formatUnits, http} from 'viem';
-import {base} from 'viem/chains';
+import {erc20Abi, formatUnits} from 'viem';
 import {USDC, type Balance} from './types';
+import {createBaseReadClient} from './base-read-client';
 
-export function createBalanceReader(url = 'https://mainnet.base.org') {
-  const client = createPublicClient({chain: base, transport: http(url, {timeout: 8_000, retryCount: 0})});
+export function createBalanceReader(url = 'https://mainnet.base.org',client=createBaseReadClient(url)) {
   const cache = new Map<string, Balance & {checkedAt: number}>();
   const pending = new Map<string, Promise<Balance>>();
   return async (address: string): Promise<Balance> => {

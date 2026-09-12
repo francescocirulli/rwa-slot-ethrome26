@@ -36,10 +36,41 @@
   function toolState(id, on, label) {var button = el(id); button.classList.toggle('is-on', on); button.setAttribute('aria-label', label); button.title = label; var caption = button.querySelector('small'); if (caption && button.getAttribute('data-caption')) caption.textContent = on ? button.getAttribute('data-caption') : caption.getAttribute('data-default') || caption.textContent;}
   function audioLabel() {toolState('audio-enable', !!(audioEnabled && audio && audio.state === 'running'), audioEnabled && audio && audio.state === 'running' ? 'Sound on' : 'Sound off');}
   el('audio-enable').onclick = function () {if (audioEnabled && audio && audio.state === 'running') {audioEnabled = false; audio.suspend(); audioLabel();} else unlockAudio();};
+  // Browsers only start audio after a real touch, and the motion sensor is not one: the first touch anywhere
+  // on the page arms the sound for the session, and the Sound button still mutes it.
+  var armed = false;
+  function armAudio(event) {if (armed || event.isTrusted === false) return; armed = true; if (!audioEnabled) unlockAudio();}
+  document.addEventListener('touchstart', armAudio, {passive: true}); document.addEventListener('mousedown', armAudio);
+  // Attract show: when the cabinet sees someone, the reels vibrate in place, the lights run, props rise
+  // over the glass and a short tune plays (only after the Sound button unlocked audio). Display only.
+  var attractTimer, tuneTimer, tuneRound = 0;
+  function attractTune() {
+    if (!audioEnabled || !audio || audio.state !== 'running' || active) return;
+    var notes = [523, 659, 784, 1047, 784, 659, 523, 392, 523, 659, 784, 1047, 1319, 1047, 784, 1047];
+    for (var i = 0; i < notes.length; i++) tone(notes[i], i * 0.19, 0.22, 0.07);
+    tone(1568, notes.length * 0.19, 0.6, 0.08);
+    if (++tuneRound < 3) tuneTimer = window.setTimeout(attractTune, notes.length * 190 + 900);
+  }
+  function hideAttract() {
+    window.clearTimeout(attractTimer); window.clearTimeout(tuneTimer); tuneRound = 3;
+    document.documentElement.classList.remove('attract-on'); el('attract').hidden = true;
+  }
+  function showAttract() {
+    var fx = el('attract-fx'); fx.innerHTML = '';
+    for (var i = 0; i < 24; i++) {
+      var kind = i % 3, piece;
+      if (kind === 0) {piece = document.createElement('img'); piece.src = '/decor/gold.svg'; piece.alt = ''; piece.style.width = (22 + Math.random() * 22) + 'px';}
+      else {piece = document.createElement('span'); piece.textContent = kind === 1 ? '$' : '★'; piece.className = kind === 1 ? 'dollar' : 'star'; piece.style.fontSize = (16 + Math.random() * 18) + 'px';}
+      piece.style.left = (2 + Math.random() * 94) + '%'; piece.style.animationDelay = (Math.random() * 2) + 's'; fx.appendChild(piece);
+    }
+    document.documentElement.classList.add('attract-on'); el('attract').hidden = false;
+    tuneRound = 0; window.clearTimeout(tuneTimer); attractTune();
+    window.clearTimeout(attractTimer); attractTimer = window.setTimeout(hideAttract, 12000);
+  }
   function wake() {
     if (active || busy) return;
     awakeUntil = Date.now() + 45000;
-    if (Date.now() - lastAttract > 9000) {lastAttract = Date.now(); phase = 'attract'; effectUntil = Date.now() + 9000; melody(2, false);}
+    if (Date.now() - lastAttract > 9000) {lastAttract = Date.now(); phase = 'attract'; effectUntil = Date.now() + 9000; showAttract();}
     drawAttract();
   }
   // There is no attract screen any more: motion only drives cabinet lights and the LCD, the slot is always visible.
@@ -47,7 +78,7 @@
   window.addEventListener('slot-session', function (event) {
     var nextActive = !!event.detail && event.detail.state !== 'pending';
     if (active && !nextActive) {awakeUntil = 0; phase = 'idle'; effectUntil = 0; ready = false; gate = '';}
-    active = nextActive; drawAttract();
+    active = nextActive; if (active) hideAttract(); drawAttract();
   });
   window.addEventListener('slot-game', function (event) {
     var data = event.detail;
