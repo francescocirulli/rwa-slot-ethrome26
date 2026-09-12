@@ -1,3 +1,4 @@
+import {fixtureOrigin} from './origin';
 import {test, expect, type Page, type BrowserContext, type Browser} from '@playwright/test';
 import {pairingSecret} from '../fixtures';
 
@@ -6,12 +7,12 @@ async function link(page: Page, phone: BrowserContext) {
   await expect(page.locator('#login-qr')).toBeVisible();
   const secret = pairingSecret((await page.locator('#login-qr').getAttribute('src'))!);
   const code = (await page.locator('#pair-code').textContent())!.replace(/ /g, '');
-  const result = await phone.request.post('http://localhost:3101/api/relay/approve', {data: {secret, code}});
+  const result = await phone.request.post(fixtureOrigin+'/api/relay/approve', {data: {secret, code}});
   expect(result.ok()).toBeTruthy();
   await expect(page.locator('#wallet-panel')).toBeVisible();
 }
 async function phoneContext(browser: Browser) {
-  return browser.newContext({extraHTTPHeaders: {Authorization: 'Bearer player-a', Origin: 'http://localhost:3101', 'X-Slot-Request': '1'}});
+  return browser.newContext({extraHTTPHeaders: {Authorization: 'Bearer player-a', Origin: fixtureOrigin, 'X-Slot-Request': '1'}});
 }
 
 test('real pairing UI, wallet, receive QR, verified signature and logout at iPad sizes', async ({page, browser}) => {
@@ -31,8 +32,8 @@ test('real pairing UI, wallet, receive QR, verified signature and logout at iPad
     const size = await page.evaluate(() => ({document: document.documentElement.scrollHeight, viewport: innerHeight}));
     expect(size.document, JSON.stringify(size)).toBeLessThanOrEqual(size.viewport);
   }
-  await phone.request.post('http://localhost:3101/api/relay/phone/prepare', {data: {}});
-  await phone.request.post('http://localhost:3101/api/relay/phone/activate', {data: {}});
+  await phone.request.post(fixtureOrigin+'/api/relay/phone/prepare', {data: {}});
+  await phone.request.post(fixtureOrigin+'/api/relay/phone/activate', {data: {}});
   await expect(page.locator('#sign-button')).toBeEnabled();
   await phone.close();
   await page.locator('#sign-button').click();
@@ -89,7 +90,7 @@ test('reload restores the connected wallet without issuing a new QR and keeps pe
   await expect(page.locator('#login-qr')).toBeHidden();
   await expect(page.locator('#balance')).toHaveText('128.50');
   expect(requests).not.toContain('/api/relay/pair');
-  await phone.request.post('http://localhost:3101/api/relay/phone/logout', {data: {}});
+  await phone.request.post(fixtureOrigin+'/api/relay/phone/logout', {data: {}});
   await expect(page.locator('#login-qr')).toBeVisible();
   await expect(page.locator('#session-feedback')).toContainText('session was closed');
   await expect(page.locator('#balance')).not.toHaveAttribute('title');
@@ -99,8 +100,8 @@ test('reload restores the connected wallet without issuing a new QR and keeps pe
 test('offline connected state blocks signing, recovers on reconnect, and does not masquerade as logout', async ({page, context, browser}) => {
   const phone = await phoneContext(browser);
   await link(page, phone);
-  await phone.request.post('http://localhost:3101/api/relay/phone/prepare', {data: {}});
-  await phone.request.post('http://localhost:3101/api/relay/phone/activate', {data: {}});
+  await phone.request.post(fixtureOrigin+'/api/relay/phone/prepare', {data: {}});
+  await phone.request.post(fixtureOrigin+'/api/relay/phone/activate', {data: {}});
   await expect(page.locator('#sign-button')).toBeEnabled();
   await context.setOffline(true);
   await expect(page.locator('body')).toHaveAttribute('data-wallet-state', 'offline');
@@ -122,7 +123,7 @@ test('onchain slot spins through both transactions, waits for finality, maps row
   const symbols = [1,1,0,0,2,0,2,1,2,0,2,0,2,1,1];
   let sessionId = '';
   await page.route('**/api/relay/tablet/game', async route => {
-    const response = await page.request.get('http://localhost:3101/api/relay/tablet');
+    const response = await page.request.get(fixtureOrigin+'/api/relay/tablet');
     const session = await response.json(); sessionId = session.id;
     const game = phase === 'idle' ? null : {id:'1',player:session.address,pending:phase==='waiting'||phase==='revealable',hasResult:phase==='confirming'||phase==='complete',confirmed:phase==='complete',won:true,status:phase==='waiting'?'waiting':phase==='revealable'?'revealable':'won',targetBlock:'105',revealDeadline:'361',symbols,matchCount:5,winningLine:1,winningSymbol:1,payout:{kind:3,formattedAmount:'2',tokenSymbol:null},transactionHash:'0x'+'a'.repeat(64)};
     await route.fulfill({json:{configured:true,funding:{ready:true,assets:[]},sessionId:session.id,block:phase==='waiting'?'103':'107',settings:{ticketPrice:'1000000',paused:false,totalOutcomeWeight:1000,configuredPrizeCount:3},keeper:{configured:true,canStartFreeSpin:true,balanceWei:'1000000000000000'},player:{address:session.address,freeSpins:'2',allowance:'0',balance:'128500000',latestGameId:phase==='idle'?'0':'1',historyReady:true,game,operation:null}}});
@@ -170,7 +171,7 @@ test('free-spin counter waits for the welcome grant, tracks spending and hides s
   const phone = await phoneContext(browser);
   let credits = '0', granted = false;
   await page.route('**/api/relay/tablet/game', async route => {
-    const response = await page.request.get('http://localhost:3101/api/relay/tablet');
+    const response = await page.request.get(fixtureOrigin+'/api/relay/tablet');
     const session = await response.json();
     await route.fulfill({json: {configured: true, funding:{ready:true,assets:[]}, sessionId: session.id, block: '107', settings: {ticketPrice: '1000000', paused: false, totalOutcomeWeight: 1000, configuredPrizeCount: 3}, keeper: {configured: true, canStartFreeSpin: true, balanceWei: '1000000'}, player: {address: session.address, freeSpins: credits, allowance: '0', balance: '0', latestGameId: '0', historyReady: true, game: null, operation: null, welcome: {status: granted ? 'granted' : 'pending', amount: '2'}}}});
   });
@@ -208,7 +209,7 @@ test('minimal polling needs no reserves or history and keeps confirmed Gold resu
   const phone=await phoneContext(browser);
   let unavailable=false,won=false;
   await page.route('**/api/relay/tablet/game',async route=>{
-    const response=await page.request.get('http://localhost:3101/api/relay/tablet');const session=await response.json();
+    const response=await page.request.get(fixtureOrigin+'/api/relay/tablet');const session=await response.json();
     const game=won?{id:'2',pending:false,hasResult:true,confirmed:true,won:true,status:'won',symbols:Array(15).fill(11),matchCount:5,winningLine:0,winningSymbol:11,payout:{kind:1,token:'0xe908475f8beb7a138b0dc6eb5a05cb27068ffb9a',formattedAmount:'0.01',tokenSymbol:'DGLD'},transactionHash:'0x'+'b'.repeat(64)}:null;
     await route.fulfill({json:{configured:true,sessionId:session.id,block:'120',settings:{ticketPrice:'1000000',paused:false,totalOutcomeWeight:1000,configuredPrizeCount:3},keeper:{configured:true,canStartFreeSpin:true,balanceWei:'1000000'},player:{gameUnavailable:unavailable,busy:unavailable,freeSpins:'2',allowance:'10000000',balance:'20000000',latestGameId:won?'2':'0',historyReady:true,game,operation:null}}});
   });
@@ -237,7 +238,7 @@ test('a rejected preflight never spins the reels and its error survives polling'
   let release!:()=>void;
   const gate=new Promise<void>(resolve=>{release=resolve;});
   await page.route('**/api/relay/tablet/game',async route=>{
-    const response=await page.request.get('http://localhost:3101/api/relay/tablet');const session=await response.json();sessionId=session.id;polls++;
+    const response=await page.request.get(fixtureOrigin+'/api/relay/tablet');const session=await response.json();sessionId=session.id;polls++;
     await route.fulfill({json:{configured:true,sessionId,block:'100',settings:{ticketPrice:'50000',paused:false,totalOutcomeWeight:1000,configuredPrizeCount:15},keeper:{configured:true,canStartFreeSpin:true,balanceWei:'1000000'},player:{freeSpins:'4',allowance:'0',balance:'0',latestGameId:'0',busy:false,game:null,operation}}});
   });
   await page.route('**/api/relay/tablet/spin',async route=>{
@@ -271,7 +272,7 @@ test('reserve availability blocks input without hiding credits or confirmed resu
   let state='checking',submissions=0,won=false,balance='0';
   await page.addInitScript(()=>window.addEventListener('slot-session',event=>{const data=(event as CustomEvent).detail;if(data)data.playGrant={active:true};}));
   await page.route('**/api/relay/tablet/game',async route=>{
-    const response=await page.request.get('http://localhost:3101/api/relay/tablet');const session=await response.json();
+    const response=await page.request.get(fixtureOrigin+'/api/relay/tablet');const session=await response.json();
     const game=won?{id:'1',pending:false,hasResult:true,confirmed:true,won:false,status:'lost',symbols:Array(15).fill(2),matchCount:0,winningLine:0,winningSymbol:0,payout:null}:null;
     await route.fulfill({json:{configured:true,sessionId:session.id,block:'104',prizeAvailability:{state},settings:{ticketPrice:'50000',revealDelayBlocks:'2',paused:false,totalOutcomeWeight:1000,configuredPrizeCount:15},keeper:{configured:true,canStartFreeSpin:true,balanceWei:'1000000'},player:{freeSpins:'4',allowance:'1000000',balance,latestGameId:won?'1':'0',busy:false,game,operation:null}}});
   });

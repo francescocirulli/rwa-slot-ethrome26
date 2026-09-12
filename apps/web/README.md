@@ -270,7 +270,9 @@ Terminal browser tests use test pairing APIs and controlled onchain snapshots.
 They verify both transaction stages, confirmations, the row-major grid, winning
 line, logout and 1024×768 / 1024×650 layouts. Backend tests cover authentication,
 exact budgets, isolation and revocation during asynchronous operations.
-All terminal bundles are checked for ES5 compatibility.
+All terminal bundles are checked for ES5 compatibility. To test an isolated
+worktree without colliding with another fixture server, use
+`FIXTURE_PORT=3190 npm run test:browser` from `apps/web`.
 
 Manual checks in `scripts/live-privy-check.mjs` and `scripts/live-admin-check.mjs`
 create test Privy accounts with virtual passkeys and empty wallets. They neither
@@ -409,3 +411,19 @@ Sepolia gas. Existing Base ENS vouchers are transferred to `0x000000000000000000
 the player's Base transfer follows the app's existing USDC/ETH fee mode.
 The phone confirms the voucher once, then follows backend registration automatically.
 See [ENS setup, costs and recovery](docs/ens.md) before enabling the feature.
+
+### Game Explorer and personal statistics
+
+The iPad **Explore** tool and phone **Explorer** navigation open a shared, responsive
+ES5 workspace. Search confirmed Arkiv records with combined time, wallet, result,
+match, winning-symbol and prize filters; open a spin to inspect its original 15-symbol
+grid and Base receipt. **My summary** shows the connected player's spins, wins,
+points and result distributions. Current-season totals use the same expiring
+contributions as the leaderboard; 24-hour, 7-day and 30-day windows use retained
+history. These are explicit-refresh snapshots, not financial return calculations.
+
+`GET /api/explorer` is a public read-only endpoint. It validates typed filter inputs,
+walks all pages at one block before calculating totals, and exposes 25-row pages.
+The 5,000-record ceiling returns an error asking for narrower filters. No new secrets,
+contract deployments or database migrations are needed. Tests live in
+`tests/explorer.test.ts` and `tests/browser/explorer.spec.ts`.

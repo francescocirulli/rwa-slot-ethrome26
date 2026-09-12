@@ -100,6 +100,7 @@ export function createSeasonService(config:ArkivConfig, store:ArkivStore, reader
       return ()=>{listeners.delete(listener);};
     },
     history:store.history,
+    explore:store.explore,
     stop() {stopped=true;for(const stop of unwatch) stop();if(scanTimer) clearTimeout(scanTimer);clearInterval(watchdog);listeners.clear();},
   };
 }

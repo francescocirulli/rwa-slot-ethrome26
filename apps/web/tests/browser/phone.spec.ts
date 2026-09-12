@@ -1,3 +1,4 @@
+import {fixtureOrigin} from './origin';
 import {test,expect,type Page} from '@playwright/test';
 import QRCode from 'qrcode';
 import {WALLET_ASSETS,NFT_PRIZES} from '../../lib/assets';
@@ -11,7 +12,7 @@ async function setup(page:Page,{paired=false,busy=false,unavailable=false,playAc
   await page.route('**/api/relay/**',async route=>{
     const path=new URL(route.request().url()).pathname;
     if(path.endsWith('/phone/logout')){connected=false;return route.fulfill({json:{ok:true}});}
-    if(path.endsWith('/lookup'))return route.fulfill({json:{code:'123456',origin:'http://localhost:3101',expiresAt:Date.now()+300000}});
+    if(path.endsWith('/lookup'))return route.fulfill({json:{code:'123456',origin:fixtureOrigin,expiresAt:Date.now()+300000}});
     if(path.endsWith('/approve')){connected=true;return route.fulfill({json:session()});}
     if(path.endsWith('/phone/activity'))return route.fulfill({json:{...session(),sessionId:'fixture-session'}});
     if(path.endsWith('/phone/play/prepare'))return route.fulfill({json:{...session(),playGrant:{active:false,budget:'5000000',signerId:'fixture',policyId:'fixture'}}});
@@ -78,7 +79,7 @@ test('pending spin disables wallet writes; unavailable reads never look like zer
 
 test('camera scanner decodes the iPad QR locally, stops the camera and requires explicit pairing confirmation',async({page})=>{
   await setup(page);
-  const secret='a'.repeat(64),picture=await QRCode.toDataURL('http://localhost:3101/phone#pair='+secret,{width:512,margin:4});
+  const secret='a'.repeat(64),picture=await QRCode.toDataURL(fixtureOrigin+'/phone#pair='+secret,{width:512,margin:4});
   await page.addInitScript(({picture})=>{
     (window as any).cameraRequests=0;
     Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:async()=>{
@@ -108,7 +109,7 @@ test('denied camera offers local photo scanning and rejects a foreign pairing or
   await page.locator('input[type=file]').setInputFiles(await image('https://other.example'));
   await expect(page.getByText('Scansiona il QR mostrato da questa app sull’iPad.')).toBeVisible();
   await expect(page.getByRole('button',{name:'Link the wallet'})).toBeHidden();
-  await page.locator('input[type=file]').setInputFiles(await image('http://localhost:3101'));
+  await page.locator('input[type=file]').setInputFiles(await image(fixtureOrigin));
   await expect(page.getByLabel('The code matches.')).toBeVisible();await expect(page.getByRole('dialog')).toBeHidden();
 });
 

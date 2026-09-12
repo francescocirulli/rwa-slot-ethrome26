@@ -5,7 +5,8 @@ import {eq, gte, type Expression} from '@arkiv-network/sdk/query';
 import {http, webSocket, keccak256, type Hash} from 'viem';
 import {privateKeyToAccount} from 'viem/accounts';
 import type {ArkivConfig} from './config';
-import {pointsFor, type Contribution, type Season} from './model';
+import {pointsFor, seasonAt, type Contribution, type Season} from './model';
+import {collectResults, explorerPlan, summarize, ExplorerError, type ExplorerFilters} from './explorer';
 import type {SlotReader} from '../slot/reader';
 import {serializable} from '../slot/config';
 
@@ -70,6 +71,34 @@ export function createArkivStore(config: ArkivConfig, reader: SlotReader) {
     const page = await query('spin',[eq('player',addr(player))]).limit(50).fetch();
     return page.entities.map(entity=>({key:entity.key,...entity.toJson() as Record<string,unknown>}));
   }
-  return {publicClient,liveClient,contributions,publish,history,canWrite:!!wallet};
+  // Bound concurrent scans and cache snapshots, never partial totals. No additional signer.
+  const cache=new Map<string,{until:number;promise:Promise<{rows:Awaited<ReturnType<typeof collectResults>>;season:string|null;from:number;timestamp:number}>}>();
+  let scans=0;
+  async function explore(f:ExplorerFilters) {
+    const latest=await publicClient.getBlock({blockTag:'latest'});
+    const block=f.snapshot===undefined?latest:await publicClient.getBlock({blockNumber:f.snapshot});
+    if(block.number>latest.number||latest.timestamp-block.timestamp>900n)throw new ExplorerError('This snapshot expired. Refresh the results.',409);
+    const key=JSON.stringify({...f,page:0,snapshot:String(block.number)});
+    for(const [k,v] of cache)if(v.until<Date.now())cache.delete(k);
+    let entry=cache.get(key);
+    if(!entry){
+      if(scans>=4)throw new ExplorerError('Explorer is busy. Please retry shortly.',429);
+      scans++;
+      const promise=(async()=>{
+        const season=seasonAt(block.number,config.anchor,config.seasonBlocks);
+        const start=season?(await publicClient.getBlock({blockNumber:season.startBlock})).timestamp:0n;
+        const plan=explorerPlan(config,f,block,start);
+        const rows=plan.empty?[]:await collectResults(query(plan.kind,plan.filters,block.number),block.number,plan.kind==='season-spin'?season?.endBlock:undefined);
+        return {rows,season:season?.id||null,from:Number(plan.from),timestamp:Number(block.timestamp)};
+      })().finally(()=>{scans--;});
+      entry={until:Date.now()+60000,promise};cache.set(key,entry);
+      if(cache.size>24)cache.delete(cache.keys().next().value!);
+      promise.catch(()=>{cache.delete(key);});
+    }
+    const result=await entry.promise;
+    return {snapshot:String(block.number),season:result.season,from:result.from,timestamp:result.timestamp,historyDays:config.historyDays,
+      summary:summarize(result.rows),total:result.rows.length,page:f.page,pageSize:25,rows:result.rows.slice(f.page*25,(f.page+1)*25)};
+  }
+  return {publicClient,liveClient,contributions,publish,history,explore,canWrite:!!wallet};
 }
 export type ArkivStore = ReturnType<typeof createArkivStore>;

@@ -66,6 +66,10 @@ Use Railway service variables. The full list, with explanations, is in
   `0x` plus 64 hexadecimal digits for a dedicated EOA funded with ETH on Base.
   Free spins require `GAME_MANAGER_ROLE`. This is not the Privy admin wallet's
   key. Do not use a `NEXT_PUBLIC_` prefix for this secret.
+- ENSv2: preserve `SEPOLIA_RPC_URL`, `ENS_REGISTRAR_ADDRESS`,
+  `ENS_SUBREGISTRY_ADDRESS`, `ENS_DEPLOYMENT_BLOCK` and `ENS_BASE_FROM_BLOCK`.
+  Registration uses the existing sealed backend key on Sepolia. Keep the Base
+  scan start fixed across releases. See [ENS setup](../apps/web/docs/ens.md).
 - `LIFI_API_KEY`: optional; may remain empty.
 - Arkiv seasons: set `ARKIV_ENABLED=true`, `ARKIV_USE_SLOT_BACKEND_KEY=true`,
   `ARKIV_API_KEY`, and the expected public `ARKIV_WRITER_ADDRESS`. Keep the sealed
