@@ -45,9 +45,11 @@ not needed. Swap and inventory reads work before slot deployment; funding requir
 
 The Swap tab prepares a whole round's reserves automatically. `readFunding` already
 reports, per prize asset, the per-round `required`, the slot's `available` and the
-`missing` amounts. The quick-fund panel multiplies `required` by the selected number
-of rounds (1–99) and, for the six ERC20 RWA tokens only, splits each shortfall into
-an amount to buy and an amount to deposit:
+`missing` amounts. The quick-fund panel adds `required × rounds` (1–99) to the current `available`
+reserve. The editable count accepts whole rounds and can be cleared while typing;
+invalid input disables submission. A new top-up always adds rounds, including
+when the slot is already stocked. For the six ERC20 RWA tokens only, each shortfall
+is split into an amount to buy and an amount to deposit:
 
 - Buy with USDC when the shared wallet balance is below the target. The panel probes
   a 1 USDC quote, scales the input until the quote's guaranteed minimum covers the
@@ -66,7 +68,11 @@ stale page snapshot. One sequence owns polling; read failures and delayed balanc
 are retried with bounded backoff. Each confirmed purchase/deposit refreshes inventory
 before the next dependent operation, and already stocked prizes are skipped. A
 rejected signature or persistent read failure stops the sequence. Starting again
-recalculates the shortfalls without repeating confirmed deposits. An ambiguous send
+resumes the same absolute targets without repeating confirmed deposits. These
+targets are stored in session storage, scoped to the user, shared wallet and slot
+contract, before any write. A completed batch clears its targets and enables a
+new top-up. An interrupted batch offers **Resume** or **End this top-up**; ending
+it preserves completed deposits and is disabled while transactions are pending. An ambiguous send
 stays blocked and is only checked, never automatically resubmitted. Reloading the
 page recovers the pending operation; it does not silently authorize more writes.
 ERC1155 prizes are not covered and stay manual in Inventory.

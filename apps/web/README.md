@@ -281,9 +281,11 @@ deployment. Physical iPad and email OTP checks also remain outstanding.
 The admin panel includes **Swap** (LI.FI API, USDC or native ETH → six supported
 Base RWA tokens) and **Inventory** (shared wallet balances, ERC1155 prizes,
 free-spin counter and reviewed contract deposits). The Swap tab also offers a
-quick-fund action that computes the missing reserve for a chosen number of rounds,
+quick-fund action that adds a chosen number of rounds (1–99) to the current reserve,
 buys the shortfall of the six RWA tokens with USDC and prepares the deposit
-transactions in sequence. Start once, then confirm each requested signature;
+transactions in sequence. Completed top-ups can be repeated. An interrupted top-up
+keeps its target across page reloads, so resuming skips confirmed deposits.
+Start once, then confirm each requested signature;
 approvals, swaps, balance checks and deposits advance automatically. The manual
 swap form is available in a collapsed section. Admin RPC reads share batching and
 `BASE_RPC_FALLBACK_URLS`; the funding path skips NFT reads and reuses concurrent
