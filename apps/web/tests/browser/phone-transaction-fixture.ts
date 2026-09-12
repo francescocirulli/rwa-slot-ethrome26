@@ -5,7 +5,7 @@ export function useContractTransaction(address:string) {
   const decision=useRef<(accept:boolean)=>void>(()=>{});
   return {review,busy,confirmed,pending:false,unrecoverable:false,error:'',hash:null,gasToken:null,check:async()=>{},discard:()=>{},decide:(accept:boolean)=>decision.current(accept),
     execute:async(action:string,args:string[])=>{
-      setBusy(true);setReview({id:'fixture',address,action,args,expiresAt:Date.now()+300000,transaction:{to:args[0]?.startsWith('0x')?args[0]:'0x0000000000000000000000000000000000000099',data:'0x',chainId:8453,gasMode:'usdc'}});
+      setBusy(true);if((window as any).phoneReviewDelay)await (window as any).phoneReviewDelay;setReview({id:'fixture',address,action,args,expiresAt:Date.now()+300000,transaction:{to:args[0]?.startsWith('0x')?args[0]:'0x0000000000000000000000000000000000000099',data:'0x',chainId:8453,gasMode:'usdc'}});
       try {
         const accepted=await new Promise<boolean>(resolve=>{decision.current=resolve;});
         if(!accepted)throw new Error('Operazione annullata.');

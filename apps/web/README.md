@@ -78,14 +78,18 @@ landscape, iOS 12.5.8 / Safari 12.1.2, matching the experimental reference repo.
 
 The iPhone layout opens in **Play**, with sign-in first, then one QR pairing
 prompt or the current iPad session. Required proof permission is expanded until
-approved; paid-play budget controls follow it. **Wallet** contains the balance,
-receive address, tokens/prizes, USDC allowance, ENS names and account settings,
+approved; a read-only play summary links to spending controls. **Wallet** contains
+the balance, receive address, one persistent USDC approval card, tokens/prizes,
+ENS names and account settings,
 in that order. **Activity** contains the leaderboard and game explorer.
 A fixed bottom navigation respects iPhone safe areas; inputs keep a 16px font
 and navigation targets are at least 44px tall. The page supports narrow portrait
 and landscape widths without disabling zoom.
 
-Changing views preserves wallet drafts, game polling and pending operations.
+Changing views preserves wallet drafts and pending operations. Approval, paid-play
+authorization and revocation appear only in Wallet, including transaction reviews
+that arrive after navigating elsewhere. Account polling retains the last verified
+values on an error, marks them stale and disables writes until a successful refresh.
 Funding links open Wallet and expand the receive panel. Transaction review and
 session-expiry warnings stay above the navigation. Account/passkey settings are
 under **Account & security**; ending the iPad link remains in Play.
