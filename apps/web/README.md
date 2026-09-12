@@ -90,12 +90,18 @@ Funding links open Wallet and expand the receive panel. Transaction review and
 session-expiry warnings stay above the navigation. Account/passkey settings are
 under **Account & security**; ending the iPad link remains in Play.
 
-Run the phone flows with Safari's WebKit engine and iPhone touch emulation:
+Run the phone, ENS and archive flows with Safari's WebKit engine and iPhone touch emulation:
 
 ```sh
 npx playwright install webkit
 npx playwright test --config playwright.iphone.config.ts
 ```
+
+The browser fixture applies the production headers from `next.config.ts` and
+the terminal CSP, so embedded archive tests also check browser framing policy.
+Only `/terminal/explorer.html` permits same-origin framing; the terminal allows
+frames from its own origin, while wallet and admin pages remain unframeable.
+If the phone archive does not initialize, it offers Retry and a separate-page link.
 
 The default browser suite covers the camera mocks, which rely on
 `canvas.captureStream()` and therefore run in Chrome. WebKit emulation does not

@@ -106,7 +106,14 @@ A worker in the existing always-on service scans finalized collection events
 from `ENS_BASE_FROM_BLOCK`, verifies that proofs match real reservations and
 retries incomplete claims even when the phone is closed. A restart reconstructs
 proofs and claims from both chains without a database or another token transfer.
-Completed claims are skipped. Pending events survive transient RPC failures by
+Completed claims are skipped. Catch-up runs in bounded batches with a one-second
+pause between successful batches, returning to fifteen-second polling when caught
+up or after an RPC failure. The worker consumes the verified finalized proof index
+instead of fetching its log pages twice. Concurrent lookups for the same claim
+share only the in-flight read; new reviews reuse the claim checked during
+preparation instead of scanning it twice. Later authorization still rechecks
+canonical events.
+Pending events survive transient RPC failures by
 retrying the same page; unfinalized reorgs cannot authorize Sepolia fulfillment.
 
 ENS has one serialized Sepolia sender which retains the exact signed bytes on
@@ -115,6 +122,15 @@ existing Privy signing flow and coordinator; polling does not extend pairing.
 If a restart loses an ambiguous Privy request before its transaction reference
 is returned and no transfer is yet onchain, reconcile it in Privy before
 retrying. The phone retains its pending marker rather than silently resending.
+
+Repeated **Continue** requests recover the same unexpired review for that account,
+wallet and claim. Concurrent preparation is serialized and retains the shared wallet
+lease. A failed or expired pre-submission check releases the lease and returns
+`stage: failed`, allowing the phone to clear its pending marker. An ambiguous send
+returns `stage: uncertain` and remains blocked, including after reload. Provider
+payloads are never exposed: read/preparation errors explain the failed phase instead
+of implying that a transfer has been submitted. Retrying preparation never sends a
+voucher; the explicit wallet review is still required.
 
 The UI indexes names in this namespace, checks current ownership and displays
 forward resolution. It does not enumerate every Sepolia name or automatically

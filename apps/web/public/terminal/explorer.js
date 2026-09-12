@@ -117,4 +117,5 @@
   el('previous').onclick = function () {if(page > 0) {page--;load();}};el('next').onclick = function () {page++;load();};
   window.addEventListener('pagehide', function () {generation++;detailGeneration++;if(request)request.abort();if(detailRequest)detailRequest.abort();});
   scopeChanged();selectMode(initialMode ? 'summary' : 'explore');
+  if(window.parent !== window)window.parent.postMessage({type:'arkiv-explorer-ready'}, window.location.origin);
 }());

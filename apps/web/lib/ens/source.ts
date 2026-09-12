@@ -63,7 +63,7 @@ export function createVoucherSource({client,registrar,fromBlock,pageBlocks=1000n
   await scanning;
   return {finalizedNumber,caughtUp:cursor>finalizedNumber};
  }
- async function find(id:Hex,owner:Address,labelHash:Hex):Promise<{proof:VoucherProof;finalized:boolean}|null>{
+ async function lookup(id:Hex,owner:Address,labelHash:Hex):Promise<{proof:VoucherProof;finalized:boolean}|null>{
   const {finalizedNumber,caughtUp}=await indexFinalized();
   if(!caughtUp)throw new SlotError('EnsIndex','Voucher history is catching up. Refresh shortly.',503);
   const saved=finalizedProofs.get(proofKey(id,owner,labelHash));
@@ -83,5 +83,16 @@ export function createVoucherSource({client,registrar,fromBlock,pageBlocks=1000n
   if(from<=head)throw new SlotError('EnsIndex','Base finality is delayed. Refresh before sending a voucher.',503);
   return null;
  }
- return {events,find,indexFinalized};
+ // Phone refresh, review and worker reconciliation can overlap. Share only the
+ // in-flight lookup: subsequent calls still revalidate the canonical proof.
+ const lookups=new Map<string,ReturnType<typeof lookup>>();
+ function find(id:Hex,owner:Address,labelHash:Hex){
+  const key=proofKey(id,owner,labelHash),existing=lookups.get(key);if(existing)return existing;
+  const work=lookup(id,owner,labelHash).finally(()=>lookups.delete(key));lookups.set(key,work);return work;
+ }
+ function finalizedEvents(from:bigint,to:bigint){
+  if(to>=cursor)throw new SlotError('EnsIndex','Voucher history is catching up. Refresh shortly.',503);
+  return [...finalizedProofs.values()].filter(proof=>proof.blockNumber>=from&&proof.blockNumber<=to);
+ }
+ return {events,find,indexFinalized,finalizedEvents};
 }
