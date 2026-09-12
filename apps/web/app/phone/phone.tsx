@@ -5,6 +5,7 @@ import {PrivyProvider, useCreateWallet, useLoginWithEmail, useLoginWithPasskey, 
 import {base} from 'viem/chains';
 import {PhoneGame} from './game';
 import {PhoneWallet} from './wallet';
+import {PairingScanner} from './scanner';
 import type {AccountView} from '@/lib/account';
 import {useContractTransaction} from '@/lib/slot/use-transaction';
 import {TransactionConfirmation} from '@/lib/slot/transaction-review';
@@ -45,6 +46,7 @@ function Phone() {
   const {wallets, ready: walletsReady} = useWallets();
   const {addSigners} = useSigners();
   const [secret, setSecret] = useState('');
+  const [scanning,setScanning]=useState(false);
   const [loaded, setLoaded] = useState(false);
   const [recovering, setRecovering] = useState(true);
   const [info, setInfo] = useState<{code: string; origin: string; expiresAt: number} | null>(null);
@@ -228,6 +230,8 @@ function Phone() {
     <div className="intro"><span className="eyebrow">IL TUO WALLET, SEMPRE CON TE</span><h1>{connectedSession ? <>Bel colpo.<br/>Sei dentro<span>.</span></> : authenticated ? <>Il tuo wallet.<br/>Le tue vincite<span>.</span></> : <>Un telefono.<br/>Un po’ di fortuna<span>.</span></>}</h1><p>{connectedSession ? session.state === 'approved' ? 'L’iPad sta completando il collegamento.' : 'Il tuo wallet è collegato all’iPad.' : authenticated ? 'Gestisci i tuoi token e premi. Scansiona un QR quando vuoi giocare sull’iPad.' : 'Accedi al tuo wallet per vedere token e premi, anche senza iPad.'}</p></div>
     {checking && <div className="phone-progress" role="status">Verifichiamo il tuo accesso e il collegamento all’iPad…</div>}
     {ready && authenticated && <div className="phone-account-state"><span>● ACCOUNT CONNESSO</span><b>{user?.email?.address || 'Accesso con passkey'}</b><small>{connectedSession ? 'Wallet associato a questo iPad' : 'Nessun iPad collegato a questa pagina'}</small></div>}
+    {ready&&loaded&&!connectedSession&&!info&&<button className="phone-primary" disabled={!!busy||transaction.busy||transaction.pending} onClick={()=>{setError('');setScanning(true);}}>Scansiona QR dell’iPad ↗</button>}
+    {scanning&&<PairingScanner onClose={()=>setScanning(false)} onRead={value=>{generation.current++;setScanning(false);setInfo(null);setConfirmed(false);setEnded(false);setRecovering(false);setError('');setSecret(value);try{sessionStorage.setItem('slot-pair',value);}catch{}}}/>}
     {error && <div className="phone-error" role="alert">{error}</div>}
     {busy && <div className="phone-progress" role="status">{busy}…</div>}
     {!checking && !authenticated && <section className="phone-card"><span className="eyebrow">01 / FATTI RICONOSCERE</span><h2>Il tuo ingresso.</h2><button className="phone-primary" disabled={!canAct} onClick={() => run('Accesso', async () => {await loginWithPasskey();})}>Accedi con passkey <span>↗</span></button><button className="phone-secondary" disabled={!canAct} onClick={() => run('Creazione passkey', async () => {await signupWithPasskey();})}>Prima volta? Crea una passkey</button><div className="divider">OPPURE CON EMAIL</div><form onSubmit={(event) => {event.preventDefault(); void run(emailSent ? 'Verifica codice' : 'Invio codice', async () => {if (emailSent) await loginWithCode({code}); else {await sendCode({email}); setEmailSent(true);}});}}><label htmlFor="email">La tua email</label><input id="email" type="email" autoComplete="email" value={email} disabled={emailSent || !!busy} onChange={(event) => setEmail(event.target.value)} required placeholder="tu@esempio.it"/>{emailSent && <><label htmlFor="code">Codice ricevuto via email</label><input id="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} required placeholder="000000"/><p className="small">Controlla anche la cartella spam.</p></>}<button className="phone-primary" disabled={!canAct} type="submit">{emailSent ? 'Conferma codice' : 'Ricevi il codice'} <span>↗</span></button>{emailSent && <button className="phone-text" type="button" disabled={!canAct} onClick={() => {setEmailSent(false); setCode('');}}>Cambia email o richiedi un nuovo codice</button>}</form></section>}

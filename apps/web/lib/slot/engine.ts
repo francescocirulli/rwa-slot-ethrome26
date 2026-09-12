@@ -108,9 +108,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
         await reconcile(op);
         if (op.stage === 'failed') return true;
         if (op.stage !== 'started') return false;
-        if (!op.gameId) return false;
-        const game = await reader.game(BigInt(op.gameId));
-        return !game.pending && (game.confirmed || game.invalidated);
+        return !(await reader.walletState(player)).busy;
       });
       try {
         const state = await reader.player(player);
@@ -176,6 +174,12 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
         return {...operation};
       } catch (error) {writes.release(player.toLowerCase(), leaseId);throw error;}
     });
+  }
+  async function walletView(player: Address) {
+    const state = await reader.walletState(player);
+    const pending = [...operations.values()].filter(op => op.player.toLowerCase() === player.toLowerCase() && !['started','failed'].includes(op.stage));
+    for (const op of pending) await reconcile(op);
+    return serializable({...state,busy:state.busy || pending.some(op => !['started','failed'].includes(op.stage))});
   }
   async function playerView(player: Address) {
     const [state, bonusHistory] = await Promise.all([reader.player(player), welcomeHistory.read(player)]);
@@ -254,7 +258,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
     async function loop() {await tick(); if (!stopped) {timer = setTimeout(loop, 1000); timer.unref();}}
     void loop();
   }
-  return {reader, start, playerView, tick, startKeeper, sendBackend, queueWelcome,
+  return {reader, start, playerView, walletView, tick, startKeeper, sendBackend, queueWelcome,
     health: () => ({...health, pendingTransaction: pendingBackend?.hash || null}),
     stop() {stopped = true; if (timer) clearTimeout(timer);},
   };

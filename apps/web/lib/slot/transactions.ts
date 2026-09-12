@@ -84,7 +84,7 @@ export function createContractApi({walletService, getSlot, origin, admin, coordi
           if(previous){await reconcile(previous,slot);if(!terminal(previous))return reply({error:'Questo wallet ha già un’operazione in corso. Attendi o verifica la conferma.',code:'Pending',pending:previous.stage==='prepared'?null:{id:previous.id,hash:previous.submission?.hash}},409);}
           const leaseId=randomBytes(32).toString('hex');
           await writes.acquire(lockKey,leaseId,async()=>{const saved=operations.get(leaseId);if(!saved)return false;if(saved.stage==='prepared'&&saved.expiresAt<=now())saved.stage='cancelled';await reconcile(saved,slot);return terminal(saved);});
-          let transaction:Transaction;try{if(scope==='personal'&&['approveBudget','transferERC20','transferERC1155'].includes(input.action)){const player=await slot.reader.player(wallet.address as Address);if(!player.historyReady||player.game?.pending||player.game?.hasResult&&!player.game.confirmed)throw new SlotError('GamePending','Attendi la conclusione della giocata e la verifica dello storico prima di modificare il wallet.',409);}
+          let transaction:Transaction;try{if(scope==='personal'&&['approveBudget','transferERC20','transferERC1155'].includes(input.action)){const player=await slot.reader.walletState(wallet.address as Address);if(player.busy)throw new SlotError('GamePending','Attendi la conclusione della giocata prima di modificare il wallet.',409);}
           transaction=await prepareAction(slot.reader,wallet.address as Address,input.action,input.args);}catch(error){writes.release(lockKey,leaseId);throw error;}
           const op:Operation={id:leaseId,userId:user.userId,walletId:wallet.id,address:wallet.address,
             action:input.action,args:[...input.args],transaction,expiresAt:now()+300000,stage:'prepared',scope};
@@ -106,7 +106,7 @@ export function createContractApi({walletService, getSlot, origin, admin, coordi
           const assertAccess=async()=>{
             if(op.expiresAt<=now())throw new SlotError('Cancelled','Conferma scaduta prima dell’invio. Prepara di nuovo l’operazione.');
             if(scope!=='admin'){
-              if(['approveBudget','transferERC20','transferERC1155'].includes(op.action)){const player=await slot.reader.player(op.address as Address);if(!player.historyReady||player.game?.pending||player.game?.hasResult&&!player.game.confirmed)throw new SlotError('GamePending','Attendi la conclusione della giocata.',409);}
+              if(['approveBudget','transferERC20','transferERC1155'].includes(op.action)){const player=await slot.reader.walletState(op.address as Address);if(player.busy)throw new SlotError('GamePending','Attendi la conclusione della giocata.',409);}
               return;
             }
             const access=await admin!.assertAction(user,op.action);

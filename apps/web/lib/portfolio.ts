@@ -8,15 +8,16 @@ export function createPortfolioReader(readInventory:ReturnType<typeof createInve
     const slot=getSlot();
     const [inventory,player,settings]=await Promise.all([
       readInventory(address,slot?.reader.config.address||null),
-      slot?slot.playerView(address).catch(()=>null):null,
+      slot?slot.walletView(address).catch(()=>null):null,
       slot?slot.reader.settings().catch(()=>null):null,
     ]);
-    const busy=!!player?.game?.pending||!!player?.game?.hasResult&&!player.game.confirmed||!!player?.operation&&['submitting','confirming','uncertain'].includes(player.operation.stage);
+    const busy=!!player?.busy;
     return {address,chainId:8453,contract:inventory.contract,updatedAt:inventory.updatedAt,eth:inventory.eth,
       assets:inventory.assets.map(({reserve,canDeposit,...asset})=>asset),
       nfts:inventory.nfts.map(({reserve,canMint,canDeposit,...nft})=>nft),
       allowance:player?.allowance??null,freeSpins:inventory.freeSpins,ticketPrice:settings?.ticketPrice.toString()??null,
-      busy,canTransact:!!slot&&!!player?.historyReady&&!busy,gameId:player?.game?.id??null,
+      busy,canTransact:!!slot&&!!player&&!busy,gameId:player?.activeGameId&&player.activeGameId!=='0'?player.activeGameId:null,
+      stateUnavailable:!!slot&&!player,
       gasMode:slot?.reader.config.gasMode||'usdc'};
   }
   type Portfolio=Awaited<ReturnType<typeof fresh>>;

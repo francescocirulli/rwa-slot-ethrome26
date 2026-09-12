@@ -40,7 +40,7 @@ export function PhoneWallet({wallet,transaction,paired,reload,loading=false}:{wa
     </section>
     {portfolio?.busy&&<div className="phone-progress" role="status">Giocata in corso{portfolio.gameId?' #'+portfolio.gameId:''}. Puoi vedere i saldi; modifiche e trasferimenti riprendono dopo il risultato.</div>}
     {!portfolio&&<div className="phone-error" role="alert">Saldi premi e autorizzazione non disponibili. Aggiorna per riprovare.</div>}
-    {portfolio&&!portfolio.canTransact&&!portfolio.busy&&<p className="phone-progress" role="status">{portfolio.contract?'Verifichiamo lo stato onchain prima di abilitare le operazioni.':'La slot non è ancora configurata. Il wallet può ricevere fondi.'}</p>}
+    {portfolio&&!portfolio.canTransact&&!portfolio.busy&&<p className="phone-progress" role="status">{portfolio.contract?'Wallet connesso. La lettura onchain non è disponibile: premi “Aggiorna saldi” per riprovare. Il collegamento all’iPad non è necessario.':'La slot non è ancora configurata. Il wallet può ricevere fondi.'}</p>}
     <section className="phone-card"><span className="eyebrow">SPESA SULLA SLOT</span><h2>Il tuo limite USDC.</h2>
       <div className="play-facts"><span>Autorizzazione residua<b>{portfolio?.allowance!=null?formatUnits(BigInt(portfolio.allowance),6)+' USDC':'—'}</b></span><span>Free spin<b>{portfolio?.freeSpins??'—'}</b></span></div>
       <p>Questo è l’importo che il contratto può spendere per le giocate. L’approve non trasferisce USDC e non collega un iPad.</p>

@@ -95,6 +95,23 @@ uses the existing single-service, in-memory architecture and adds no database or
 replica. User-owned wallet requests still use exact Privy SDK request authorization,
 never the keeper or shared admin wallet.
 
+The “Scansiona QR dell’iPad” button opens the rear camera from `/phone`. Camera
+access is requested only after tapping it; closing, backgrounding or decoding a QR
+stops every track, including a permission response arriving after closure. If camera
+access is unavailable, a photo can be selected and decoded locally. Images are not
+uploaded. Only a `/phone#pair=…` URL on the current app origin with a valid secret is
+accepted; scanned URLs never cause navigation. The backend still checks QR expiry
+and the user must confirm the matching iPad code before pairing.
+
+Allowance and wallet-write readiness use current contract reads and the confirmation
+block, independently of spin/bonus history scans. Pending local submissions and
+rounds settling within the confirmation window still block writes. RPC errors are
+shown as unavailable chain data, not an expired login. Gameplay history and bonus
+recovery still require an RPC supporting historical `eth_getLogs` ranges of up to
+2,000 blocks. Providers with smaller plan limits must be upgraded or configured
+with a compatible endpoint; the RPC URL belongs in server-side `BASE_RPC_URL`,
+never in committed source.
+
 Scanning a QR while signed in asks only to confirm the matching iPad code. The
 phone distinguishes ending that pairing, revoking USDC allowance and logging out.
 Three-minute inactivity applies to the shared arcade session, not wallet access.
