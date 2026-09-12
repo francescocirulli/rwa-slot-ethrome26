@@ -135,6 +135,17 @@ The owner or a game manager can replace a player's free-spin balance with `setFr
 without overwriting existing ones with `grantFreeSpins(player, amount)`, and consume one credit with
 `startFreeSpin(player)`. Winning a free spin increments the same onchain counter.
 
+## Welcome bonus
+
+The owner or a game manager can call `grantWelcomeFreeSpins(player)` to add
+exactly `WELCOME_FREE_SPINS` (2) credits once per wallet. Existing credits are
+preserved. `welcomeFreeSpinsGranted(player)` permanently records the award, and
+repeated calls revert with `WelcomeFreeSpinsAlreadyGranted`, even after the
+balance is spent or reset. Both `FreeSpinsGranted` and
+`WelcomeFreeSpinsGranted` are emitted on the first successful grant. The trusted
+backend verifies new-wallet eligibility; the contract enforces the fixed amount
+and prevents duplicates. See the [app integration](../apps/web/docs/welcome-free-spins.md).
+
 ## Frontend interface
 
 User-facing reads:
@@ -193,6 +204,13 @@ probability denominator, and the 256-block maximum window are protocol rules rat
 - Ticket: `0.05 USDC` (`50,000` base units)
 - Slot owner: `0xC81f6728a10B20a8981d5C2601Aa185417229035`
 - Initial game manager and ERC-1155 owner: `0x8e251547f0fD650e0573711EF733F13eBA1505aD`
+
+The deployed slot was built from the source pinned in
+[`deployments/base-mainnet.json`](deployments/base-mainnet.json). It predates
+`grantWelcomeFreeSpins` and is not upgradeable. The current source and generated
+ABI include welcome credits for a future deployment. Do not assume new source
+features exist at the recorded address; the app keeps the original flow working
+and disables welcome grants on that version.
 
 ```sh
 forge test

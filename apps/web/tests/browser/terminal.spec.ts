@@ -19,6 +19,9 @@ test('real pairing UI, wallet, receive QR, verified signature and logout at iPad
   const errors: string[] = []; page.on('pageerror', (error) => errors.push(error.message));
   await link(page, phone);
   await expect(page.locator('#balance')).toHaveText('128,50');
+  await expect(page.locator('#free-spin-summary')).toBeVisible();
+  await expect(page.locator('#free-spin-balance')).toHaveText('—');
+  await expect(page.locator('#free-spin-note')).toHaveText('La slot non è ancora attiva.');
   await page.getByRole('button', {name: 'Ricarica il wallet'}).click();
   await expect(page.locator('#deposit-qr')).toBeVisible();
   await page.locator('#deposit-close').click();
@@ -50,12 +53,24 @@ test('real pairing UI, wallet, receive QR, verified signature and logout at iPad
 test('offline idle timeout hides wallet and a late poll cannot bring it back', async ({page, context, browser}) => {
   const phone = await phoneContext(browser);
   await page.clock.install(); await link(page, phone);
+  let releasePoll!: () => void, pollStarted!: () => void;
+  const held = new Promise<void>(resolve => {pollStarted = resolve;});
+  const release = new Promise<void>(resolve => {releasePoll = resolve;});
+  await page.route('**/api/relay/tablet', async route => {
+    const response = await route.fetch();
+    pollStarted(); await release;
+    await route.fulfill({response});
+  }, {times: 1});
+  await page.clock.runFor(2100); await held;
   await context.setOffline(true);
   await page.clock.fastForward(181000);
   await expect(page.locator('#wallet-panel')).toBeHidden();
   await expect(page.locator('#full-address')).toHaveText('');
+  // Let the failed logout and pairing XHRs settle before restoring the network.
+  // Jumping 26s across a live HTTP request used to race its 25s timeout in CI.
+  await expect(page.locator('#retry')).toBeVisible();
   await context.setOffline(false);
-  await page.clock.fastForward(26000);
+  releasePoll();
   await expect(page.locator('#login-qr')).toBeVisible();
   await expect(page.locator('#wallet-panel')).toBeHidden();
   await phone.close();
@@ -117,6 +132,9 @@ test('onchain slot spins through both transactions, waits for finality, maps row
     await route.fulfill({status:202,json:{sessionId,operation:{key:'test',stage:'confirming',afterGameId:'0'}}});
   });
   await link(page,phone);
+  await expect(page.locator('#free-spin-summary')).toBeVisible();
+  await expect(page.locator('#free-spin-balance')).toHaveText('2');
+  await expect(page.locator('#free-spin-note')).toContainText('La leva li usa per primi');
   await expect(page.locator('#spin-free')).toBeEnabled();
   await expect(page.locator('#spin-paid')).toBeDisabled();
   await page.locator('#spin-free').click();
@@ -139,6 +157,35 @@ test('onchain slot spins through both transactions, waits for finality, maps row
   await page.locator('#logout').click();
   await expect(page.locator('#login-qr')).toBeVisible();
   await expect(page.locator('#game-controls')).toBeHidden();
+  await expect(page.locator('#free-spin-summary')).toBeHidden();
+  await expect(page.locator('#free-spin-balance')).toHaveText('—');
   await expect(page.locator('.cell[data-result-symbol]')).toHaveCount(0);
+  await phone.close();
+});
+
+test('free-spin counter waits for the welcome grant, tracks spending and hides stale balances offline', async ({page, context, browser}) => {
+  const phone = await phoneContext(browser);
+  let credits = '0', granted = false;
+  await page.route('**/api/relay/tablet/game', async route => {
+    const response = await page.request.get('http://localhost:3101/api/relay/tablet');
+    const session = await response.json();
+    await route.fulfill({json: {configured: true, sessionId: session.id, block: '107', settings: {ticketPrice: '1000000', paused: false, totalOutcomeWeight: 1000, configuredPrizeCount: 3}, keeper: {configured: true, canStartFreeSpin: true, balanceWei: '1000000'}, player: {address: session.address, freeSpins: credits, allowance: '0', balance: '0', latestGameId: '0', historyReady: true, game: null, operation: null, welcome: {status: granted ? 'granted' : 'pending', amount: '2'}}}});
+  });
+  await link(page, phone);
+  await expect(page.locator('#free-spin-balance')).toHaveText('0');
+  await expect(page.locator('#free-spin-note')).toContainText('+2 in arrivo');
+  await expect(page.locator('#spin-free')).toBeDisabled();
+  credits = '2'; granted = true;
+  await expect(page.locator('#free-spin-balance')).toHaveText('2');
+  await expect(page.locator('#spin-free')).toBeEnabled();
+  await expect(page.locator('#play-consent-title')).toHaveText('Puoi già giocare gratis.');
+  credits = '1'; await expect(page.locator('#free-spin-balance')).toHaveText('1');
+  credits = '0'; await expect(page.locator('#free-spin-balance')).toHaveText('0');
+  await expect(page.locator('#free-spin-note')).toHaveText('Nessun free spin disponibile.');
+  await expect(page.locator('#spin-free')).toBeDisabled();
+  await page.unroute('**/api/relay/tablet/game');
+  await context.setOffline(true);
+  await expect(page.locator('#free-spin-balance')).toHaveText('—');
+  await expect(page.locator('#free-spin-note')).toHaveText('Saldo da aggiornare.');
   await phone.close();
 });

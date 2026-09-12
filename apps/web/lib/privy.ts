@@ -49,12 +49,21 @@ export function createWalletService(appId: string, appSecret: string, excludeSha
       const wallets = user.linked_accounts.flatMap((account) => {
         if (account.type !== 'wallet' || account.chain_type !== 'ethereum' ||
           account.wallet_client_type !== 'privy' || !('id' in account) || !account.id) return [];
-        return [{id: account.id, address: account.address}];
+        return [{id: account.id, address: account.address,
+          ...('wallet_index' in account && typeof account.wallet_index === 'number' ? {index: account.wallet_index} : {})}];
       });
       // Shared treasury access is resolved separately, never paired to a player/iPad.
       const shared=excludeSharedAdmin&&wallets.length?await client.wallets().list({external_id:typeof excludeSharedAdmin==='string'?excludeSharedAdmin:ADMIN_WALLET_EXTERNAL_ID,limit:10,include_archived:true}):null;
       if(shared?.next_cursor)throw new Error('Shared wallet configuration ambiguous');
       return {userId: user.id, wallets:wallets.filter(wallet=>!shared?.data.some(item=>item.id===wallet.id))};
+    },
+    async welcomeWallet(user) {
+      const first = user.wallets.filter(wallet => wallet.index === 0);
+      if (first.length !== 1) return null;
+      const wallet = first[0], actual = await client.wallets().get(wallet.id);
+      if (actual.chain_type !== 'ethereum' || actual.address.toLowerCase() !== wallet.address.toLowerCase() ||
+          actual.imported_at || actual.archived_at || !Number.isSafeInteger(actual.created_at) || actual.created_at <= 0 || actual.created_at > Date.now() + 60000) return null;
+      return {wallet, createdAt: actual.created_at};
     },
     async prepare(wallet, userId, sessionId, code) {
       const actual = await client.wallets().get(wallet.id);

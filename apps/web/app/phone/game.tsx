@@ -40,6 +40,7 @@ export function PhoneGame({session, api, onSession, onConfigured}: {session: Ses
   }
   return <section className="phone-card phone-play-card"><span className="eyebrow">LA SLOT È COLLEGATA · BASE</span><h2>{active ? 'Tocca alla fortuna.' : 'Scegli il tuo budget.'}</h2>
     <div className="play-facts"><span>Giocata attuale <b>{formatUnits(BigInt(state.settings.ticketPrice),6)} USDC</b></span><span>Free spin disponibili <b>{player?.freeSpins || '0'}</b></span></div>
+    {player && BigInt(player.freeSpins) > 0n && !active && <div className="permission-note"><b>Puoi già giocare gratis sull’iPad.</b><p>Hai {player.freeSpins} free spin. Tira la leva o premi USA FREE SPIN: non serve ricaricare né approvare USDC. Il gas è incluso.</p></div>}
     {active ? <><div className="permission-note"><b>Giocate abilitate sull’iPad.</b><p>Budget USDC residuo: {formatUnits(BigInt(player?.allowance || '0'),6)}. Puoi chiudere il telefono e usare la leva o il pulsante sul tablet.</p></div>{player?.game?.pending && <p className="small">Giocata #{player.game.id} in attesa del reveal. Il backend la conclude anche se esci.</p>}</> : <>
       <p>Autorizza alla slot un importo massimo di USDC. Ogni giocata confermata scala il prezzo corrente da questo budget.</p>
       <label className="budget-label" htmlFor="play-budget">Budget USDC</label><input id="play-budget" inputMode="decimal" value={amount} disabled={!!grant || working || transaction.busy} onChange={event => setBudget(event.target.value.replace(',', '.'))}/>

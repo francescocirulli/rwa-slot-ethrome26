@@ -2,6 +2,7 @@
   "network": "base-mainnet",
   "chainId": 8453,
   "deployedAt": "2026-09-12T09:48:19Z",
+  "sourceCommit": "08abeb95125966d6a81e69b67cdaa3846ec99424",
   "deployer": "0x8e251547f0fD650e0573711EF733F13eBA1505aD",
   "contracts": {
     "SlotPrize1155": {
@@ -17,6 +18,7 @@
       }
     },
     "DigitalSlotMachine": {
+      "welcomeFreeSpins": false,
       "address": "0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c",
       "transactionHash": "0x20761fcd3ef65a66f42b24b5ba55e8b34dcf33ab5f15a8cf1057cf3d54799372",
       "blockNumber": 51208577,

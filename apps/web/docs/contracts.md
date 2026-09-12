@@ -4,8 +4,8 @@ The ABI matches [`../../../contracts/abi/DigitalSlotMachine.json`](../../../cont
 compiled from `contracts/src/DigitalSlotMachine.sol` in this monorepo.
 The source keccak256 is recorded in `lib/slot/abi.ts` and test fixtures.
 The constructor accepts a separate initial game manager so the deployment EOA
-can operate games without owning the contract. No additional interfaces are
-required for the implemented player flow.
+can operate games without owning the contract. The current source adds welcome
+credit interfaces beyond the original immutable Base deployment.
 
 ## Two-stage flow
 
@@ -34,11 +34,25 @@ Logout destroys authorization for new games, but an already submitted transactio
 may still be included. The keeper finishes the round for the original player.
 It does not use browser sessions to choose the recipient.
 
+## Welcome credits
+
+The backend also calls `grantWelcomeFreeSpins(player)` after verified player
+onboarding. This adds exactly two credits once per wallet without replacing
+existing credits. `welcomeFreeSpinsGranted(player)` and the
+`WelcomeFreeSpinsGranted` event make the award durable without a database.
+The onchain flag remains set after spending credits or admin balance changes.
+Eligibility and launch timing are described in [welcome free spins](welcome-free-spins.md).
+The original Base deployment has neither welcome function. Its optional getter
+returns an unsupported state in the app; player balances, existing free credits,
+admin reads and the original spin/reveal flow remain available. The keeper does
+not queue welcome transactions for that deployment. RPC failures remain errors,
+never evidence that a bonus has not been claimed.
+
 ## Reads, events and grid
 
 `getContractSettings`, `getPrizeCatalog`, `getPlayerState`, `getGame`,
-`getGameStatus`, `getActiveGameIds`, ERC20/ERC1155 inventories, `owner`, `hasRole`
-and pending ownership transfers are read through server-side RPC.
+`getGameStatus`, `getActiveGameIds`, ERC20/ERC1155 inventories, `owner`, `hasRole`,
+`welcomeFreeSpinsGranted` and pending ownership transfers are read through server-side RPC.
 RPC URLs and keys are not passed to the browser.
 
 The contract grid is **row-major**: index `row * 5 + column`. The iPad converts
@@ -88,7 +102,7 @@ The contract enforces roles and preconditions again when the transaction is mine
 - Roles and delayed administration transfer (owner).
 - Deposits of configured tokens through `transfer` / `safeTransferFrom`.
 
-The owner can perform role operations. `startFreeSpin` and `revealRound` are
+The owner can perform role operations. `startFreeSpin`, `grantWelcomeFreeSpins` and `revealRound` are
 excluded from admin transactions: the backend handles them. No endpoint lets
 the backend EOA sign arbitrary calldata.
 
@@ -130,6 +144,9 @@ The current Base mainnet slot is
 deployed at block `51208577`. It uses native Base USDC and a `0.05 USDC`
 ticket. Addresses and transaction hashes are recorded in
 [`../../../contracts/deployments/base-mainnet.json`](../../../contracts/deployments/base-mainnet.json).
+This deployment predates welcome credits and cannot be upgraded in place. The
+example below connects to the original contract; automatic welcome grants require
+a new deployment of the updated source and its corresponding address/block.
 
 ```dotenv
 SLOT_CONTRACT_ADDRESS=0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c
