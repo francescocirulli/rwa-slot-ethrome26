@@ -6,18 +6,19 @@ import type {GasMode, GasToken} from './gas';
 import {useWalletRequest} from '../wallet-authorization-client';
 export type TransactionReview = {id:string;address:string;action:string;args:string[];expiresAt:number;transaction:{to:string;data:Hex;chainId:number;gasMode:GasMode}};
 type Pending = {id?:string;hash?:Hex};
-class TransactionApiError extends Error {constructor(message:string,public pending?:Pending){super(message);}}
+class TransactionApiError extends Error {constructor(message:string,public pending?:Pending,public code?:string){super(message);}}
 export function useContractTransaction(address:string,adminUserId?:string) {
   const {getAccessToken}=usePrivy();
   const walletRequest=useWalletRequest();
   const [busy,setBusy]=useState(false),[pending,setPending]=useState<Pending|null>(null),[error,setError]=useState(''),[confirmed,setConfirmed]=useState(0);
+  const [unrecoverable,setUnrecoverable]=useState(false);
   const [review,setReview]=useState<TransactionReview|null>(null),[gasToken,setGasToken]=useState<GasToken|null>(null);
   const lock=useRef(false),owner=useRef(address),alive=useRef(true),decision=useRef<((value:boolean)=>void)|null>(null);
   owner.current=address;
   const storageKey='slot-contract-tx:'+(adminUserId?'admin:'+adminUserId+':':'')+address.toLowerCase();
   const endpoint=adminUserId?'/api/admin/contract/':'/api/contract/';
   useEffect(()=>{
-    alive.current=true;setPending(null);setError('');
+    alive.current=true;setPending(null);setError('');setUnrecoverable(false);
     try{const saved=sessionStorage.getItem(storageKey);if(saved){const value=/^0x[a-fA-F0-9]{64}$/.test(saved)?{hash:saved}:JSON.parse(saved);if(value&&(/^[a-f0-9]{64}$/.test(value.id||'')||/^0x[a-fA-F0-9]{64}$/.test(value.hash||'')))setPending(value);}}catch{}
     return()=>{alive.current=false;decision.current?.(false);decision.current=null;};
   },[storageKey]);
@@ -25,18 +26,29 @@ export function useContractTransaction(address:string,adminUserId?:string) {
   async function api(path:string,body?:unknown){
     valid();const token=await getAccessToken();valid();if(!token)throw new Error('Accedi di nuovo per verificare il wallet.');
     const response=await (path==='send'?walletRequest:fetch)(endpoint+path,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${token}`,...(body===undefined?{}:{'Content-Type':'application/json','X-Slot-Request':'1'})},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(25000)});
-    const value=await response.json();valid();if(!response.ok)throw new TransactionApiError(value.error||'Operation unavailable.',value.pending);return value;
+    const value=await response.json();valid();if(!response.ok)throw new TransactionApiError(value.error||'Operation unavailable.',value.pending,value.code);return value;
   }
   function remember(value:Pending){
     // Only public identifiers, never credentials. Persist BEFORE the send can start.
-    sessionStorage.setItem(storageKey,JSON.stringify(value));setPending(value);
+    sessionStorage.setItem(storageKey,JSON.stringify(value));setPending(value);setUnrecoverable(false);
   }
   function clear(){sessionStorage.removeItem(storageKey);setPending(null);}
   async function wait(value:Pending){
     for(let attempt=0;attempt<90;attempt++){
       valid();
-      // Once the hash is known, recovery only needs the chain, even after a server restart.
-      const state=value.hash?await fetch('/api/contract/receipt?hash='+value.hash,{cache:'no-store',signal:AbortSignal.timeout(15000)}).then(async response=>{if(!response.ok)throw new Error('Verification unavailable.');return response.json();}):await api('status?id='+value.id);
+      let state;
+      try {
+        // Once the hash is known, recovery only needs the chain, even after a server restart.
+        state=value.hash?await fetch('/api/contract/receipt?hash='+value.hash,{cache:'no-store',signal:AbortSignal.timeout(15000)}).then(async response=>{if(!response.ok)throw new Error('Verification unavailable.');return response.json();}):await api('status?id='+value.id);
+      } catch(cause){
+        // An operation without a hash is kept in server memory only: after a restart the
+        // server cannot find it. Surface it and let the user verify onchain and discard it.
+        if(!value.hash&&cause instanceof TransactionApiError&&cause.code==='UnknownOperation'){
+          setUnrecoverable(true);
+          throw new Error('The request was lost when the service restarted and cannot be recovered. Verify the contract on Base, then discard it to continue.');
+        }
+        throw cause;
+      }
       valid();if(state.gasToken)setGasToken(state.gasToken);
       if(state.hash&&state.hash!==value.hash){value={...value,hash:state.hash};remember(value);}
       const stage=state.stage||state.status;
@@ -57,7 +69,7 @@ export function useContractTransaction(address:string,adminUserId?:string) {
   }
   async function execute(action:string,args:string[]){
     if(lock.current||pending)throw new Error('Check the transaction already sent first.');
-    lock.current=true;setBusy(true);setError('');setGasToken(null);
+    lock.current=true;setBusy(true);setError('');setGasToken(null);setUnrecoverable(false);
     let prepared:TransactionReview|undefined,submitted=false;
     try{
       prepared=await api('prepare',{action,args});
@@ -77,5 +89,9 @@ export function useContractTransaction(address:string,adminUserId?:string) {
       if(alive.current)setError(message);throw new Error(message);
     }finally{decision.current=null;lock.current=false;if(alive.current){setBusy(false);setReview(null);}}
   }
-  return {execute,check,busy,hash:pending?.hash||null,pending:!!pending,error,confirmed,review,gasToken,decide:(accept:boolean)=>decision.current?.(accept)};
+  function discard(){
+    // Only a request the server no longer knows and that carries no hash may be abandoned.
+    if(!unrecoverable)return;clear();setUnrecoverable(false);setError('');
+  }
+  return {execute,check,discard,busy,hash:pending?.hash||null,pending:!!pending,unrecoverable,error,confirmed,review,gasToken,decide:(accept:boolean)=>decision.current?.(accept)};
 }
