@@ -37,8 +37,8 @@ test('phone launchers open the same explorer with the authenticated wallet',asyn
   await page.route('**/api/account',route=>route.fulfill({json:{userId:'fixture-user',wallet:{address:player,balance:{amount:'0',stale:false,updatedAt:Date.now()},portfolio:null}}}));
   await page.route('**/api/account/welcome',route=>route.fulfill({json:{status:'granted',amount:'2'}}));
   await page.route('**/api/relay/**',route=>route.fulfill({status:401,json:{error:'No session'}}));
-  await page.setViewportSize({width:390,height:844});await page.goto('/phone-fixture');await expect(page.getByLabel('Wallet address',{exact:true})).toHaveText(player);
-  await page.getByRole('link',{name:'Explorer ↗'}).click();await page.getByRole('button',{name:'My summary ↗'}).click();
+  await page.setViewportSize({width:390,height:844});await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();await expect(page.getByLabel('Wallet address',{exact:true})).toHaveText(player);
+  await page.getByRole('button',{name:'Activity',exact:true}).click();await page.getByRole('button',{name:'My summary ↗'}).click();
   const frame=page.frameLocator('iframe[title="Game archive workspace"]');await expect(frame.locator('#result-title')).toHaveText('Your record.');expect(requests.at(-1)?.get('player')).toBe(player);
-  await frame.locator('#explore-tab').focus();await page.keyboard.press('Shift+Tab');await expect(page.getByRole('button',{name:'Back to wallet'})).toBeFocused();await page.keyboard.press('Tab');await expect(frame.locator('#explore-tab')).toBeFocused();await page.keyboard.press('Escape');await expect(page.getByRole('dialog',{name:'Game Explorer and summary'})).toBeHidden();
+  await frame.locator('#explore-tab').focus();await page.keyboard.press('Shift+Tab');await expect(page.getByRole('button',{name:'Back to activity'})).toBeFocused();await page.keyboard.press('Tab');await expect(frame.locator('#explore-tab')).toBeFocused();await page.keyboard.press('Escape');await expect(page.getByRole('dialog',{name:'Game Explorer and summary'})).toBeHidden();
 });

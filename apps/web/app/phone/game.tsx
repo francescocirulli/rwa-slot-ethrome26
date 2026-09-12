@@ -58,7 +58,7 @@ export function PhoneGame({session, api, onSession, transaction, portfolio}: {po
     {transaction.pending && <div className="phone-progress" role="status">Request under verification. Waiting for a definite result.<button className="phone-text" disabled={transaction.busy} onClick={() => void transaction.check()}>Check transaction</button></div>}
     {(error || transaction.error) && <p className="phone-error" role="alert">{error || transaction.error}</p>}
     <p className="small">{state.gasMode === 'usdc' ? 'Extra fees in USDC. If they are not enough, we use ETH from your wallet on Base after a rejection before sending.' : 'Gas needs ETH in your wallet on Base.'} Free spins do not charge USDC.</p>
-    {active && <p className="small">You can change or revoke the USDC approval in the “Your USDC limit” section below, even after ending the link.</p>}
+    {active && <p className="small">You can change or revoke the USDC approval in Wallet → “Your USDC limit”, even after ending the link.</p>}
     {transaction.gasToken && <p className="small">Fees for the last request: {transaction.gasToken}.</p>}
   </section>;
 }

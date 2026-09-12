@@ -76,6 +76,31 @@ landscape, iOS 12.5.8 / Safari 12.1.2, matching the experimental reference repo.
 
 ## Personal phone wallet
 
+The iPhone layout opens in **Play**, with sign-in first, then one QR pairing
+prompt or the current iPad session. Required proof permission is expanded until
+approved; paid-play budget controls follow it. **Wallet** contains the balance,
+receive address, tokens/prizes, USDC allowance, ENS names and account settings,
+in that order. **Activity** contains the leaderboard and game explorer.
+A fixed bottom navigation respects iPhone safe areas; inputs keep a 16px font
+and navigation targets are at least 44px tall. The page supports narrow portrait
+and landscape widths without disabling zoom.
+
+Changing views preserves wallet drafts, game polling and pending operations.
+Funding links open Wallet and expand the receive panel. Transaction review and
+session-expiry warnings stay above the navigation. Account/passkey settings are
+under **Account & security**; ending the iPad link remains in Play.
+
+Run the phone flows with Safari's WebKit engine and iPhone touch emulation:
+
+```sh
+npx playwright install webkit
+npx playwright test --config playwright.iphone.config.ts
+```
+
+The default browser suite covers the camera mocks, which rely on
+`canvas.captureStream()` and therefore run in Chrome. WebKit emulation does not
+replace a physical-device check of the camera, keyboard or home indicator.
+
 The wallet card always shows the full Base wallet address and a **Copy address**
 button, without opening the receive/QR section.
 
@@ -106,7 +131,7 @@ uses the existing single-service, in-memory architecture and adds no database or
 replica. User-owned wallet requests still use exact Privy SDK request authorization,
 never the keeper or shared admin wallet.
 
-The “Scansiona QR dell’iPad” button opens the rear camera from `/phone`. Camera
+The “Scan iPad QR” button opens the rear camera from `/phone`. Camera
 access is requested only after tapping it; closing, backgrounding or decoding a QR
 stops every track, including a permission response arriving after closure. If camera
 access is unavailable, a photo can be selected and decoded locally. Images are not
