@@ -9,6 +9,7 @@ import {createSlotReader} from '../lib/slot/reader';
 import {createSlotEngine} from '../lib/slot/engine';
 import {buildAction, prepareAction} from '../lib/slot/actions';
 import {spinPolicy} from '../lib/slot/policy';
+import {welcomeGrantData} from '../lib/slot/welcome-history';
 const rpc = 'http://127.0.0.1:8547';
 const chain = defineChain({id:31337,name:'Anvil',nativeCurrency:{name:'ETH',symbol:'ETH',decimals:18},rpcUrls:{default:{http:[rpc]}}});
 const mnemonic = 'test test test test test test test test test test test junk';
@@ -83,11 +84,12 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
       sender.sendRawTransaction = async request => {broadcasts++; await sendRaw(request); throw new Error('Simulated lost broadcast response');};
       try {await engine!.tick();} finally {sender.sendRawTransaction = sendRaw;}
       assert.equal(broadcasts, 1);
-      await until(async () => (await reader.player(player.address)).welcomeFreeSpinsGranted || null, 'Welcome bonus not recorded');
+      await until(async () => (await engine!.playerView(player.address)).welcome?.status === 'granted' || null, 'Welcome bonus not recorded');
       assert.equal((await reader.player(player.address)).freeSpins, 2n);
-      const events = await client.getContractEvents({address: slot, abi: slotAbi, eventName: 'WelcomeFreeSpinsGranted', args: {player: player.address}, fromBlock: deployed});
+      const events = await client.getContractEvents({address: slot, abi: slotAbi, eventName: 'FreeSpinsGranted', args: {player: player.address}, fromBlock: deployed});
       assert.equal(events.length, 1); assert.equal(events[0].args.amount, 2n);
       const transaction = await client.getTransaction({hash: events[0].transactionHash});
+      assert.equal(transaction.input, welcomeGrantData(player.address));
       assert.equal(transaction.from.toLowerCase(), keeper.address.toLowerCase());
       assert.equal(await client.getBalance({address: player.address}), playerEth);
       assert.equal(await client.readContract({address: payment, abi: erc20Abi, functionName: 'balanceOf', args: [player.address]}), balance);
@@ -161,7 +163,7 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
       assert.deepEqual(await fresh.lastGame(empty,block),{id:0n,complete:false});
       assert.deepEqual(await fresh.lastGame(empty,block),{id:0n,complete:true});
     });
-    await t.test('deployed pre-bonus bytecode keeps player/admin reads and free-spin reveals working without welcome writes', async () => {
+    await t.test('the deployed contract receives the welcome bonus once without replacing manual credits', async legacyTest => {
       const deployedFixture = JSON.parse(await readFile(new URL('./contracts/deployed-slot.json', import.meta.url), 'utf8'));
       const legacySlot = await deploy(slotAbi, deployedFixture.slotBytecode, [owner.address, keeper.address, payment, 50000n]);
       const legacyBlock = await client.getBlockNumber({cacheTime: 0});
@@ -173,24 +175,100 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
       for (let symbol = 0; symbol < 3; symbol++) await configure('configurePrize', [symbol, 3, zeroAddress, 0n, 1n, 0, symbol === 2 ? 400 : 300]);
       await configure('grantFreeSpins', [player.address, 2n]);
       const legacyReader = createSlotReader({...config, address: legacySlot, deploymentBlock: legacyBlock});
-      const legacyEngine = createSlotEngine(legacyReader, toHex(keeper.getHdKey().privateKey!) as Hex);
+      let legacyEngine = createSlotEngine(legacyReader, toHex(keeper.getHdKey().privateKey!) as Hex);
       try {
         const snapshot = await legacyReader.snapshot(player.address, true);
-        assert.equal(snapshot.player!.welcomeFreeSpinsGranted, null);
         assert.equal(snapshot.player!.freeSpins, '2');
         assert.equal(snapshot.settings.ticketPrice, '50000');
         const nonce = await client.getTransactionCount({address: keeper.address});
-        assert.equal((await legacyEngine.queueWelcome(player.address)).status, 'unsupported');
+        assert.equal((await legacyEngine.queueWelcome(player.address)).status, 'pending');
         await legacyEngine.tick();
-        assert.equal(await client.getTransactionCount({address: keeper.address}), nonce);
-        assert.equal((await legacyEngine.playerView(player.address)).welcome?.status, 'unsupported');
+        assert.equal(await client.getTransactionCount({address: keeper.address}), nonce + 1);
+        assert.equal((await legacyEngine.playerView(player.address)).welcome?.status, 'granted');
+        assert.equal((await legacyReader.player(player.address)).freeSpins, 4n);
+        legacyEngine.stop(); legacyEngine = createSlotEngine(createSlotReader({...config, address: legacySlot, deploymentBlock: legacyBlock}), toHex(keeper.getHdKey().privateKey!) as Hex);
+        assert.equal((await legacyEngine.queueWelcome(player.address)).status, 'granted');
+        await legacyEngine.tick();
         await legacyEngine.start(player.address, 0n, 'free', {assertSession: () => {}});
         const pending = await until(async () => {const state = await legacyReader.player(player.address); return state.game?.pending ? state : null;}, 'Legacy free spin not started');
-        assert.equal(pending.freeSpins, 1n);
+        assert.equal(pending.freeSpins, 3n);
         const head = await client.getBlockNumber({cacheTime: 0});
         await mine(Number(pending.game!.targetBlock - head + 1n)); await legacyEngine.tick(); await mine();
         const result = await legacyReader.game(pending.latestGameId);
         assert.equal(result.confirmed, true); assert.equal(result.status, 'won');
+        await configure('setFreeSpins', [player.address, 0n]);
+        const finalNonce = await client.getTransactionCount({address: keeper.address});
+        legacyEngine.stop(); legacyEngine = createSlotEngine(createSlotReader({...config, address: legacySlot, deploymentBlock: legacyBlock}), toHex(keeper.getHdKey().privateKey!) as Hex);
+        assert.equal((await legacyEngine.queueWelcome(player.address)).status, 'granted');
+        await legacyEngine.tick();
+        assert.equal(await client.getTransactionCount({address: keeper.address}), finalNonce);
+        assert.equal((await legacyReader.player(player.address)).freeSpins, 0n);
+
+        await legacyTest.test('lost welcome response and restart with a pending nonce never submit a second bonus', async () => {
+          const recipient = mnemonicToAccount(mnemonic, {addressIndex: 6}).address;
+          await client.request({method: 'anvil_setBalance' as never, params: [recipient, '0x0'] as never});
+          await client.request({method: 'evm_setAutomine' as never, params: [false] as never});
+          const firstSender = legacyEngine.reader.client, send = firstSender.sendRawTransaction;
+          let broadcasts = 0;
+          firstSender.sendRawTransaction = async request => {broadcasts++; await send(request); throw new Error('Lost response after pool acceptance');};
+          try {
+            assert.equal((await legacyEngine.queueWelcome(recipient)).status, 'pending');
+            await legacyEngine.tick();
+            assert.equal(broadcasts, 1); assert.ok(legacyEngine.health().pendingTransaction);
+            const latestNonce = await client.getTransactionCount({address: keeper.address, blockTag: 'latest'});
+            assert.equal(await client.getTransactionCount({address: keeper.address, blockTag: 'pending'}), latestNonce + 1);
+            firstSender.sendRawTransaction = send;
+            legacyEngine.stop(); legacyEngine = createSlotEngine(createSlotReader({...config, address: legacySlot, deploymentBlock: legacyBlock}), toHex(keeper.getHdKey().privateKey!) as Hex);
+            const restartedSender = legacyEngine.reader.client, restartedSend = restartedSender.sendRawTransaction;
+            let secondBroadcasts = 0;
+            restartedSender.sendRawTransaction = async request => {secondBroadcasts++; return restartedSend(request);};
+            assert.equal((await legacyEngine.queueWelcome(recipient)).status, 'pending');
+            await legacyEngine.tick(); assert.equal(secondBroadcasts, 0);
+            await mine();
+            assert.equal((await legacyEngine.queueWelcome(recipient)).status, 'granted');
+            assert.equal((await legacyEngine.playerView(recipient)).freeSpins, '2');
+            assert.equal(await client.getBalance({address: recipient}), 0n);
+            assert.equal(await client.readContract({address: payment, abi: erc20Abi, functionName: 'balanceOf', args: [recipient]}), 0n);
+            const logs = await client.getContractEvents({address: legacySlot, abi: slotAbi, eventName: 'FreeSpinsGranted', args: {player: recipient}, fromBlock: legacyBlock});
+            assert.equal(logs.length, 1); assert.equal(logs[0].args.amount, 2n);
+            restartedSender.sendRawTransaction = restartedSend;
+          } finally {
+            firstSender.sendRawTransaction = send;
+            await client.request({method: 'evm_setAutomine' as never, params: [true] as never});
+          }
+        });
+        await legacyTest.test('a stale negative history snapshot cannot authorize a new nonce', async () => {
+          const recipient = mnemonicToAccount(mnemonic, {addressIndex: 7}).address;
+          const oldHead = await client.getBlock({blockTag: 'latest'});
+          const keeperWallet = createWalletClient({account: keeper, chain, transport: http(rpc)});
+          const grantHash = await keeperWallet.sendTransaction({to: legacySlot, data: welcomeGrantData(recipient)});
+          assert.equal((await client.waitForTransactionReceipt({hash: grantHash})).status, 'success');
+          const staleReader = createSlotReader({...config, address: legacySlot, deploymentBlock: legacyBlock});
+          const getBlock = staleReader.client.getBlock, send = staleReader.client.sendRawTransaction;
+          let broadcasts = 0;
+          staleReader.client.getBlock = (async request => request?.blockTag === 'latest' ? oldHead : getBlock(request)) as typeof getBlock;
+          staleReader.client.sendRawTransaction = async request => {broadcasts++; return send(request);};
+          legacyEngine.stop(); legacyEngine = createSlotEngine(staleReader, toHex(keeper.getHdKey().privateKey!) as Hex);
+          const nonce = await client.getTransactionCount({address: keeper.address});
+          assert.equal((await legacyEngine.queueWelcome(recipient)).status, 'pending');
+          await legacyEngine.tick();
+          assert.equal(broadcasts, 0);
+          assert.equal(await client.getTransactionCount({address: keeper.address}), nonce);
+          staleReader.client.getBlock = getBlock;
+          assert.equal((await legacyEngine.queueWelcome(recipient)).status, 'granted');
+          assert.equal((await staleReader.player(recipient)).freeSpins, 2n);
+        });
+        await legacyTest.test('rotating the keeper does not forget an existing marked bonus', async () => {
+          const replacement = mnemonicToAccount(mnemonic, {addressIndex: 8});
+          await configure('grantRole', [keccak256(toHex('GAME_MANAGER_ROLE')), replacement.address]);
+          const rotated = createSlotEngine(createSlotReader({...config, address: legacySlot, deploymentBlock: legacyBlock}), toHex(replacement.getHdKey().privateKey!) as Hex);
+          try {
+            const nonce = await client.getTransactionCount({address: replacement.address});
+            assert.equal((await rotated.queueWelcome(player.address)).status, 'granted');
+            await rotated.tick();
+            assert.equal(await client.getTransactionCount({address: replacement.address}), nonce);
+          } finally {rotated.stop();}
+        });
       } finally {legacyEngine.stop();}
     });
   } finally {engine?.stop();process.kill('SIGTERM');}

@@ -71,7 +71,7 @@ landscape, iOS 12.5.8 / Safari 12.1.2, matching the experimental reference repo.
 | `USDC.approve(slot, budget)` | Player Privy wallet, confirmed on the phone |
 | `startSpin()` | Player Privy wallet, through the session's temporary signer |
 | `startFreeSpin(player)` | Backend EOA with `GAME_MANAGER_ROLE` |
-| `grantWelcomeFreeSpins(player)` | Backend EOA with `GAME_MANAGER_ROLE`; two credits once per eligible new wallet |
+| Marked `grantFreeSpins(player, 2)` | Backend EOA with `GAME_MANAGER_ROLE`; welcome history prevents repeated awards |
 | `revealRound(gameId)` and expired-game cleanup | Backend EOA |
 | Configuration, roles, treasury and prize deposits | Admin Privy wallet, confirmed in the browser |
 
@@ -110,8 +110,10 @@ runs once and verifies the wallet signature.
 
 New first embedded player wallets automatically receive two free spins after
 creation and pairing. Eligibility uses the verified Privy creation time and the
-contract deployment timestamp as the launch cutoff. The onchain grant flag
-prevents repeated awards. The iPad prominently shows the live free-spin balance;
+contract deployment timestamp as the launch cutoff. The backend uses the existing
+`grantFreeSpins` function and verifies marked transactions in onchain history to
+prevent repeated awards, including after a restart. No contract redeployment is
+needed. The iPad prominently shows the live free-spin balance;
 free play needs no USDC approval and the keeper pays its gas. See
 [welcome free spins](docs/welcome-free-spins.md) for eligibility, recovery and setup.
 

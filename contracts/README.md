@@ -137,6 +137,14 @@ without overwriting existing ones with `grantFreeSpins(player, amount)`, and con
 
 ## Welcome bonus
 
+The deployed Base slot supports welcome credits through the app's existing
+`grantFreeSpins(player, 2)` integration. The backend distinguishes a marked
+welcome transaction from manual credits, verifies its event/receipt history and
+serializes submissions. This requires no contract redeployment; repeat prevention
+is enforced by the app. See the [app integration](../apps/web/docs/welcome-free-spins.md).
+
+The following native alternative exists only in the newer, undeployed source:
+
 The owner or a game manager can call `grantWelcomeFreeSpins(player)` to add
 exactly `WELCOME_FREE_SPINS` (2) credits once per wallet. Existing credits are
 preserved. `welcomeFreeSpinsGranted(player)` permanently records the award, and
@@ -144,7 +152,7 @@ repeated calls revert with `WelcomeFreeSpinsAlreadyGranted`, even after the
 balance is spent or reset. Both `FreeSpinsGranted` and
 `WelcomeFreeSpinsGranted` are emitted on the first successful grant. The trusted
 backend verifies new-wallet eligibility; the contract enforces the fixed amount
-and prevents duplicates. See the [app integration](../apps/web/docs/welcome-free-spins.md).
+and prevents duplicates. The current app does not require this alternative.
 
 ## Frontend interface
 
@@ -209,8 +217,8 @@ The deployed slot was built from the source pinned in
 [`deployments/base-mainnet.json`](deployments/base-mainnet.json). It predates
 `grantWelcomeFreeSpins` and is not upgradeable. The current source and generated
 ABI include welcome credits for a future deployment. Do not assume new source
-features exist at the recorded address; the app keeps the original flow working
-and disables welcome grants on that version.
+features exist at the recorded address. The app awards welcome credits on that
+existing deployment through `grantFreeSpins` and verified transaction history.
 
 ```sh
 forge test

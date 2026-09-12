@@ -36,23 +36,24 @@ It does not use browser sessions to choose the recipient.
 
 ## Welcome credits
 
-The backend also calls `grantWelcomeFreeSpins(player)` after verified player
-onboarding. This adds exactly two credits once per wallet without replacing
-existing credits. `welcomeFreeSpinsGranted(player)` and the
-`WelcomeFreeSpinsGranted` event make the award durable without a database.
-The onchain flag remains set after spending credits or admin balance changes.
-Eligibility and launch timing are described in [welcome free spins](welcome-free-spins.md).
-The original Base deployment has neither welcome function. Its optional getter
-returns an unsupported state in the app; player balances, existing free credits,
-admin reads and the original spin/reveal flow remain available. The keeper does
-not queue welcome transactions for that deployment. RPC failures remain errors,
-never evidence that a bonus has not been claimed.
+After verified onboarding, the keeper calls the existing `grantFreeSpins(player, 2)`
+with a fixed public welcome marker appended to its calldata. The deployed contract
+accepts the marker and emits `FreeSpinsGranted`. The backend verifies the marked
+transaction and its receipt in the player's event history before allowing another
+send. Admin promotions use ordinary unmarked calldata and remain independent.
+Neither spending credits nor resetting their balance permits a second bonus.
+
+The history scan must be complete, and its keeper nonce must still match before
+signing. Reveals, free-spin starts and welcome credits share one nonce queue.
+RPC failures never establish that a bonus is unclaimed. No deployment change is
+needed; see [welcome free spins](welcome-free-spins.md) for the marker, recovery
+rules and the single-writer assumption.
 
 ## Reads, events and grid
 
 `getContractSettings`, `getPrizeCatalog`, `getPlayerState`, `getGame`,
 `getGameStatus`, `getActiveGameIds`, ERC20/ERC1155 inventories, `owner`, `hasRole`,
-`welcomeFreeSpinsGranted` and pending ownership transfers are read through server-side RPC.
+pending ownership transfers and welcome grant history are read through server-side RPC.
 RPC URLs and keys are not passed to the browser.
 
 The contract grid is **row-major**: index `row * 5 + column`. The iPad converts
@@ -102,9 +103,10 @@ The contract enforces roles and preconditions again when the transaction is mine
 - Roles and delayed administration transfer (owner).
 - Deposits of configured tokens through `transfer` / `safeTransferFrom`.
 
-The owner can perform role operations. `startFreeSpin`, `grantWelcomeFreeSpins` and `revealRound` are
-excluded from admin transactions: the backend handles them. No endpoint lets
-the backend EOA sign arbitrary calldata.
+The owner can perform role operations. `startFreeSpin` and `revealRound` are
+excluded from admin transactions: the backend handles them. Welcome grants
+use the backend's fixed marked `grantFreeSpins(player, 2)` call; manual admin
+grants use ordinary calldata. No endpoint lets the backend EOA sign arbitrary calldata.
 
 Price, catalog and timing can change only with no pending rounds. At least
 three symbols must be configured and weights must total 1000. One weight unit
@@ -144,9 +146,9 @@ The current Base mainnet slot is
 deployed at block `51208577`. It uses native Base USDC and a `0.05 USDC`
 ticket. Addresses and transaction hashes are recorded in
 [`../../../contracts/deployments/base-mainnet.json`](../../../contracts/deployments/base-mainnet.json).
-This deployment predates welcome credits and cannot be upgraded in place. The
-example below connects to the original contract; automatic welcome grants require
-a new deployment of the updated source and its corresponding address/block.
+This immutable deployment predates the optional native welcome function. Automatic
+welcome credits use its existing `grantFreeSpins` interface and verified transaction
+history; retain the address and deployment block below.
 
 ```dotenv
 SLOT_CONTRACT_ADDRESS=0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c
