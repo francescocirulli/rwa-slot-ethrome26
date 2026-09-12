@@ -92,6 +92,7 @@ contract DigitalSlotMachine is AccessControlDefaultAdminRules, ERC1155Holder, Pa
     uint64 public constant MAX_REVEAL_WINDOW_BLOCKS = 256;
     uint16 public constant MAX_ACTIVE_GAMES_PAGE_SIZE = 100;
     uint48 public constant OWNER_TRANSFER_DELAY = 2 days;
+    uint256 public constant WELCOME_FREE_SPINS = 2;
 
     bytes32 public constant GAME_MANAGER_ROLE = keccak256("GAME_MANAGER_ROLE");
     bytes32 public constant TREASURER_ROLE = keccak256("TREASURER_ROLE");
@@ -112,6 +113,7 @@ contract DigitalSlotMachine is AccessControlDefaultAdminRules, ERC1155Holder, Pa
     mapping(uint256 gameId => Game game) private _games;
     mapping(uint8 symbol => Prize prize) private _prizes;
     mapping(address player => uint256 count) public freeSpins;
+    mapping(address player => bool granted) public welcomeFreeSpinsGranted;
     mapping(address player => uint256 gameId) public activeGameId;
 
     uint256[] private _activeGameIds;
@@ -168,9 +170,11 @@ contract DigitalSlotMachine is AccessControlDefaultAdminRules, ERC1155Holder, Pa
     event NativeWithdrawn(address indexed recipient, uint256 amount);
     event FreeSpinsSet(address indexed player, uint256 oldCount, uint256 newCount);
     event FreeSpinsGranted(address indexed player, uint256 amount, uint256 newCount);
+    event WelcomeFreeSpinsGranted(address indexed player, uint256 amount, uint256 newCount);
     event FreeSpinConsumed(uint256 indexed gameId, address indexed player, uint256 remainingCount);
 
     error ZeroAddress();
+    error WelcomeFreeSpinsAlreadyGranted(address player);
     error InvalidPrice();
     error InvalidRevealDelay(uint64 delayBlocks);
     error InvalidRevealWindow(uint64 windowBlocks, uint64 maximumWindowBlocks);
@@ -215,14 +219,15 @@ contract DigitalSlotMachine is AccessControlDefaultAdminRules, ERC1155Holder, Pa
         _;
     }
 
-    constructor(address initialOwner, IERC20 paymentToken_, uint256 ticketPrice_)
+    constructor(address initialOwner, address initialGameManager, IERC20 paymentToken_, uint256 ticketPrice_)
         AccessControlDefaultAdminRules(OWNER_TRANSFER_DELAY, initialOwner)
     {
-        if (address(paymentToken_) == address(0)) revert ZeroAddress();
+        if (initialGameManager == address(0) || address(paymentToken_) == address(0)) revert ZeroAddress();
         if (ticketPrice_ == 0) revert InvalidPrice();
 
         paymentToken = paymentToken_;
         ticketPrice = ticketPrice_;
+        _grantRole(GAME_MANAGER_ROLE, initialGameManager);
     }
 
     /// @notice Pays for a new spin and locks its future target block.
@@ -476,6 +481,19 @@ contract DigitalSlotMachine is AccessControlDefaultAdminRules, ERC1155Holder, Pa
         uint256 newCount = freeSpins[player] + amount;
         freeSpins[player] = newCount;
         emit FreeSpinsGranted(player, amount, newCount);
+    }
+
+    /// @notice Grants exactly two welcome credits once per player, without replacing existing credits.
+    /// @dev The trusted backend verifies account eligibility. The contract prevents repeat grants,
+    ///      even after the player spends their credits or an operator changes their balance.
+    function grantWelcomeFreeSpins(address player) external onlyOwnerOrRole(GAME_MANAGER_ROLE) {
+        if (player == address(0)) revert ZeroAddress();
+        if (welcomeFreeSpinsGranted[player]) revert WelcomeFreeSpinsAlreadyGranted(player);
+        welcomeFreeSpinsGranted[player] = true;
+        uint256 newCount = freeSpins[player] + WELCOME_FREE_SPINS;
+        freeSpins[player] = newCount;
+        emit FreeSpinsGranted(player, WELCOME_FREE_SPINS, newCount);
+        emit WelcomeFreeSpinsGranted(player, WELCOME_FREE_SPINS, newCount);
     }
 
     /// @notice Configures one symbol's 3/5 and 5/5 probabilities and associated prize.

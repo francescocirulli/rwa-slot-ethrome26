@@ -1,9 +1,10 @@
 /* Safari 12 / ES5. No React, Privy SDK, wallet key, or phone auth token here. */
 (function () {
   'use strict';
+  if (window.slotDemo) return;
   var session = null, generation = 0, deadline = 0, lastServerTime = 0;
   var polling = false, pairing = false, leaving = false, signing = false, connected = true, timer, balanceTimer;
-  var lastActivity = 0, feedback = '';
+  var lastActivity = 0, feedback = '', needsPair = false;
   function emitSession(data) { var event = document.createEvent('CustomEvent'); event.initCustomEvent('slot-session', false, false, data); window.dispatchEvent(event); }
   function el(id) { return document.getElementById(id); }
   function show(id, visible) { el(id).hidden = !visible; }
@@ -145,11 +146,14 @@
     request('/pair', {}, function (error, data) {
       pairing = false;
       if (error) { network(false); notice(error); timer = window.setTimeout(pair, 8000); return; }
-      connected = true; show('connection-banner', false); notice(''); render(data); schedule();
+      needsPair = false; connected = true; show('connection-banner', false); notice(''); render(data); schedule();
     });
   }
   function poll() {
     if (polling || pairing || leaving || document.hidden) { schedule(); return; }
+    // An offline logout can leave the old cookie alive. Retire it through /pair
+    // before attempting session recovery, even when the network returns first.
+    if (needsPair) { pair(); return; }
     polling = true;
     request('/tablet', null, function (error, data, status) {
       polling = false;
@@ -173,7 +177,7 @@
   function leave(reason) {
     if (leaving) return;
     feedback = reason === 'expired' ? 'Sessione scaduta dopo 3 minuti di inattività.' : reason === 'ended' ? 'La sessione è stata chiusa. Il posto è libero.' : reason === 'refresh' ? '' : 'Sei uscito. Il wallet resta nel tuo account.';
-    leaving = true; generation += 1; polling = false; pairing = false;
+    leaving = true; needsPair = true; generation += 1; polling = false; pairing = false;
     window.clearTimeout(timer); clearUser(); notice('');
     state('ending', 'USCITA'); transition('Il posto si libera.', 'I dati del wallet sono stati rimossi da questo schermo.', 'A PRESTO, PLAYER');
     show('session-feedback', false);

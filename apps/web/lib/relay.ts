@@ -1,4 +1,5 @@
 import type {SlotEngine} from './slot/engine';
+import type {WelcomeService} from './welcome';
 import {SlotError, slotError} from './slot/errors';
 import {GAS_CONSENT} from './slot/gas';
 import type {Address} from 'viem';
@@ -9,9 +10,9 @@ import {IDLE_MS, PAIR_MS, type Balance, type Identity, type Session, type Sessio
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const random = () => randomBytes(32).toString('hex');
 class ApiError extends Error {constructor(public status: number, message: string) {super(message);}}
-type Options = {origin: string; walletService?: WalletService; readBalance: (address: string) => Promise<Balance>; now?: () => number; slot?: SlotEngine | null};
+type Options = {origin: string; walletService?: WalletService; readBalance: (address: string) => Promise<Balance>; now?: () => number; slot?: SlotEngine | null; welcome?: WelcomeService};
 
-export function createRelay({origin, walletService, readBalance, now = Date.now, slot}: Options) {
+export function createRelay({origin, walletService, readBalance, now = Date.now, slot, welcome}: Options) {
   const pairs = new Map<string, Session>();
   const tablets = new Map<string, Session>();
   const phones = new Map<string, Session>();
@@ -77,6 +78,7 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
     if (s.grant) dto.grant = {active: s.grant.active, signerId: s.grant.signerId, policyId: s.grant.policyId, message: s.grant.message};
     if (s.playGrant) {const {active, signerId, policyId, contract, chainId, budget, gasMode} = s.playGrant; dto.playGrant = {active, signerId, policyId, contract, chainId, budget, gasMode};}
     dto.proof = s.proof;
+    dto.welcome = s.welcome;
     valid(s);
     dto.expiresAt = s.expiresAt; dto.serverTime = now();
     return dto;
@@ -165,6 +167,10 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
           s.phoneHash = hash(token); s.state = 'approved'; s.userId = user.userId; s.wallet = wallet;
           s.qr = undefined; touch(s);
           phones.set(s.phoneHash, s); users.set(user.userId, s);
+          if (welcome) {
+            s.welcome = {status: 'checking', amount: '2'};
+            void welcome.request(user, wallet).then(value => {s.welcome = value;}).catch(() => {s.welcome = {status: 'unavailable', amount: '2'};});
+          }
           return json(await view(s), 200, cookieHeader('slot_phone', token));
         }
         if (path === '/tablet/claim') {
@@ -183,6 +189,15 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
         if (path === '/tablet/activity' || path === '/phone/activity') {
           const s = path.startsWith('/tablet') ? tablet(req) : (await phone(req)).s;
           touch(s); return json({sessionId: s.id, expiresAt: s.expiresAt, serverTime: now()});
+        }
+        if (path === '/phone/welcome') {
+          const {s, user} = await phone(req);
+          if (!s.wallet || !user.wallets.some(wallet => wallet.id === s.wallet!.id && wallet.address.toLowerCase() === s.wallet!.address.toLowerCase())) {
+            throw new ApiError(403, 'Il wallet non appartiene a questo account.');
+          }
+          s.welcome = welcome ? await welcome.request(user, s.wallet) : {status: 'unavailable', amount: '2'};
+          // Automatic bonus recovery must not extend the global inactivity deadline.
+          valid(s); return json(await view(s));
         }
         if (path === '/phone/prepare' || path === '/phone/activate') {
           const {s, user} = await phone(req);

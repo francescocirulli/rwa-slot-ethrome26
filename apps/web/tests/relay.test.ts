@@ -6,15 +6,16 @@ import {verifyMessage} from 'viem';
 import {createRelay} from '../lib/relay';
 import {proofPolicy} from '../lib/privy';
 import {IDLE_MS} from '../lib/types';
+import type {WelcomeService} from '../lib/welcome';
 import {pairingSecret, testAccount, walletFixture} from './fixtures';
 
 const origin = 'https://slot.example';
 const cleanups: Array<() => void> = [];
 afterEach(() => {while (cleanups.length) cleanups.pop()!();});
-function setup() {
+function setup(welcome?: WelcomeService) {
   let time = 1_800_000_000_000;
   const fixture = walletFixture();
-  const relay = createRelay({origin, walletService: fixture.service, now: () => time,
+  const relay = createRelay({origin, walletService: fixture.service, now: () => time, welcome,
     readBalance: async () => ({amount: '12.345678', updatedAt: time, stale: false})});
   cleanups.push(() => relay.close());
   function browser(token?: string) {
@@ -55,6 +56,7 @@ function setup() {
 test('tablet bundle parses as ES5 and never includes wallet SDK or credential storage', () => {
   const js = readFileSync('public/terminal/client.js', 'utf8');
   parse(js, {ecmaVersion: 5});
+  for (const file of ['demo.js', 'kiosk.js']) parse(readFileSync('public/terminal/' + file, 'utf8'), {ecmaVersion: 5});
   const game = readFileSync('public/terminal/game.js', 'utf8');
   parse(game, {ecmaVersion: 5});
   assert.doesNotMatch(game, /localStorage|sessionStorage|Bearer /);
@@ -63,6 +65,27 @@ test('tablet bundle parses as ES5 and never includes wallet SDK or credential st
   assert.equal((html.match(/class="cell(?: middle)?"/g) || []).length, 15);
   assert.doesNotMatch(html, /type="module"|_next\/|react-auth/);
   assert.doesNotMatch(js, /localStorage|sessionStorage|Bearer /);
+});
+
+test('pairing automatically requests the welcome bonus and recovery stays authenticated without extending inactivity', async () => {
+  const calls: string[] = [];
+  const s = setup({request: async (user, wallet) => {assert.equal(user.userId, 'did:privy:player-a'); calls.push(wallet.address); return {status: 'pending', amount: '2'};}});
+  const connected = await s.connect();
+  assert.deepEqual(calls, [testAccount.address]);
+  const initialExpiry = connected.expiresAt;
+  s.advance(60000);
+  const response = await s.phone.call('/phone/welcome', {player: '0x0000000000000000000000000000000000000099', amount: '999'});
+  assert.equal(response.status, 200); assert.equal(response.body.expiresAt, initialExpiry);
+  assert.deepEqual(response.body.welcome, {status: 'pending', amount: '2'});
+  assert.deepEqual(calls, [testAccount.address, testAccount.address]);
+  await s.phone.call('/phone'); await s.tablet.call('/tablet');
+  assert.equal(calls.length, 2);
+  assert.equal((await s.tablet.call('/phone/welcome', {})).status, 401);
+  assert.equal((await s.phone.call('/phone/welcome', {}, {origin: 'https://other.example'})).status, 403);
+  const stolenCookie = s.phone.cookie();
+  assert.equal((await s.browser('player-b').call('/phone/welcome', {}, {cookie: stolenCookie})).status, 403);
+  s.advance(120001);
+  assert.equal((await s.phone.call('/phone/welcome', {})).status, 401); assert.equal(calls.length, 2);
 });
 
 test('pair QR decodes, approval verifies ownership, tablet cookie rotates and no credentials leak', async () => {

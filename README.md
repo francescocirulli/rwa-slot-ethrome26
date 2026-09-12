@@ -10,9 +10,10 @@ Monorepo for the iPad slot machine with Privy wallets and USDC on Base.
 | --- | --- |
 | [`apps/web`](apps/web) | Next.js, iPad terminal, phone login, admin panel and backend keeper |
 | [`contracts`](contracts) | Solidity contracts, Foundry tests and scripts |
+| [`arduino`](arduino) | UNO R4 WiFi firmware, direct Railway HTTPS connection and cabinet setup |
 | [`.railway`](.railway) | Railway web service configuration |
 
-The two components are independent: the app's npm dependencies and lockfile stay
+The components are independent: the app's npm dependencies and lockfile stay
 in `apps/web`; Foundry and its submodules stay in `contracts`. The web build does
 not require Solidity or contract dependencies. The root npm package provides
 convenience commands and the Railway configuration SDK.
@@ -43,6 +44,13 @@ backend EOA reveals the round. The reels keep spinning while waiting; contract
 state and events determine the result. Admins sign management operations with
 the shared Privy wallet and use LI.FI for swaps. The contract stores games,
 prizes and credits; app sessions and locks are held in memory.
+
+The physical cabinet uses an UNO R4 WiFi (joystick, PIR, LCD and RGB strip), a
+direct Wi-Fi connection to the Railway HTTPS backend. No Mac or tunnel is needed
+in production. The iPad provides audio and an
+idle screensaver. The terminal defaults to real play; its explicit demo switch
+opens a browser-only simulation without wallets or transactions. See
+[hardware and demo setup](arduino/README.md).
 
 ## Development
 

@@ -55,12 +55,13 @@ contract DigitalSlotMachineTest is Test {
         uint64 oldDelayBlocks, uint64 newDelayBlocks, uint64 oldWindowBlocks, uint64 newWindowBlocks
     );
     event FreeSpinsGranted(address indexed player, uint256 amount, uint256 newCount);
+    event WelcomeFreeSpinsGranted(address indexed player, uint256 amount, uint256 newCount);
 
     function setUp() public {
         usdc = new MockERC20("USD Coin", "USDC", 6);
         prizeToken = new MockERC20("Stock 1", "STOCK1", 18);
         prize1155 = new MockERC1155();
-        slot = new DigitalSlotMachine(address(this), usdc, TICKET_PRICE);
+        slot = new DigitalSlotMachine(address(this), address(this), usdc, TICKET_PRICE);
 
         // Three configured symbols are the minimum needed to keep each three-cell column unique.
         slot.configurePrize(0, DigitalSlotMachine.PrizeKind.ERC20, address(prizeToken), 0, ERC20_PRIZE_AMOUNT, 404, 100);
@@ -78,6 +79,7 @@ contract DigitalSlotMachineTest is Test {
 
     function testInitialConfigurationAndExactTotal() public view {
         assertEq(slot.owner(), address(this));
+        assertTrue(slot.hasRole(slot.GAME_MANAGER_ROLE(), address(this)));
         assertEq(address(slot.paymentToken()), address(usdc));
         assertEq(slot.ticketPrice(), TICKET_PRICE);
         assertEq(slot.noWinWeight(), 101);
@@ -87,6 +89,18 @@ contract DigitalSlotMachineTest is Test {
         assertEq(slot.COLUMN_COUNT(), 5);
         assertEq(slot.ROW_COUNT(), 3);
         assertEq(slot.CELL_COUNT(), 15);
+    }
+
+    function testInitialGameManagerIsIndependentFromOwner() public {
+        DigitalSlotMachine managed = new DigitalSlotMachine(TREASURY, OPERATOR, usdc, TICKET_PRICE);
+
+        assertEq(managed.owner(), TREASURY);
+        assertTrue(managed.hasRole(managed.GAME_MANAGER_ROLE(), OPERATOR));
+        assertFalse(managed.hasRole(bytes32(0), OPERATOR));
+
+        vm.prank(OPERATOR);
+        managed.setTicketPrice(TICKET_PRICE + 1);
+        assertEq(managed.ticketPrice(), TICKET_PRICE + 1);
     }
 
     function testPlayerCannotOpenTwoPendingGames() public {
@@ -216,6 +230,38 @@ contract DigitalSlotMachineTest is Test {
         assertEq(slot.freeSpins(FREE_PLAYER), 5);
     }
 
+    function testWelcomeGrantAddsExactlyTwoOnceAndKeepsExistingCredits() public {
+        slot.grantFreeSpins(FREE_PLAYER, 3);
+        vm.expectEmit(true, false, false, true, address(slot));
+        emit FreeSpinsGranted(FREE_PLAYER, 2, 5);
+        vm.expectEmit(true, false, false, true, address(slot));
+        emit WelcomeFreeSpinsGranted(FREE_PLAYER, 2, 5);
+        slot.grantWelcomeFreeSpins(FREE_PLAYER);
+        assertEq(slot.freeSpins(FREE_PLAYER), 5);
+        assertTrue(slot.welcomeFreeSpinsGranted(FREE_PLAYER));
+
+        slot.setFreeSpins(FREE_PLAYER, 0);
+        vm.expectRevert(abi.encodeWithSelector(DigitalSlotMachine.WelcomeFreeSpinsAlreadyGranted.selector, FREE_PLAYER));
+        slot.grantWelcomeFreeSpins(FREE_PLAYER);
+        assertEq(slot.freeSpins(FREE_PLAYER), 0);
+        assertTrue(slot.welcomeFreeSpinsGranted(FREE_PLAYER));
+        slot.grantWelcomeFreeSpins(OTHER_PLAYER);
+        assertEq(slot.freeSpins(OTHER_PLAYER), 2);
+    }
+
+    function testWelcomeGrantRequiresManagerAndRejectsZeroAddress() public {
+        vm.expectRevert(abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, OPERATOR, slot.GAME_MANAGER_ROLE()));
+        vm.prank(OPERATOR);
+        slot.grantWelcomeFreeSpins(FREE_PLAYER);
+        assertFalse(slot.welcomeFreeSpinsGranted(FREE_PLAYER));
+        slot.grantRole(slot.GAME_MANAGER_ROLE(), OPERATOR);
+        vm.prank(OPERATOR);
+        slot.grantWelcomeFreeSpins(FREE_PLAYER);
+        assertEq(slot.freeSpins(FREE_PLAYER), 2);
+        vm.expectRevert(DigitalSlotMachine.ZeroAddress.selector);
+        slot.grantWelcomeFreeSpins(address(0));
+    }
+
     function testSpinStartedEventContainsFrontendReceiptData() public {
         uint256 expectedGameId = slot.nextGameId();
         uint64 targetBlock = uint64(block.number + slot.revealDelayBlocks());
@@ -263,7 +309,7 @@ contract DigitalSlotMachineTest is Test {
     }
 
     function testConfirmedTwelveSymbolPaytableTotals() public {
-        DigitalSlotMachine paytableSlot = new DigitalSlotMachine(address(this), usdc, TICKET_PRICE);
+        DigitalSlotMachine paytableSlot = new DigitalSlotMachine(address(this), address(this), usdc, TICKET_PRICE);
 
         paytableSlot.configurePrize(0, DigitalSlotMachine.PrizeKind.ERC1155, address(prize1155), 1, 1, 94, 62); // MAGNET
         paytableSlot.configurePrize(1, DigitalSlotMachine.PrizeKind.FreeSpin, address(0), 0, 1, 73, 48); // FREE_SPIN
@@ -294,7 +340,7 @@ contract DigitalSlotMachineTest is Test {
     }
 
     function testIncompletePaytableBlocksSpin() public {
-        DigitalSlotMachine incomplete = new DigitalSlotMachine(address(this), usdc, TICKET_PRICE);
+        DigitalSlotMachine incomplete = new DigitalSlotMachine(address(this), address(this), usdc, TICKET_PRICE);
         incomplete.configurePrize(
             0, DigitalSlotMachine.PrizeKind.ERC20, address(prizeToken), 0, ERC20_PRIZE_AMOUNT, 100, 100
         );
@@ -305,7 +351,7 @@ contract DigitalSlotMachineTest is Test {
     }
 
     function testAtLeastThreeSymbolsAreRequiredForUniqueColumns() public {
-        DigitalSlotMachine twoSymbolSlot = new DigitalSlotMachine(address(this), usdc, TICKET_PRICE);
+        DigitalSlotMachine twoSymbolSlot = new DigitalSlotMachine(address(this), address(this), usdc, TICKET_PRICE);
         twoSymbolSlot.configurePrize(0, DigitalSlotMachine.PrizeKind.FreeSpin, address(0), 0, 1, 0, 898);
         twoSymbolSlot.configurePrize(1, DigitalSlotMachine.PrizeKind.FreeSpin, address(0), 0, 1, 0, 1);
 
@@ -495,7 +541,7 @@ contract DigitalSlotMachineTest is Test {
     }
 
     function testWinningFreeSpinIncrementsTheOnchainCounter() public {
-        DigitalSlotMachine freePrizeSlot = new DigitalSlotMachine(address(this), usdc, TICKET_PRICE);
+        DigitalSlotMachine freePrizeSlot = new DigitalSlotMachine(address(this), address(this), usdc, TICKET_PRICE);
         freePrizeSlot.configurePrize(0, DigitalSlotMachine.PrizeKind.FreeSpin, address(0), 0, 1, 0, 500);
         freePrizeSlot.configurePrize(
             1, DigitalSlotMachine.PrizeKind.ERC1155, address(prize1155), ERC1155_TOKEN_ID, 1, 0, 398
@@ -625,7 +671,7 @@ contract DigitalSlotMachineTest is Test {
     }
 
     function testInventoryReservationPreventsInsolventConcurrentSpin() public {
-        DigitalSlotMachine scarceSlot = new DigitalSlotMachine(address(this), usdc, TICKET_PRICE);
+        DigitalSlotMachine scarceSlot = new DigitalSlotMachine(address(this), address(this), usdc, TICKET_PRICE);
         scarceSlot.configurePrize(
             0, DigitalSlotMachine.PrizeKind.ERC1155, address(prize1155), ERC1155_TOKEN_ID, 1, 0, 897
         );

@@ -3,8 +3,9 @@
 The ABI matches [`../../../contracts/abi/DigitalSlotMachine.json`](../../../contracts/abi/DigitalSlotMachine.json),
 compiled from `contracts/src/DigitalSlotMachine.sol` in this monorepo.
 The source keccak256 is recorded in `lib/slot/abi.ts` and test fixtures.
-The contract source was not changed for the integration. No additional
-interfaces are required for the implemented flow.
+The constructor accepts a separate initial game manager so the deployment EOA
+can operate games without owning the contract. The current source adds welcome
+credit interfaces beyond the original immutable Base deployment.
 
 ## Two-stage flow
 
@@ -33,11 +34,26 @@ Logout destroys authorization for new games, but an already submitted transactio
 may still be included. The keeper finishes the round for the original player.
 It does not use browser sessions to choose the recipient.
 
+## Welcome credits
+
+After verified onboarding, the keeper calls the existing `grantFreeSpins(player, 2)`
+with a fixed public welcome marker appended to its calldata. The deployed contract
+accepts the marker and emits `FreeSpinsGranted`. The backend verifies the marked
+transaction and its receipt in the player's event history before allowing another
+send. Admin promotions use ordinary unmarked calldata and remain independent.
+Neither spending credits nor resetting their balance permits a second bonus.
+
+The history scan must be complete, and its keeper nonce must still match before
+signing. Reveals, free-spin starts and welcome credits share one nonce queue.
+RPC failures never establish that a bonus is unclaimed. No deployment change is
+needed; see [welcome free spins](welcome-free-spins.md) for the marker, recovery
+rules and the single-writer assumption.
+
 ## Reads, events and grid
 
 `getContractSettings`, `getPrizeCatalog`, `getPlayerState`, `getGame`,
-`getGameStatus`, `getActiveGameIds`, ERC20/ERC1155 inventories, `owner`, `hasRole`
-and pending ownership transfers are read through server-side RPC.
+`getGameStatus`, `getActiveGameIds`, ERC20/ERC1155 inventories, `owner`, `hasRole`,
+pending ownership transfers and welcome grant history are read through server-side RPC.
 RPC URLs and keys are not passed to the browser.
 
 The contract grid is **row-major**: index `row * 5 + column`. The iPad converts
@@ -69,6 +85,21 @@ without history on a very old contract, initial synchronization requires
 multiple polls; new games stay blocked until it finishes. Admins browse global
 IDs in pages of 20. No persistent indexer is required.
 
+## Play availability and confirmed results
+
+The app reads prize reserves before enabling a new spin and the backend checks them
+again before either paid or free submission. It mirrors `_maximumPayout` and sums
+requirements when multiple symbols share one ERC20 or one ERC1155 collection/ID.
+Existing reservations cannot cover a new round. Missing RPC data blocks play until
+verification recovers. Contract simulation and onchain reservation remain the final
+check against state changes between the read and transaction inclusion.
+
+The terminal shows a replenishment notice instead of inviting a recharge when prize
+funding is insufficient. An already pending round keeps animating until its confirmed
+reveal. A confirmed win keeps its actual prize, amount and a BaseScan reveal transaction
+link visible even if new games are suspended. The link and prize clear on the next
+spin or logout. Jackpot artwork is limited to reel symbol 11; DGLD payouts remain Gold.
+
 ## Admin commands
 
 The console reads real roles. The backend prepares calldata from a closed set
@@ -86,10 +117,12 @@ The contract enforces roles and preconditions again when the transaction is mine
 - ERC20/ERC1155/ETH withdrawals (`TREASURER_ROLE`, paused and zero pending rounds).
 - Roles and delayed administration transfer (owner).
 - Deposits of configured tokens through `transfer` / `safeTransferFrom`.
+- ERC1155 mint to the shared wallet or slot, when the shared address owns the configured collection; ownership acceptance by the wallet owner account. See [inventory and mint](assets-and-swaps.md#inventory-and-erc1155-minting).
 
 The owner can perform role operations. `startFreeSpin` and `revealRound` are
-excluded from admin transactions: the backend handles them. No endpoint lets
-the backend EOA sign arbitrary calldata.
+excluded from admin transactions: the backend handles them. Welcome grants
+use the backend's fixed marked `grantFreeSpins(player, 2)` call; manual admin
+grants use ordinary calldata. No endpoint lets the backend EOA sign arbitrary calldata.
 
 Price, catalog and timing can change only with no pending rounds. At least
 three symbols must be configured and weights must total 1000. One weight unit
@@ -124,9 +157,18 @@ requiring persistent coordination.
 
 ## Configuration after deployment
 
+The current Base mainnet slot is
+[`0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c`](https://base.blockscout.com/address/0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c),
+deployed at block `51208577`. It uses native Base USDC and a `0.05 USDC`
+ticket. Addresses and transaction hashes are recorded in
+[`../../../contracts/deployments/base-mainnet.json`](../../../contracts/deployments/base-mainnet.json).
+This immutable deployment predates the optional native welcome function. Automatic
+welcome credits use its existing `grantFreeSpins` interface and verified transaction
+history; retain the address and deployment block below.
+
 ```dotenv
-SLOT_CONTRACT_ADDRESS=
-SLOT_DEPLOYMENT_BLOCK=
+SLOT_CONTRACT_ADDRESS=0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c
+SLOT_DEPLOYMENT_BLOCK=51208577
 SLOT_BACKEND_PRIVATE_KEY=
 BASE_RPC_URL=https://mainnet.base.org
 PRIVY_GAS_MODE=usdc
@@ -158,5 +200,6 @@ through allowance, but does not promise an atomic price lock between UI and mini
 ERC20, ERC1155, free spins, expiry, roles and keeper restart. Public Anvil keys
 are confined to tests; fixtures are not imported by the app.
 `npm run test:browser` verifies visual stages with controlled snapshots.
-The real deployment and new Privy transactions on Base still need testing once
-configuration is supplied: no real funds have been spent.
+The Base deployment is live but still has an empty prize catalog and zero
+prize inventory. Do not enable real spins until all prizes and weights are
+configured, funded and checked on-chain.

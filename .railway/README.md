@@ -55,6 +55,10 @@ Use Railway service variables. The full list, with explanations, is in
   Free spins require `GAME_MANAGER_ROLE`. This is not the Privy admin wallet's
   key. Do not use a `NEXT_PUBLIC_` prefix for this secret.
 - `LIFI_API_KEY`: optional; may remain empty.
+- `SLOT_HARDWARE_TOKEN`: dedicated random hardware secret shared with the UNO R4
+  WiFi firmware; server-only, at least 32 characters. The board calls
+  `/api/hardware/device` directly over verified HTTPS, without a Mac bridge.
+  See [Arduino setup](../arduino/README.md).
 
 `PRIVY_APP_SECRET` and `SLOT_BACKEND_PRIVATE_KEY` are sealed Railway variables.
 `preserve()` keeps existing variables, including keys replaced later, without

@@ -2,15 +2,17 @@
   "name": "rwa-slot",
   "version": "0.1.0",
   "private": true,
-  "engines": {"node": ">=22 <23"},
+  "engines": {
+    "node": ">=22 <23"
+  },
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
     "build": "next build && node scripts/prepare-standalone.mjs",
     "start": "node .next/standalone/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/account.test.ts tests/privy.test.ts tests/relay.test.ts tests/play-relay.test.ts tests/gas.test.ts tests/transactions.test.ts tests/admin.test.ts tests/wallet-authorization.test.ts tests/swaps.test.ts tests/backend-key.test.ts",
+    "test": "tsx --test tests/account.test.ts tests/welcome.test.ts tests/privy.test.ts tests/relay.test.ts tests/play-relay.test.ts tests/gas.test.ts tests/transactions.test.ts tests/admin.test.ts tests/wallet-authorization.test.ts tests/swaps.test.ts tests/backend-key.test.ts tests/hardware.test.ts tests/welcome-history.test.ts tests/funding.test.ts tests/prize-actions.test.ts tests/inventory.test.ts",
     "test:browser": "playwright test",
-    "test:chain": "tsx --test tests/slot-chain.test.ts"
+    "test:chain": "forge build --root ../../contracts && tsx --test tests/slot-chain.test.ts"
   },
   "dependencies": {
     "@privy-io/node": "0.34.0",
@@ -29,11 +31,12 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/node": "^22.0.0",
+    "@types/pngjs": "^6.0.5",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/pngjs": "^6.0.5",
     "acorn": "^8.18.0",
+    "esbuild": "0.28.2",
     "jsqr": "^1.4.0",
     "pngjs": "^7.0.0",
     "tsx": "^4.20.0",

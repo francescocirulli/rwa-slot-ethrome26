@@ -5,7 +5,8 @@ import {slotAbi} from '../slot/abi';
 import {adminProofMessage} from './model';
 import {PAYMENT_ASSET} from '../assets';
 import {LIFI_ROUTER,lifiSwapAbi} from './lifi';
-export const OPERATOR_ACTIONS:readonly string[] = ADMIN_ACTIONS.filter(action=>action.role!=='owner'&&action.name!=='renounceRole'&&action.name!=='acceptDefaultAdminTransfer').map(action=>action.name);
+import {BASE_PRIZE_COLLECTION,prizeCollectionAbi} from '../prize-collection';
+export const OPERATOR_ACTIONS:readonly string[] = ADMIN_ACTIONS.filter(action=>action.role!=='owner'&&action.name!=='renounceRole'&&action.name!=='acceptDefaultAdminTransfer'&&action.name!=='acceptPrizeOwnership').map(action=>action.name);
 type Rules=Parameters<ReturnType<PrivyClient['policies']>['create']>[0]['rules'];
 export function legacyOperatorPolicy(wallet:Address,contract:Address|null):Rules {
   const rules:Rules=[{name:'Shared wallet access proof',method:'personal_sign',action:'ALLOW',conditions:[{field_source:'message',field:'content',operator:'eq',value:adminProofMessage(wallet)}]}];
@@ -21,7 +22,7 @@ export function legacyOperatorPolicy(wallet:Address,contract:Address|null):Rules
     {field_source:'ethereum_calldata',field:'safeTransferFrom.to',operator:'eq',value:contract,abi:JSON.parse(JSON.stringify(parseAbi(['function safeTransferFrom(address from,address to,uint256 id,uint256 amount,bytes data)'])))}]});
   return rules;
 }
-export function operatorPolicy(wallet:Address,contract:Address|null):Rules {
+export function swapOperatorPolicy(wallet:Address,contract:Address|null):Rules {
   const rules=legacyOperatorPolicy(wallet,contract);
   const chain={field_source:'ethereum_transaction',field:'chain_id',operator:'eq',value:'8453'} as const;
   const approveAbi=JSON.parse(JSON.stringify(erc20Abi.filter(f=>f.type==='function'&&f.name==='approve')));
@@ -41,6 +42,17 @@ export function operatorPolicy(wallet:Address,contract:Address|null):Rules {
       {field_source:'ethereum_calldata',field:fn.name+'._minAmountOut',operator:'gt',value:'0',abi},
     ]});
   }
+  return rules;
+}
+export function operatorPolicy(wallet:Address,contract:Address|null,collection:Address=BASE_PRIZE_COLLECTION):Rules {
+  const rules=swapOperatorPolicy(wallet,contract);
+  if(contract)rules.push({name:'Mint prizes to shared wallet or slot',method:'eth_sendTransaction',action:'ALLOW',conditions:[
+    {field_source:'ethereum_transaction',field:'chain_id',operator:'eq',value:'8453'},
+    {field_source:'ethereum_transaction',field:'value',operator:'eq',value:'0'},
+    {field_source:'ethereum_transaction',field:'to',operator:'eq',value:collection},
+    {field_source:'ethereum_calldata',field:'function_name',operator:'eq',value:'mint',abi:JSON.parse(JSON.stringify(prizeCollectionAbi.filter(item=>item.name==='mint')))},
+    {field_source:'ethereum_calldata',field:'mint.recipient',operator:'in',value:[wallet,contract],abi:JSON.parse(JSON.stringify(prizeCollectionAbi.filter(item=>item.name==='mint')))},
+  ]});
   return rules;
 }
 // Provider responses add IDs to rules. Compare the enforced fields, with canonical object keys.

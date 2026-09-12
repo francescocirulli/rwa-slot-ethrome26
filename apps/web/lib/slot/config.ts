@@ -1,14 +1,15 @@
 import {getAddress, isAddress, type Address} from 'viem';
 import {USDC} from '../types';
 import type {GasMode} from './gas';
-export type SlotConfig = {address: Address; deploymentBlock: bigint; chainId: number; rpcUrl: string; paymentToken: Address; gasMode: GasMode; confirmations: number};
+import {prizeCollectionAddress} from '../prize-collection';
+export type SlotConfig = {address: Address; deploymentBlock: bigint; chainId: number; rpcUrl: string; paymentToken: Address; gasMode: GasMode; confirmations: number; prizeCollection?:Address};
 export function loadSlotConfig(env = process.env): SlotConfig | null {
   if (!env.SLOT_CONTRACT_ADDRESS) return null;
   if (!isAddress(env.SLOT_CONTRACT_ADDRESS) || !/^\d+$/.test(env.SLOT_DEPLOYMENT_BLOCK || '')) throw new Error('Configure SLOT_CONTRACT_ADDRESS and SLOT_DEPLOYMENT_BLOCK');
   if (env.PRIVY_GAS_MODE && !['usdc','eth'].includes(env.PRIVY_GAS_MODE)) throw new Error('PRIVY_GAS_MODE must be usdc or eth');
   return {address: getAddress(env.SLOT_CONTRACT_ADDRESS), deploymentBlock: BigInt(env.SLOT_DEPLOYMENT_BLOCK!),
     chainId: 8453, rpcUrl: env.BASE_RPC_URL || 'https://mainnet.base.org', paymentToken: USDC,
-    gasMode: env.PRIVY_GAS_MODE === 'eth' ? 'eth' : 'usdc', confirmations: 2};
+    gasMode: env.PRIVY_GAS_MODE === 'eth' ? 'eth' : 'usdc', confirmations: 2, prizeCollection:prizeCollectionAddress(env.SLOT_PRIZE1155_ADDRESS)};
 }
 export const GAME_STATES = ['waiting', 'revealable', 'expired', 'won', 'lost', 'invalidated'] as const;
 export {PRIZE_LABELS as SYMBOLS} from '../assets';

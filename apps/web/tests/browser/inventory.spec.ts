@@ -1,0 +1,21 @@
+import {test,expect} from '@playwright/test';
+test('admin compares both balances, selects ERC1155 quantity and mint destination, and sees ownership limits',async({page})=>{
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  await page.setViewportSize({width:1280,height:900});await page.goto('/inventory-fixture');
+  const gadget=page.locator('.collectible-card').filter({has:page.getByRole('heading',{name:'Gadget',exact:true})});
+  await expect(gadget).toContainText('Wallet condiviso');await expect(gadget).toContainText('7 NFT');await expect(gadget).toContainText('10 NFT');await expect(gadget).toContainText('Impegnato in giocate');
+  await gadget.getByRole('button',{name:'Deposita NFT'}).click();
+  const form=page.getByRole('region',{name:'Prepara deposito o mint'});
+  await expect(form).toContainText('7 NFT');await expect(form).toContainText('10 NFT');
+  await form.getByRole('textbox',{name:'Quantità NFT'}).fill('8');await form.getByRole('button',{name:'Simula e conferma deposito'}).click();
+  await expect(page.getByRole('alert')).toContainText('saldo NFT non basta');await expect(page.getByTestId('submitted')).toBeEmpty();
+  await form.getByRole('textbox',{name:'Quantità NFT'}).fill('3');await form.getByRole('button',{name:'Simula e conferma deposito'}).click();
+  await expect(page.getByTestId('submitted')).toContainText('fundERC1155');await expect(page.getByTestId('submitted')).toContainText('"1","3"');
+  await gadget.getByRole('button',{name:'Mint NFT'}).click();await form.getByRole('textbox',{name:'Quantità NFT'}).fill('12');await form.getByRole('combobox',{name:'Destinazione'}).selectOption('slot');
+  await page.screenshot({path:'artifacts/admin-inventory-mint.png',fullPage:true});
+  await form.getByRole('button',{name:'Simula e conferma mint'}).click();await expect(page.getByTestId('submitted')).toContainText('mintERC1155');await expect(page.getByTestId('submitted')).toContainText('"1","12","slot"');
+  await page.getByRole('button',{name:'Toggle owner'}).click();await expect(gadget.getByRole('button',{name:'Mint NFT'})).toBeDisabled();
+  await expect(page.getByText('Il mint richiede che', {exact:false})).toBeVisible();await expect(page.getByRole('button',{name:'Accetta proprietà collezione con Privy'})).toBeVisible();
+  await page.setViewportSize({width:1024,height:768});await page.screenshot({path:'artifacts/admin-inventory-owner.png',fullPage:true});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(1024);expect(errors).toEqual([]);
+});

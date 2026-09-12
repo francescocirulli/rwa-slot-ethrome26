@@ -92,6 +92,26 @@ The configured weights plus `noWinWeight` must equal exactly 1,000 before any pa
 `getOutcomeForRoll()` makes every probability bucket directly auditable. At least three prize symbols must be
 configured because each column needs three distinct symbols; the confirmed paytable configures twelve.
 
+## ERC-1155 prize collection
+
+`SlotPrize1155` provides four constructor-defined launch rewards with JSON and SVG artwork returned entirely as
+base64 data URIs. The recorded Base mainnet collection also includes Magnet, created after deployment with the
+same fully on-chain metadata format:
+
+| Token ID | Reward |
+|---:|---|
+| 1 | Gadget |
+| 2 | ENS registration |
+| 3 | Urbe Hub day pass |
+| 4 | Shirt |
+| 5 | Magnet |
+
+The collection owner can call `mint(recipient, tokenId, amount)` or `mintBatch(...)` for existing IDs. New
+sequential IDs start from 5 on a fresh deployment and can be created with an initial receiver, supply, and complete
+metadata URI through `createAndMint(recipient, amount, metadataURI)`. On Base mainnet, Magnet occupies ID 5 and
+`nextTokenId` is now 6. The four constructor-defined IDs begin with zero supply and are minted only when inventory
+is required; the first Magnet unit was minted directly to the slot contract.
+
 ## Solvency
 
 Every pending spin reserves the maximum payout for every possible ERC-20 and ERC-1155 result. A new spin reverts
@@ -118,6 +138,25 @@ Each address can have at most one pending game across paid and free spins. A new
 The owner or a game manager can replace a player's free-spin balance with `setFreeSpins(player, count)`, add credits
 without overwriting existing ones with `grantFreeSpins(player, amount)`, and consume one credit with
 `startFreeSpin(player)`. Winning a free spin increments the same onchain counter.
+
+## Welcome bonus
+
+The deployed Base slot supports welcome credits through the app's existing
+`grantFreeSpins(player, 2)` integration. The backend distinguishes a marked
+welcome transaction from manual credits, verifies its event/receipt history and
+serializes submissions. This requires no contract redeployment; repeat prevention
+is enforced by the app. See the [app integration](../apps/web/docs/welcome-free-spins.md).
+
+The following native alternative exists only in the newer, undeployed source:
+
+The owner or a game manager can call `grantWelcomeFreeSpins(player)` to add
+exactly `WELCOME_FREE_SPINS` (2) credits once per wallet. Existing credits are
+preserved. `welcomeFreeSpinsGranted(player)` permanently records the award, and
+repeated calls revert with `WelcomeFreeSpinsAlreadyGranted`, even after the
+balance is spent or reset. Both `FreeSpinsGranted` and
+`WelcomeFreeSpinsGranted` are emitted on the first successful grant. The trusted
+backend verifies new-wallet eligibility; the contract enforces the fixed amount
+and prevents duplicates. The current app does not require this alternative.
 
 ## Frontend interface
 
@@ -172,7 +211,18 @@ probability denominator, and the 256-block maximum window are protocol rules rat
 
 - Base chain ID: `8453`
 - Native USDC payment token: `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
-- Default ticket: `1 USDC`
+- ERC-1155 prizes: [`0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`](https://base.blockscout.com/address/0x8D411D8efCDb0d528E4F6659B44223264Fd0B719) (verified source)
+- Slot machine: [`0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c`](https://base.blockscout.com/address/0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c) (verified source)
+- Ticket: `0.05 USDC` (`50,000` base units)
+- Slot owner: `0xC81f6728a10B20a8981d5C2601Aa185417229035`
+- Initial game manager and ERC-1155 owner: `0x8e251547f0fD650e0573711EF733F13eBA1505aD`
+
+The deployed slot was built from the source pinned in
+[`deployments/base-mainnet.json`](deployments/base-mainnet.json). It predates
+`grantWelcomeFreeSpins` and is not upgradeable. The current source and generated
+ABI include welcome credits for a future deployment. Do not assume new source
+features exist at the recorded address. The app awards welcome credits on that
+existing deployment through `grantFreeSpins` and verified transaction history.
 
 ```sh
 forge test
@@ -182,5 +232,9 @@ forge script script/DeployBase.s.sol:DeployBase --rpc-url "$BASE_RPC_URL" --broa
 The deployment starts with the 10.1% no-win weight and an otherwise empty paytable. Configure all 12 entries with
 their real token addresses, token IDs, and prize amounts, fund every prize, and confirm
 `totalOutcomeWeight() == 1000` before opening spins.
+
+Machine-readable addresses and deployment transactions are recorded in
+[`deployments/base-mainnet.json`](deployments/base-mainnet.json). Standalone frontend ABIs are available in
+[`abi/DigitalSlotMachine.json`](abi/DigitalSlotMachine.json) and [`abi/SlotPrize1155.json`](abi/SlotPrize1155.json).
 
 See [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) for the outcome-generation and inventory rationale.

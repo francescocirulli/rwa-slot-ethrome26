@@ -69,3 +69,9 @@ test('revoked collaborators cannot confirm prepared writes; ownership operations
 });
 
 test.afterEach(()=>walletAuthorizations().dispose());
+
+
+test('player API cannot prepare collection mint or ownership operations',async()=>{
+  const f=fixture();
+  for(const action of ['mintERC1155','acceptPrizeOwnership'])assert.equal((await f.call('prepare',{action,args:[]})).status,403);
+});
