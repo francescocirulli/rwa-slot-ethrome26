@@ -40,6 +40,15 @@ export default defineRailway(() => {
       SLOT_BACKEND_PRIVATE_KEY: preserve(),
       LIFI_API_KEY: preserve(),
       SLOT_HARDWARE_TOKEN: preserve(),
+      ARKIV_ENABLED: preserve(),
+      ARKIV_USE_SLOT_BACKEND_KEY: preserve(),
+      ARKIV_API_KEY: preserve(),
+      ARKIV_WRITER_ADDRESS: preserve(),
+      ARKIV_PROJECT: preserve(),
+      ARKIV_SEASON_ANCHOR_BLOCK: preserve(),
+      ARKIV_SEASON_BLOCKS: preserve(),
+      ARKIV_BASE_FROM_BLOCK: preserve(),
+      ARKIV_HISTORY_DAYS: preserve(),
     },
   });
   return project('rwa-slot-ethrome26', {resources: [web]});

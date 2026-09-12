@@ -67,7 +67,9 @@ export function createSeasonService(config:ArkivConfig, store:ArkivStore, reader
       indexingError = false;
     } catch {indexingError = true;}
     finally {
-      if(!stopped) {scanTimer = setTimeout(()=>void scan(),8000);scanTimer.unref();}
+      // Range-capped Base RPCs may allow only five blocks per page. Drain the
+      // backlog serially before returning to the normal ingestion interval.
+      if(!stopped) {scanTimer = setTimeout(()=>void scan(),!indexingError && catchingUp ? 250 : 8000);scanTimer.unref();}
     }
   }
   // Arkiv reads update only on socket events, initial load or an explicit client reconnect.

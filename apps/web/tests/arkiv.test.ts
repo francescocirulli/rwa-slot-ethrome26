@@ -14,6 +14,28 @@ const player='0x0000000000000000000000000000000000000011';
 const config:ArkivConfig={project:'test',httpUrl:'http://localhost',wsUrl:'ws://localhost',writer:player,anchor:100n,seasonBlocks:60n,baseFromBlock:1n,historyDays:30};
 const game={id:1n,player,won:true,matchCount:5,winningSymbol:2,hasResult:true,confirmed:true,resultBlock:20n,transactionHash:'0x'+'1'.repeat(64),symbols:[2,2,2,2,2],payout:{kind:1,amount:100n}} as unknown as ConfirmedGame;
 
+test('five-block Base pages catch up before the next normal ingestion interval',async()=>{
+  const pages:bigint[][]=[];
+  let complete!:()=>void;
+  const caughtUp=new Promise<void>(resolve=>{complete=resolve;});
+  const getBlock=async()=>({number:159n,timestamp:1000n});
+  const store={canWrite:true,history:async()=>[],publicClient:{getBlock},liveClient:{getBlock,
+    transport:{type:'webSocket',subscribe:async()=>({unsubscribe(){}})},watchEntityEvents:()=>()=>{}},
+    contributions:async()=>[]} as unknown as ArkivStore;
+  const reader={config:{confirmations:2,logPageBlocks:5n},contract:{},validate:async()=>{},
+    client:{getBlockNumber:async()=>101n,getContractEvents:async(options:{fromBlock:bigint;toBlock:bigint})=>{
+      pages.push([options.fromBlock,options.toBlock]);
+      if(options.toBlock===100n)complete();
+      return [];
+    }}} as unknown as SlotReader;
+  const service=createSeasonService({...config,baseFromBlock:90n},store,reader);
+  let timeout:ReturnType<typeof setTimeout>|undefined;
+  try {
+    await Promise.race([caughtUp,new Promise((_,reject)=>{timeout=setTimeout(()=>reject(new Error('Capped ingestion did not catch up')),3000);})]);
+    assert.deepEqual(pages,[[90n,94n],[95n,99n],[100n,100n]]);
+  } finally {clearTimeout(timeout);service.stop();}
+});
+
 test('all season contributions share an absolute expiry, including late arrivals',()=>{
   const season=seasonAt(100n,100n,60n)!;
   assert.equal(seasonAt(99n,100n,60n),null);
