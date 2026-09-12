@@ -21,6 +21,11 @@ async function setup(page:Page,{paired=false,busy=false,unavailable=false}={}) {
 test('standalone wallet shows allowance and all prizes; transfer requires readable review and explicit confirmation',async({page})=>{
   await setup(page);await page.goto('/phone-fixture');
   await expect(page.getByText('No iPad linked to this page')).toBeVisible();
+  await expect(page.getByLabel('Wallet address',{exact:true})).toHaveText(address);
+  await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(value:string)=>{document.body.dataset.copiedAddress=value;}}}));
+  await page.getByRole('button',{name:'Copy address',exact:true}).click();
+  await expect(page.locator('body')).toHaveAttribute('data-copied-address',address);
+  await expect(page.getByRole('button',{name:'Address copied'})).toBeVisible();
   await expect(page.getByText('2.5 USDC',{exact:true})).toBeVisible();
   await expect(page.locator('b').filter({hasText:'GOLD · DGLD'})).toBeVisible();
   await page.screenshot({path:'/tmp/phone-wallet-standalone.png',fullPage:true});

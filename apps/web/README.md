@@ -76,6 +76,9 @@ landscape, iOS 12.5.8 / Safari 12.1.2, matching the experimental reference repo.
 
 ## Personal phone wallet
 
+The wallet card always shows the full Base wallet address and a **Copy address**
+button, without opening the receive/QR section.
+
 Open `/phone` directly and sign in with email or passkey. A new account can create
 its embedded wallet without scanning a QR. The page shows USDC, ETH for gas, all
 supported equity tokens, GOLD/DGLD, and the known ERC1155 prize IDs with quantities.
@@ -280,7 +283,11 @@ Base RWA tokens) and **Inventory** (shared wallet balances, NFT placeholders,
 free-spin counter and reviewed contract deposits). The Swap tab also offers a
 quick-fund action that computes the missing reserve for a chosen number of rounds,
 buys the shortfall of the six RWA tokens with USDC and prepares the deposit
-transactions in sequence. See
+transactions in sequence. Start once, then confirm each requested signature;
+approvals, swaps, balance checks and deposits advance automatically. The manual
+swap form is available in a collapsed section. Admin RPC reads share batching and
+`BASE_RPC_FALLBACK_URLS`; the funding path skips NFT reads and reuses concurrent
+inventory requests. See
 [assets and swap setup](docs/assets-and-swaps.md) for token addresses, decimal
 precision, deployment mapping, Privy gas setup, collaborator permission
 upgrades and recovery behavior. Both owner and authorized collaborators can

@@ -8,6 +8,7 @@ import {buildQuickFundPlan,type QuickFundItem} from '@/lib/admin/quick-fund';
 import type {SwapView} from '@/lib/admin/swaps';
 import type {SlotSnapshot} from '@/lib/slot/reader';
 import {useWalletRequest} from '@/lib/wallet-authorization-client';
+import {FundingConfirmation} from './funding-confirmation';
 
 type Data=AdminInventoryData;
 const short=(address:string)=>address.slice(0,6)+'…'+address.slice(-4);
@@ -21,6 +22,8 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
   const [inputAssetId,setInputAssetId]=useState('usdc');
   const [assetId,setAssetId]=useState('nvidia'),[amount,setAmount]=useState(''),[quote,setQuote]=useState<SwapView|null>(null),[operation,setOperation]=useState<SwapView|null>(null),[clock,setClock]=useState(Date.now());
   const [turns,setTurns]=useState(1),[fundProgress,setFundProgress]=useState<Record<string,string>>({});
+  const [funding,setFunding]=useState(false),[fundStatus,setFundStatus]=useState(''),[fundReview,setFundReview]=useState<SwapView|null>(null);
+  const decision=useRef<((accepted:boolean)=>void)|null>(null),inventoryRequest=useRef<{path:string;promise:Promise<Data>}|null>(null),operationRef=useRef<SwapView|null>(null),scopeRef=useRef(tab);scopeRef.current=tab;operationRef.current=operation;
   const alive=useRef(true),lock=useRef(false),apiRef=useRef<(path:string,body?:unknown)=>Promise<any>>(null),refreshRef=useRef<()=>Promise<void>>(null);
   const storageKey='slot-swap:'+userId+':'+address.toLowerCase();
   const inputAsset=SWAP_INPUTS.find(a=>a.id===inputAssetId)!;
@@ -32,14 +35,28 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
     const value=await response.json();if(!alive.current)throw new Error('Account changed.');if(!response.ok)throw new Error(value.error||'Operation unavailable.');return value;
   }
   apiRef.current=api;
-  async function loadInventory(){const value=await apiRef.current!('inventory');if(value.address.toLowerCase()!==address.toLowerCase())throw new Error('Wallet changed.');setInventory(value);setLoadError('');return value as Data;}
+  async function loadInventory():Promise<Data>{
+    const path='inventory'+(scopeRef.current==='swap'?'?scope=funding':'');
+    if(inventoryRequest.current){if(inventoryRequest.current.path===path)return inventoryRequest.current.promise;await inventoryRequest.current.promise.catch(()=>{});return loadInventory();}
+    const request=(async()=>{const value=await apiRef.current!(path);if(value.address.toLowerCase()!==address.toLowerCase())throw new Error('Wallet changed.');setInventory(value);setLoadError('');return value as Data;})();
+    inventoryRequest.current={path,promise:request};try{return await request;}finally{if(inventoryRequest.current?.promise===request)inventoryRequest.current=null;}
+  }
+  async function waitInventory(ready:(data:Data)=>boolean):Promise<Data>{
+    for(let attempt=0;attempt<10;attempt++){
+      if(!alive.current)throw new Error('Account changed.');
+      try{const data=await loadInventory();if(ready(data))return data;}catch{}
+      setFundStatus('Aggiorno saldi e riserve automaticamente…');
+      await delay(Math.min(1500*(attempt+1),4000));
+    }
+    throw new Error('Saldi non verificabili al momento. Il rifornimento è interrotto; puoi riprenderlo senza ripetere i depositi confermati.');
+  }
   async function reload(){try{await loadInventory();}catch(e){if(alive.current)setLoadError((e as Error).message);}}
   refreshRef.current=reload;
-  useEffect(()=>{alive.current=true;try{const saved=JSON.parse(sessionStorage.getItem(storageKey)||'null');if(saved&&typeof saved.id==='string'&&saved.address?.toLowerCase()===address.toLowerCase())setOperation(saved);}catch{}return()=>{alive.current=false;};},[storageKey,address]);
-  useEffect(()=>{if(!['swap','inventory'].includes(tab)||inventory)return;void refreshRef.current!();},[tab,inventory]);
+  useEffect(()=>{alive.current=true;try{const saved=JSON.parse(sessionStorage.getItem(storageKey)||'null');if(saved&&typeof saved.id==='string'&&saved.address?.toLowerCase()===address.toLowerCase())setOperation(saved);}catch{}return()=>{alive.current=false;decision.current?.(false);decision.current=null;};},[storageKey,address]);
+  useEffect(()=>{if(!['swap','inventory'].includes(tab))return;void refreshRef.current!();},[tab]);
   useEffect(()=>{if(!quote)return;const timer=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[quote]);
   useEffect(()=>{onSwapBusy(pending||busy);},[pending,busy,onSwapBusy]);
-  function remember(value:SwapView){sessionStorage.setItem(storageKey,JSON.stringify(value));setOperation(value);}
+  function remember(value:SwapView){operationRef.current=value;sessionStorage.setItem(storageKey,JSON.stringify(value));setOperation(value);}
   async function check(value:SwapView){
     const params=statusParams(value);
     const next:SwapView=await apiRef.current!('status?'+params);
@@ -51,9 +68,14 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
     remember(next);
     if(complete(next)){sessionStorage.removeItem(storageKey);await refreshRef.current!();refreshAccount.current();}
   }
-  useEffect(()=>{if(!pending||!operation)return;let stopped=false,timer:ReturnType<typeof setTimeout>;async function poll(){try{await check(operation!);}catch(e){if(!stopped)setError((e as Error).message);}if(!stopped)timer=setTimeout(poll,4000);}void poll();return()=>{stopped=true;clearTimeout(timer);};},[pending,operation?.id,operation?.actionId]);
+  useEffect(()=>{
+    if(!pending||busy)return;
+    let stopped=false,timer:ReturnType<typeof setTimeout>;
+    async function poll(){try{if(operationRef.current)await check(operationRef.current);}catch(e){if(!stopped)setError((e as Error).message);}if(!stopped)timer=setTimeout(poll,4000);}
+    timer=setTimeout(poll,4000);return()=>{stopped=true;clearTimeout(timer);};
+  },[pending,busy]);
   async function run(action:()=>Promise<void>){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await action();}catch(e){if(alive.current)setError((e as Error).message);}finally{lock.current=false;if(alive.current)setBusy(false);}}
-  async function getQuote(){setQuote(null);assetUnits(amount,inputAsset.decimals);const value:SwapView=await api('quote',{assetId,amount,inputAssetId});if(value.address.toLowerCase()!==address.toLowerCase()||value.assetId!==assetId||value.inputAssetId!==inputAssetId)throw new Error('Quote mismatch.');setQuote(value);setClock(Date.now());}
+  async function getQuote(){setFundStatus('');setFundProgress({});setQuote(null);assetUnits(amount,inputAsset.decimals);const value:SwapView=await api('quote',{assetId,amount,inputAssetId});if(value.address.toLowerCase()!==address.toLowerCase()||value.assetId!==assetId||value.inputAssetId!==inputAssetId)throw new Error('Quote mismatch.');setQuote(value);setClock(Date.now());}
   async function execute(){
     if(!quote||quote.expiresAt<=Date.now())throw new Error('Request a new quote.');
     // Save a public identifier before sending. Recovery never automatically executes a swap.
@@ -61,89 +83,99 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
     const result:SwapView=await api('execute',{id:quote.id,confirm:true});remember(result);
     if(complete(result)){sessionStorage.removeItem(storageKey);await reload();onRefresh();}
   }
-  async function quoteToOutput(item:QuickFundItem,desired:bigint):Promise<SwapView>{
-    // Probe with 1 USDC, then scale the input until the guaranteed minimum covers the shortfall.
-    let probe=1000000n;
+  async function quoteToOutput(item:Pick<QuickFundItem,'id'|'ticker'>,desired:bigint,seed=1000000n,alreadySized=false):Promise<SwapView>{
+    let probe=seed;
     for(let attempt=0;attempt<5;attempt++){
       const value:SwapView=await apiRef.current!('quote',{assetId:item.id,amount:formatUnits(probe,6),inputAssetId:'usdc'});
       if(value.address.toLowerCase()!==address.toLowerCase()||value.assetId!==item.id||value.inputAssetId!=='usdc')throw new Error('Quotazione non corrispondente.');
-      const estimated=BigInt(value.estimated),minimum=BigInt(value.minimum);
-      if(estimated<=0n||minimum<=0n)throw new Error('Quotazione non disponibile per '+item.ticker+'.');
-      if(minimum>=desired)return value;
-      probe=(BigInt(value.input)*desired+minimum-1n)/minimum;
-      probe=probe*1010n/1000n+1n;
-      if(probe<1n)probe=1n;
+      const minimum=BigInt(value.minimum);
+      if(minimum<=0n)throw new Error('Quotazione non disponibile per '+item.ticker+'.');
+      const scaled=((BigInt(value.input)*desired+minimum-1n)/minimum)*1010n/1000n+1n;
+      // The probe is a price estimate, not permission to spend a whole USDC on a tiny prize.
+      if(minimum>=desired&&(alreadySized||attempt>0||scaled>=probe))return value;
+      probe=scaled;
     }
-    throw new Error('Impossibile stimare l’importo per '+item.ticker+'. Riprova.');
+    throw new Error('Impossibile stimare l’importo per '+item.ticker+'.');
   }
   async function advance(value:SwapView):Promise<SwapView>{
-    const item=RWA_ASSETS.find(asset=>asset.id===value.assetId)!;
-    const message=(value.step==='approval'?'Approve USDC for this purchase':'Buy '+item.ticker)+'\n'+formatUnits(BigInt(value.input),6)+' USDC\nMinimum received: '+formatUnits(BigInt(value.minimum),item.decimals)+' '+item.ticker+'\nNetwork: Base · gas is additional. Continue?';
-    if(!window.confirm(message))throw new Error('Operation cancelled.');
-    if(value.expiresAt<=Date.now())throw new Error('Quote expired. Request a new quote.');
+    while(true){
+      setFundReview(value);
+      const accepted=await new Promise<boolean>(resolve=>{decision.current=resolve;});
+      decision.current=null;setFundReview(null);
+      if(!accepted)throw new Error('Operation cancelled.');
+      if(!alive.current)throw new Error('Account changed.');
+      if(value.expiresAt>Date.now())break;
+      setFundStatus('Aggiorno la quotazione scaduta…');
+      value=await quoteToOutput(RWA_ASSETS.find(asset=>asset.id===value.assetId)!,BigInt(value.minimum),BigInt(value.input),true);
+    }
     remember({...value,stage:'submitting',actionId:null,hashes:[]});
     let current:SwapView=await apiRef.current!('execute',{id:value.id,confirm:true});remember(current);
-    for(let attempt=0;attempt<90&&!complete(current);attempt++){await delay(3000);current=await apiRef.current!('status?'+statusParams(current));remember(current);}
+    for(let attempt=0;attempt<90&&!complete(current);attempt++){
+      setFundStatus('Attendo la conferma su Base…');await delay(3000);
+      if(!alive.current)throw new Error('Account changed.');
+      // Only reads are retried. An ambiguous execute is never submitted again.
+      try{current=await apiRef.current!('status?'+statusParams(current));remember(current);}catch{if(attempt===89)throw new Error('Verifica temporaneamente indisponibile. La transazione resta in attesa.');}
+    }
     if(complete(current))sessionStorage.removeItem(storageKey);
-    if(!complete(current))throw new Error('Operazione ancora in verifica. Controlla lo stato prima di ripetere.');
+    if(!complete(current))throw new Error('Operazione ancora in verifica. Non inviare una seconda richiesta.');
     if(['failed','rejected','expired'].includes(current.stage))throw new Error(current.error||'Operazione non completata.');
     return current;
   }
-  async function acquire(item:QuickFundItem,needed:bigint){
-    for(let attempt=0;attempt<3;attempt++){
-      const value=await quoteToOutput(item,needed);
-      setFundProgress(progress=>({...progress,[item.id]:value.step==='approval'?'Autorizzo USDC…':'Compro '+item.ticker+'…'}));
-      await advance(value);
-      if(value.step==='swap')return;
+  async function acquire(item:QuickFundItem,needed:bigint,data:Data){
+    const usdc=data.assets.find(a=>a.id==='usdc');
+    if(!usdc?.verified||usdc.balance===null||BigInt(usdc.balance)<=0n)throw new Error('Saldo USDC non disponibile per acquistare '+item.ticker+'.');
+    let seed=BigInt(usdc.balance)<1000000n?BigInt(usdc.balance):1000000n;
+    for(let attempt=0;attempt<4;attempt++){
+      const value=await quoteToOutput(item,needed,seed,attempt>0);
+      setFundProgress(progress=>({...progress,[item.id]:value.step==='approval'?'Firma approvazione USDC':'Firma acquisto '+item.ticker}));
+      const result=await advance(value);
+      if(result.stage==='succeeded')return;
+      // Preserve the approved input, avoiding an endless approve / larger quote loop.
+      seed=BigInt(result.input);
     }
     throw new Error('Autorizzazione USDC non completata per '+item.ticker+'.');
   }
   async function fundTurns(){
-    if(!slot?.funding)throw new Error('Riserve della slot non disponibili.');
-    setFundProgress({});
-    await loadInventory();
-    for(const item of quickPlan){
-      try{
-        if(!item.verified||item.wallet===null){setFundProgress(progress=>({...progress,[item.id]:'Saldo non verificabile'}));continue;}
-        let data=await loadInventory();
-        let balance=data.assets.find(a=>a.id===item.id)!;
-        if(!balance?.verified||balance.balance===null||!balance.reserve)throw new Error('Balance or slot reserves unavailable. Refresh before funding.');
-        const available=BigInt(balance.reserve.available);
-        const toFund=item.required>available?item.required-available:0n;
-        if(toFund===0n){setFundProgress(progress=>({...progress,[item.id]:'Già a riserva'}));continue;}
-        let wallet=balance.balance===null?0n:BigInt(balance.balance);
-        if(wallet<toFund){
-          await acquire(item,toFund-wallet);
-          data=await loadInventory();
+    setFunding(true);setFundProgress({});setFundStatus('Verifico quanto manca…');setQuote(null);
+    try{
+      let data=await waitInventory(value=>!!value.funding);
+      const plan=buildQuickFundPlan({turns,funding:data.funding,assets:data.assets});
+      if(!plan.length)throw new Error('Nessun premio RWA configurato.');
+      for(const [index,item] of plan.entries()){
+        try{
+          setFundStatus('Premio '+(index+1)+' di '+plan.length+' · '+item.ticker);
+          // The initial snapshot covers all assets. Refresh only after a confirmed write.
+          let balance=data.assets.find(a=>a.id===item.id);
+          if(!balance?.reserve) data=await waitInventory(value=>!!value.assets.find(a=>a.id===item.id)?.reserve);
           balance=data.assets.find(a=>a.id===item.id)!;
-          if(!balance?.verified||balance.balance===null)throw new Error('Purchased balance unavailable. Refresh before funding.');
-          wallet=BigInt(balance.balance);
-        }
-        if(wallet<toFund)throw new Error('Purchased balance is not available yet. Refresh before funding.');
-        const deposit=toFund;
-        if(deposit>0n){
-          setFundProgress(progress=>({...progress,[item.id]:'Deposito nella slot…'}));
-          await onDeposit('fundERC20',[item.address,deposit.toString()]);
-        }
-        setFundProgress(progress=>({...progress,[item.id]:'Completato'}));
-      }catch(e){setFundProgress(progress=>({...progress,[item.id]:(e as Error).message}));throw e;}
-    }
-    await loadInventory();
-    onRefresh();
+          const toFund=item.required>BigInt(balance.reserve!.available)?item.required-BigInt(balance.reserve!.available):0n;
+          if(toFund===0n){setFundProgress(progress=>({...progress,[item.id]:'Già a riserva'}));continue;}
+          if(!balance.verified||balance.balance===null){data=await waitInventory(value=>{const asset=value.assets.find(a=>a.id===item.id);return !!asset?.verified&&asset.balance!==null;});balance=data.assets.find(a=>a.id===item.id)!;}
+          if(BigInt(balance.balance!)<toFund){
+            await acquire(item,toFund-BigInt(balance.balance!),data);
+            data=await waitInventory(value=>{const asset=value.assets.find(a=>a.id===item.id);return !!asset?.verified&&asset.balance!==null&&BigInt(asset.balance)>=toFund;});
+          }
+          setFundProgress(progress=>({...progress,[item.id]:'Firma deposito nella slot'}));
+          await onDeposit('fundERC20',[item.address,toFund.toString()]);
+          data=await waitInventory(value=>{const asset=value.assets.find(a=>a.id===item.id);return !!asset?.reserve&&BigInt(asset.reserve.available)>=item.required;});
+          setFundProgress(progress=>({...progress,[item.id]:'Completato'}));
+        }catch(e){setFundProgress(progress=>({...progress,[item.id]:(e as Error).message}));throw e;}
+      }
+      setFundStatus('Rifornimento completato · '+(turns===1?'1 turno':turns+' turni')+' di premi RWA pronti.');
+    }catch(cause){setFundStatus('Rifornimento interrotto. Riprendi per completare i premi mancanti.');throw cause;}finally{setFunding(false);setFundReview(null);}
   }
   const usdcBalance=inventory?.assets.find(a=>a.id==='usdc');
   const quoteValid=!!quote&&quote.expiresAt>clock;
   const swapAllowed=!!inventory?.swapEnabled&&!loadError&&!pending&&!contractBusy&&!busy;
   const operationAsset=RWA_ASSETS.find(a=>a.id===operation?.assetId);
-  const quickFunding=slot?.funding??null;
+  const quickFunding=inventory?.funding??null;
   const quickPlan=buildQuickFundPlan({turns,funding:quickFunding,assets:inventory?.assets??[]});
   const quickPending=quickPlan.filter(item=>item.toFund>0n);
-  const quickAllowed=!!inventory&&!loadError&&!pending&&!contractBusy&&!busy&&canDeposit&&quickPending.length>0&&quickPlan.every(item=>item.verified&&item.wallet!==null)&&(quickPending.every(item=>item.toBuy===0n)||!!inventory.swapEnabled);
-  return <div hidden={!['swap','inventory'].includes(tab)}>
-    {tab==='swap'&&<div className="admin-toolbar"><button className="admin-text" disabled={busy||pending} onClick={()=>void run(reload)}>{busy?'Refreshing…':'Refresh balances ↻'}</button></div>}
+  const quickAllowed=!pending&&!contractBusy&&!busy&&canDeposit&&!!slot&&(quickPending.length>0||!quickFunding);
+  return <><FundingConfirmation review={fundReview} onDecision={accepted=>decision.current?.(accepted)}/><div hidden={!['swap','inventory'].includes(tab)}>
     {loadError&&<p className="admin-error" role="alert">{loadError}<button className="admin-text" onClick={()=>void reload()}>Refresh</button></p>}
     {error&&<p className="admin-error" role="alert">{error}</p>}
-    {operation&&<section className={'admin-card swap-status '+(['succeeded','approved'].includes(operation.stage)?'swap-success':'')} aria-live="polite">
+    {operation&&!funding&&(!fundStatus||pending)&&<section className={'admin-card swap-status '+(['succeeded','approved'].includes(operation.stage)?'swap-success':'')} aria-live="polite">
       <span className="eyebrow">LI.FI / {operation.step==='approval'?'USDC APPROVAL':operationAsset?.ticker||'SWAP'}</span>
       <h2>{operation.stage==='approved'?'USDC approved.':operation.stage==='succeeded'?'Tokens received.':pending?operation.step==='approval'?'Approval under verification.':'Swap under verification.':'Operation not completed.'}</h2>
       {operation.stage==='succeeded'?<p>Received <b>{formatUnits(BigInt(operation.output||'0'),operationAsset?.decimals||18)} {operationAsset?.ticker}</b> in the shared wallet. You can deposit them from the Inventory tab.</p>
@@ -156,17 +188,18 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
     {tab==='swap'&&<section className="admin-card quick-fund-card">
       <div className="card-heading"><span className="eyebrow">01 / RIFORNIMENTO RAPIDO</span><span className="real-badge">6 PREMI RWA · USDC</span></div>
       <h2>Riempi la slot.<br/><em>Anche più turni.</em></h2>
-      <p>Calcoliamo quanto manca a ogni premio per i turni scelti. Compriamo con USDC solo il necessario e depositiamo tutto nella slot: ogni transazione resta una tua conferma Privy.</p>
-      {!quickFunding?<p className="admin-error">Riserve della slot non disponibili. Attendi la lettura onchain per usare il rifornimento rapido.</p>:<>
+      <p>Scegli i turni e avvia. Conferma le firme richieste: acquisti, depositi e aggiornamenti dei saldi proseguono automaticamente.</p>
+      {<>
         <div className="quick-fund-controls">
           <label htmlFor="quick-fund-turns">Turni da rifornire<input id="quick-fund-turns" type="number" min={1} max={99} inputMode="numeric" value={turns} disabled={busy||pending||contractBusy} onChange={event=>setTurns(Math.max(1,Math.min(99,Math.floor(Number(event.target.value)||1))))}/></label>
-          <button className="admin-primary" disabled={!quickAllowed} onClick={()=>void run(fundTurns)}>{busy?'Rifornimento in corso…':'Rifornisci '+(turns===1?'1 turno':turns+' turni')+' ↗'}</button>
+          <button className="admin-primary" disabled={!quickAllowed} onClick={()=>void run(fundTurns)}>{funding?'Rifornimento in corso…':'Rifornisci '+(turns===1?'1 turno':turns+' turni')+' ↗'}</button>
         </div>
-        {quickPlan.length?<div className="quick-fund-table-wrap"><table className="quick-fund-table"><thead><tr><th>Premio</th><th>Richiesto</th><th>Disponibile</th><th>Da comprare</th><th>Da depositare</th><th><span className="sr-only">Stato</span></th></tr></thead><tbody>{quickPlan.map(item=><tr key={item.id}><td><img src={item.logo} alt=""/><b>{item.ticker}</b></td><td>{formatUnits(item.required,item.decimals)}</td><td>{formatUnits(item.available,item.decimals)}</td><td>{item.toBuy>0n?formatUnits(item.toBuy,item.decimals)+' via USDC':'—'}</td><td>{formatUnits(item.toDeposit,item.decimals)}</td><td>{item.wallet===null?'Saldo non verificabile':fundProgress[item.id]||(item.toFund===0n?'Già a riserva':item.toBuy>0n?'In coda · compra e deposita':'In coda · deposita')}</td></tr>)}</tbody></table></div>:<p className="fine-print">Nessun premio RWA configurato: non c’è nulla da rifornire.</p>}
-        <p className="fine-print">Un turno copre la riserva massima di una giocata per ogni premio. Le autorizzazioni USDC e gli swap restano transazioni separate e verificabili su Base.</p>
+        {fundStatus&&<p role="status" aria-live="polite">{fundStatus}</p>}
+        {quickPlan.length?<div className="quick-fund-table-wrap"><table className="quick-fund-table"><thead><tr><th>Premio</th><th>Richiesto</th><th>Disponibile</th><th>Da comprare</th><th>Da depositare</th><th><span className="sr-only">Stato</span></th></tr></thead><tbody>{quickPlan.map(item=><tr key={item.id}><td><img src={item.logo} alt=""/><b>{item.ticker}</b></td><td>{formatUnits(item.required,item.decimals)}</td><td>{formatUnits(item.available,item.decimals)}</td><td>{item.toBuy>0n?formatUnits(item.toBuy,item.decimals)+' via USDC':'—'}</td><td>{formatUnits(item.toDeposit,item.decimals)}</td><td>{item.wallet===null?'Saldo non verificabile':fundProgress[item.id]||(item.toFund===0n?'Già a riserva':item.toBuy>0n?'In coda · compra e deposita':'In coda · deposita')}</td></tr>)}</tbody></table></div>:<p className="fine-print">{quickFunding?'Nessun premio RWA configurato.':'Verificheremo saldi e riserve all’avvio.'}</p>}
+        <p className="fine-print">Un turno copre la riserva massima di una giocata per i sei premi RWA. I premi NFT si riforniscono da Inventario. Le autorizzazioni USDC e gli swap restano transazioni separate e verificabili su Base.</p>
       </>}
     </section>}
-    {tab==='swap'&&<div className="swap-layout"><section className="admin-card swap-card">
+    {tab==='swap'&&<details className="manual-swap"><summary>Swap manuale</summary><div className="swap-layout"><section className="admin-card swap-card">
       <div className="card-heading"><span className="eyebrow">02 / PREPARE THE PRIZES</span><span className="real-badge">LI.FI · BASE</span></div>
       <h2>Crypto in.<br/><em>Real assets out.</em></h2><p>Buy the tokens to restock your slot.</p>
       <div className="swap-balances" aria-label="Shared wallet balances"><div><img src={PAYMENT_ASSET.logo} alt=""/><span>USDC<strong>{usdcBalance?.formatted??'—'}</strong></span></div><div><img src={ETH_ASSET.logo} alt=""/><span>ETH<strong>{inventory?.eth??'—'}</strong></span></div></div>
@@ -189,7 +222,7 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
         <button className="admin-primary" disabled={!swapAllowed} onClick={()=>void run(quoteValid?execute:getQuote)}>{!quoteValid?'Refresh quote':quote.step==='approval'?'Approve USDC with Privy':'Confirm swap with Privy'} <span>↗</span></button>
         <button className="admin-text" disabled={busy} onClick={()=>setQuote(null)}>Cancel</button>
       </div>}
-    </section><aside className="admin-card swap-notes"><span className="eyebrow">THE TEAM WALLET</span><h2>One balance.<br/>More options.</h2><div className="swap-token-cloud">{RWA_ASSETS.map(a=><div key={a.id}><img src={a.logo} alt={a.name}/><span>{a.ticker}</span></div>)}</div><ol><li>Choose USDC or ETH and the prize token.</li><li>Confirm from your Privy account.</li><li>Open Inventory and deposit into the slot.</li></ol><p className="fine-print">Admins and authorized collaborators use the same wallet. LI.FI finds the available route; Privy signs the transactions.</p><a className="admin-text" href={'https://basescan.org/address/'+asset.address} target="_blank" rel="noreferrer">{asset.ticker} contract ↗</a></aside></div>}
+    </section><aside className="admin-card swap-notes"><span className="eyebrow">THE TEAM WALLET</span><h2>One balance.<br/>More options.</h2><div className="swap-token-cloud">{RWA_ASSETS.map(a=><div key={a.id}><img src={a.logo} alt={a.name}/><span>{a.ticker}</span></div>)}</div><ol><li>Choose USDC or ETH and the prize token.</li><li>Confirm from your Privy account.</li><li>Open Inventory and deposit into the slot.</li></ol><p className="fine-print">Admins and authorized collaborators use the same wallet. LI.FI finds the available route; Privy signs the transactions.</p><a className="admin-text" href={'https://basescan.org/address/'+asset.address} target="_blank" rel="noreferrer">{asset.ticker} contract ↗</a></aside></div></details>}
     {tab==='inventory'&&<AdminInventory inventory={inventory} slot={slot} busy={busy||pending||contractBusy} loadError={loadError} canDeposit={canDeposit} onReload={()=>void reload()} onConfigure={onConfigure} onOperation={async(action,args)=>{await onDeposit(action,args);await reload();onRefresh();}}/>}
-  </div>;
+  </div></>;
 }

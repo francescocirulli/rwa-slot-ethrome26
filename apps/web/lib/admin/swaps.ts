@@ -1,7 +1,7 @@
 import {randomBytes} from 'node:crypto';
 import {APIError,type PrivyClient} from '@privy-io/node';
-import {createPublicClient,http,erc20Abi,encodeFunctionData,parseEventLogs,parseAbi,type Address,type Hash,type TransactionReceipt} from 'viem';
-import {base} from 'viem/chains';
+import {erc20Abi,encodeFunctionData,parseEventLogs,parseAbi,type Address,type Hash,type TransactionReceipt} from 'viem';
+import {createBaseReadClient,baseChainCheck} from '../base-read-client';
 import {entryPoint06Address,entryPoint07Address,entryPoint08Address,entryPoint09Address} from 'viem/account-abstraction';
 import {PAYMENT_ASSET,RWA_ASSETS,SWAP_INPUTS,assetUnits} from '../assets';
 import type {Identity,WalletService,WalletAuthorization} from '../types';
@@ -19,19 +19,20 @@ export type SwapView={id:string;address:string;assetId:string;inputAssetId:strin
 export type SwapChain={blockNumber:()=>Promise<bigint>;userOperation:(hash:Hash,address:Address,fromBlock:bigint)=>Promise<{hash?:Hash;success?:boolean;nextBlock:bigint}>;allowance:(address:Address)=>Promise<bigint>;balance:(address:Address,inputId:string)=>Promise<bigint>;receipt:(hash:Hash)=>Promise<TransactionReceipt|null>;transaction:(hash:Hash)=>Promise<{from:Address;to:Address|null;input:`0x${string}`}>};
 const userOperationEvent=parseAbi(['event UserOperationEvent(bytes32 indexed userOpHash,address indexed sender,address indexed paymaster,uint256 nonce,bool success,uint256 actualGasCost,uint256 actualGasUsed)'])[0];
 const entryPoints=[entryPoint06Address,entryPoint07Address,entryPoint08Address,entryPoint09Address];
-export function createSwapChain(rpcUrl='https://base-rpc.publicnode.com'):SwapChain {
-  const client=createPublicClient({chain:base,transport:http(rpcUrl,{timeout:15000,retryCount:1})});
-  async function check(){if(await client.getChainId()!==8453)throw new SlotError('Chain','The RPC node is not on Base.',503);}
+export function createSwapChain(rpcUrl='https://base-rpc.publicnode.com',client=createBaseReadClient(rpcUrl)):SwapChain {
+  const check=baseChainCheck(client);
+  const configured=process.env.SLOT_LOG_PAGE_BLOCKS||'2000';
+  const pageBlocks=/^[1-9]\d*$/.test(configured)?BigInt(configured):2000n;
   return {
     async blockNumber(){await check();return client.getBlockNumber({cacheTime:0});},
     async userOperation(hash,address,fromBlock){
       await check();const head=await client.getBlockNumber({cacheTime:0});
       if(fromBlock>head)return {nextBlock:fromBlock};
-      const toBlock=head<fromBlock+1999n?head:fromBlock+1999n;
+      const toBlock=head<fromBlock+pageBlocks-1n?head:fromBlock+pageBlocks-1n;
       const events=await client.getLogs({address:entryPoints,event:userOperationEvent,args:{userOpHash:hash,sender:address},fromBlock,toBlock,strict:true});
       const event=events[0];
       // Overlap recent blocks while polling, and cap RPC ranges for long-lived operations.
-      return {hash:event?.transactionHash,success:event?.args.success,nextBlock:toBlock>2n?toBlock-2n:0n};
+      return {hash:event?.transactionHash,success:event?.args.success,nextBlock:toBlock<head?toBlock+1n:toBlock>2n&&toBlock-2n>fromBlock?toBlock-2n:fromBlock};
     },
     async allowance(address){await check();return client.readContract({address:PAYMENT_ASSET.address,abi:erc20Abi,functionName:'allowance',args:[address,LIFI_ROUTER]});},
     async balance(address,inputId){await check();return inputId==='eth'?client.getBalance({address,blockTag:'pending'}):client.readContract({address:PAYMENT_ASSET.address,abi:erc20Abi,functionName:'balanceOf',args:[address]});},

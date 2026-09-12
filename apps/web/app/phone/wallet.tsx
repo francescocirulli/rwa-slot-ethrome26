@@ -7,7 +7,7 @@ import type {useContractTransaction} from '@/lib/slot/use-transaction';
 export type PhoneTransaction=ReturnType<typeof useContractTransaction>;
 type Holding={key:string;name:string;balance:string|null;formatted:string|null;decimals:number;token:string;tokenId?:string;logo?:string};
 export function PhoneWallet({wallet,transaction,paired,reload,loading=false}:{wallet:NonNullable<AccountView['wallet']>;transaction:PhoneTransaction;paired:boolean;reload:()=>void;loading?:boolean}) {
-  const [budget,setBudget]=useState('5'),[selection,setSelection]=useState<Holding|null>(null),[recipient,setRecipient]=useState(''),[amount,setAmount]=useState(''),[error,setError]=useState(''),[copied,setCopied]=useState(false);
+  const [budget,setBudget]=useState('5'),[selection,setSelection]=useState<Holding|null>(null),[recipient,setRecipient]=useState(''),[amount,setAmount]=useState(''),[error,setError]=useState(''),[copied,setCopied]=useState('');
   const portfolio=wallet.portfolio;
   const locked=transaction.busy||transaction.pending||!portfolio?.canTransact;
   const holdings:Holding[]=[...(portfolio?.assets||[]).map(asset=>({key:asset.id,name:asset.id==='gold'?'GOLD · '+asset.ticker:asset.name+' · '+asset.ticker,balance:asset.balance,formatted:asset.formatted,decimals:asset.decimals,token:asset.address,logo:asset.logo})),
@@ -34,9 +34,10 @@ export function PhoneWallet({wallet,transaction,paired,reload,loading=false}:{wa
   return <>
     <section className="phone-card"><div className="wallet-heading"><span className="eyebrow">YOUR WALLET</span><span className="base-badge">● BASE</span></div>
       <div className="phone-balance">{wallet.balance.amount??'—'} <span>USDC</span></div>
+      <div className="phone-wallet-address"><span className="eyebrow">YOUR ADDRESS ON BASE</span><code aria-label="Wallet address">{wallet.address}</code><button className="phone-secondary" onClick={async()=>{try{await navigator.clipboard.writeText(wallet.address);setCopied(wallet.address);}catch{setError('Copy the address shown above.');}}}>{copied===wallet.address?'Address copied ✓':'Copy address'}</button></div>
       <p className="small">{wallet.balance.stale?'Balance pending update. ':''}ETH for gas: {portfolio?.eth??'—'}</p>
       <button className="phone-text" disabled={loading} onClick={reload}>{loading?'Refreshing…':'Refresh balances ↻'}</button>
-      <details className="wallet-receive"><summary>Receive on your wallet ↙</summary><div className="receive-box"><img src={wallet.depositQr} width="180" height="180" alt="Wallet address on Base"/><code>{wallet.address}</code><button className="phone-secondary" onClick={async()=>{try{await navigator.clipboard.writeText(wallet.address);setCopied(true);}catch{setError('Copy the address shown above.');}}}>{copied?'Address copied ✓':'Copy address'}</button><p className="small">Send funds to this address on the Base network.</p></div></details>
+      <details className="wallet-receive"><summary>Receive on your wallet ↙</summary><div className="receive-box"><img src={wallet.depositQr} width="180" height="180" alt="Wallet address on Base"/><p className="small">Send funds to this address on the Base network.</p></div></details>
     </section>
     {portfolio?.busy&&<div className="phone-progress" role="status">Spin in progress{portfolio.gameId?' #'+portfolio.gameId:''}. You can see balances; changes and transfers resume after the result.</div>}
     {!portfolio&&<div className="phone-error" role="alert">Prize balances and approval unavailable. Refresh to retry.</div>}
