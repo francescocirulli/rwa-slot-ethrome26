@@ -1,14 +1,22 @@
-import {createPublicClient, formatUnits, defineChain, http, erc20Abi, keccak256, toHex, zeroAddress, type Address, type Hash} from 'viem';
+import {createPublicClient, fallback, formatUnits, defineChain, http, erc20Abi, keccak256, toHex, zeroAddress, type Address, type Hash, type Transport} from 'viem';
 import {slotAbi} from './abi';
 import {GAME_STATES, serializable, type SlotConfig} from './config';
 import {SlotError} from './errors';
 import {readFunding} from './funding';
-const PAGE_BLOCKS = 2000n;
 const roleNames = ['GAME_MANAGER_ROLE', 'TREASURER_ROLE', 'PAUSER_ROLE'] as const;
 export function createSlotReader(config: SlotConfig) {
+  // Capped RPCs reject wide eth_getLogs ranges; page at the configured size and start
+  // historical scans at the floor so a capped deployment can resolve state quickly.
+  const pageBlocks = config.logPageBlocks && config.logPageBlocks > 0n ? config.logPageBlocks : 2000n;
+  const historyFloor = config.historyFromBlock && config.historyFromBlock >= config.deploymentBlock ? config.historyFromBlock : config.deploymentBlock;
   const chain = defineChain({id: config.chainId, name: config.chainId === 8453 ? 'Base' : 'Local test',
-    nativeCurrency: {name: 'Ether', symbol: 'ETH', decimals: 18}, rpcUrls: {default: {http: [config.rpcUrl]}}});
-  const client = createPublicClient({chain, transport: http(config.rpcUrl, {batch: true, timeout: 12000, retryCount: 1})});
+    nativeCurrency: {name: 'Ether', symbol: 'ETH', decimals: 18}, rpcUrls: {default: {http: config.rpcUrls && config.rpcUrls.length ? config.rpcUrls : [config.rpcUrl]}}});
+  // A single endpoint can rate-limit or go down; fallback retries the next one in order.
+  const rpcUrls = config.rpcUrls && config.rpcUrls.length ? config.rpcUrls : [config.rpcUrl];
+  const transport: Transport = rpcUrls.length > 1
+    ? fallback(rpcUrls.map(url => http(url, {batch: true, timeout: 12000, retryCount: 1})))
+    : http(rpcUrls[0], {batch: true, timeout: 12000, retryCount: 1});
+  const client = createPublicClient({chain, transport});
   const contract = {address: config.address, abi: slotAbi};
   let checkedAt = 0;
   const tokenInfo = new Map<string, {symbol: string; decimals: number}>();
@@ -47,11 +55,11 @@ export function createSlotReader(config: SlotConfig) {
       const source = await client.getBlock({blockNumber: cached.block});
       if (source.hash === cached.hash) {
         let cursor = cached.checked > 12n ? cached.checked - 12n : 0n;
-        if (cursor < config.deploymentBlock) cursor = config.deploymentBlock;
-        const end = cursor + PAGE_BLOCKS * 12n - 1n < block ? cursor + PAGE_BLOCKS * 12n - 1n : block;
+        if (cursor < historyFloor) cursor = historyFloor;
+        const end = cursor + pageBlocks * 12n - 1n < block ? cursor + pageBlocks * 12n - 1n : block;
         let found = cached;
-        for (; cursor <= end; cursor += PAGE_BLOCKS) {
-          const toBlock = cursor + PAGE_BLOCKS - 1n < end ? cursor + PAGE_BLOCKS - 1n : end;
+        for (; cursor <= end; cursor += pageBlocks) {
+          const toBlock = cursor + pageBlocks - 1n < end ? cursor + pageBlocks - 1n : end;
           const events = await client.getContractEvents({...contract, eventName: 'SpinStarted', args: {player}, fromBlock: cursor, toBlock, strict: true});
           for (const event of events) if (event.args.gameId >= found.id) found = {id: event.args.gameId, block: event.blockNumber, hash: event.blockHash, checked: block};
         }
@@ -61,8 +69,8 @@ export function createSlotReader(config: SlotConfig) {
     }
     const scan = {...(scans.get(key) || {head: block, cursor: block})};
     // Bound each request; resume from chain on subsequent polls without a database.
-    for (let page = 0; page < 12 && scan.cursor >= config.deploymentBlock; page++) {
-      const fromBlock = scan.cursor - PAGE_BLOCKS + 1n > config.deploymentBlock ? scan.cursor - PAGE_BLOCKS + 1n : config.deploymentBlock;
+    for (let page = 0; page < 12 && scan.cursor >= historyFloor; page++) {
+      const fromBlock = scan.cursor - pageBlocks + 1n > historyFloor ? scan.cursor - pageBlocks + 1n : historyFloor;
       const events = await client.getContractEvents({...contract, eventName: 'SpinStarted', args: {player}, fromBlock, toBlock: scan.cursor, strict: true});
       const found = events[events.length - 1];
       if (found) {
@@ -70,11 +78,11 @@ export function createSlotReader(config: SlotConfig) {
         latest.set(key, {id: found.args.gameId, block: found.blockNumber, hash: found.blockHash, checked: scan.head}); scans.delete(key);
         return lastGame(player, block);
       }
-      if (fromBlock === config.deploymentBlock) {
+      if (fromBlock === historyFloor) {
         scans.delete(key);
-        const source = await client.getBlock({blockNumber: config.deploymentBlock});
+        const source = await client.getBlock({blockNumber: historyFloor});
         if (latest.size >= 512) latest.delete(latest.keys().next().value!);
-        latest.set(key, {id: 0n, block: config.deploymentBlock, hash: source.hash, checked: scan.head});
+        latest.set(key, {id: 0n, block: historyFloor, hash: source.hash, checked: scan.head});
         return lastGame(player, block);
       }
       scan.cursor = fromBlock - 1n;
@@ -90,11 +98,20 @@ export function createSlotReader(config: SlotConfig) {
     let resultBlock: bigint | null = null, transactionHash: Hash | null = null;
     if (raw.hasResult) {
       const end = block < raw.revealDeadline ? block : raw.revealDeadline;
-      const [reveals, prizes] = await Promise.all([
-        client.getContractEvents({...contract, eventName: 'RoundRevealed', args: {gameId: id}, fromBlock: raw.targetBlock + 1n, toBlock: end, strict: true}),
-        raw.won ? client.getContractEvents({...contract, eventName: 'PrizePaid', args: {gameId: id}, fromBlock: raw.targetBlock + 1n, toBlock: end, strict: true}) : Promise.resolve([]),
-      ]);
-      const reveal = reveals[0], prize = prizes[0];
+      let reveal: {blockNumber: bigint; transactionHash: Hash} | undefined;
+      let prize: {args: {kind: number; token: Address; tokenId: bigint; amount: bigint}; transactionHash: Hash; blockNumber: bigint} | undefined;
+      // Page the reveal window and stop at the first match: a capped RPC rejects a single
+      // wide eth_getLogs, and the reveal lands a few blocks after targetBlock.
+      for (let from = raw.targetBlock + 1n; from <= end; from += pageBlocks) {
+        const toBlock = from + pageBlocks - 1n < end ? from + pageBlocks - 1n : end;
+        const [reveals, prizes] = await Promise.all([
+          reveal ? null : client.getContractEvents({...contract, eventName: 'RoundRevealed', args: {gameId: id}, fromBlock: from, toBlock, strict: true}),
+          !raw.won || prize ? null : client.getContractEvents({...contract, eventName: 'PrizePaid', args: {gameId: id}, fromBlock: from, toBlock, strict: true}),
+        ]);
+        reveal = reveal || reveals?.[0];
+        prize = prize || prizes?.[0];
+        if (reveal && (!raw.won || prize)) break;
+      }
       if (reveal) {resultBlock = reveal.blockNumber; transactionHash = reveal.transactionHash;}
       if (prize) payout = {kind: prize.args.kind, token: prize.args.token, tokenId: prize.args.tokenId, amount: prize.args.amount, transactionHash: prize.transactionHash, blockNumber: prize.blockNumber};
     }

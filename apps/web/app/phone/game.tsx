@@ -6,19 +6,19 @@ import type {PhoneTransaction} from './wallet';
 import type {SessionView} from '@/lib/types';
 import type {SlotSnapshot} from '@/lib/slot/reader';
 type GameState = SlotSnapshot & {keeper: {configured: boolean; canStartFreeSpin: boolean}};
-export function PhoneGame({session, api, onSession, onConfigured, transaction}: {transaction:PhoneTransaction; session: SessionView; api: (path: string, data?: unknown, auth?: boolean) => Promise<any>; onSession: (session: SessionView) => void; onConfigured: (configured: boolean) => void}) {
+export function PhoneGame({session, api, onSession, transaction}: {transaction:PhoneTransaction; session: SessionView; api: (path: string, data?: unknown, auth?: boolean) => Promise<any>; onSession: (session: SessionView) => void}) {
   const [state, setState] = useState<GameState | null>(null), [budget, setBudget] = useState('5'), [consent, setConsent] = useState(false);
   const [error, setError] = useState(''), [working, setWorking] = useState(false);
   const {addSigners} = useSigners();
   useEffect(() => {
     let cancelled = false, timer: ReturnType<typeof setTimeout>;
     async function poll() {
-      try {const value = await api('/phone/game'); if (!cancelled) {setState(value.configured ? value : null); onConfigured(!!value.configured);}}
+      try {const value = await api('/phone/game'); if (!cancelled) setState(value.configured ? value : null);}
       catch { /* Parent session poll handles expiry. */ }
       if (!cancelled) timer = setTimeout(poll, 3000);
     }
     void poll(); return () => {cancelled = true; clearTimeout(timer);};
-  }, [session.id, api, onConfigured]);
+  }, [session.id, api]);
   if (!state) return null;
   const player = state.player, grant = session.playGrant, active = grant?.active;
   const roundBusy=!!player?.game?.pending;

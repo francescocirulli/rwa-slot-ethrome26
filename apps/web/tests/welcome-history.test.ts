@@ -72,3 +72,12 @@ test('a reorg invalidates both positive and negative history caches', async () =
   f.state.fork++; f.grant(7n);
   assert.equal((await reader.read(player)).granted, true);
 });
+test('a range-capped page size and history floor bound every log request', async () => {
+  const f = fixture(25000n);
+  f.reader.config.logPageBlocks = 5n;
+  f.reader.config.historyFromBlock = 24990n;  const tx = f.grant(24995n);
+  const result = await createWelcomeHistory(f.reader).read(player);
+  assert.equal(result.granted, true); assert.equal(result.transactionHash, tx);
+  assert.ok(f.ranges.length > 0);
+  assert.ok(f.ranges.every(([start, end]) => start >= 24990n && end - start < 5n));
+});
