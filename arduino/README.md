@@ -137,8 +137,18 @@ returning to real mode verifies it again through the normal backend.
   text. Polling the same result does not replay its jingle. Recovering a historical
   result after reload displays it without celebrating again.
 - Demo starts with two free spins and 25 simulated cents. A paid test uses five
-  cents plus **one illustrative cent of gas**, not a gas quote. Select loss,
-  3/4 matching symbols, jackpot, URBE or two bonus spins; the default cycles all.
+  cents plus **one illustrative cent of gas**, not a gas quote. The default samples
+  the 2026-09-12 paytable offline: 40.4% three matches, 49.5% five matches, 10.1% no prize. Each win
+  selects one of the three contract paylines; every column has three distinct
+  symbols and no additional winning lines. There is no four-match outcome.
+  JACKPOT is the visual label for GOLD, which pays 0.001 on 5/5 at 1.3%.
+  Stocks pay 0.0005 for 3/5 or 0.001 for 5/5,
+  ERC1155 rewards pay one item of the configured ID, and FREE_SPIN adds one
+  credit once the simulated result is confirmed. The existing outcome selector
+  can force each valid prize/match combination; forced tests bypass the odds.
+  The result is fixed at submission and the same round is returned on every poll;
+  submission, reveal and final confirmation remain simulated (not real hashes).
+  This is a fixed fixture, not an automatic synchronization with future catalog changes.
   **Esaurisci crediti** verifies ignored inputs, **Ripristina demo** starts fresh.
   All credits and prizes are simulated and disappear on reload.
 
