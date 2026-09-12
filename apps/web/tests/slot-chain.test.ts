@@ -23,11 +23,13 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
   try {
     await until(async()=>client.getChainId().catch(()=>null),'Anvil did not start');
     const fixtures=JSON.parse(await readFile(new URL('./contracts/artifacts.json',import.meta.url),'utf8'));
+    assert.equal(fixtures.sourceHash, keccak256(toHex(await readFile(new URL('../../../contracts/src/DigitalSlotMachine.sol', import.meta.url), 'utf8'))));
+    assert.deepEqual(slotAbi, JSON.parse(await readFile(new URL('../../../contracts/abi/DigitalSlotMachine.json', import.meta.url), 'utf8')));
     async function deploy(abi: Abi, bytecode: Hex, args: unknown[]) {const hash=await adminWallet.deployContract({abi,bytecode,args});const receipt=await client.waitForTransactionReceipt({hash});return receipt.contractAddress!;}
     const payment=await deploy(fixtures.MockERC20.abi,fixtures.MockERC20.bytecode,['USDC test','USDC',6]);
     const prize=await deploy(fixtures.MockERC20.abi,fixtures.MockERC20.bytecode,['Stock test','STOCK',18]);
     const nft=await deploy(fixtures.MockERC1155.abi,fixtures.MockERC1155.bytecode,[]);
-    const slot=await deploy(slotAbi,fixtures.slotBytecode,[owner.address,payment,1000000n]);
+    const slot=await deploy(slotAbi,fixtures.slotBytecode,[owner.address,owner.address,payment,1000000n]);
     const deployed=await client.getBlockNumber({cacheTime:0});
     async function write(functionName: string,args: unknown[]=[]) {const hash=await adminWallet.writeContract({address:slot,abi:slotAbi as Abi,functionName,args});const r=await client.waitForTransactionReceipt({hash});assert.equal(r.status,'success');return r;}
     const config={address:slot,deploymentBlock:deployed,chainId:31337,rpcUrl:rpc,paymentToken:payment,gasMode:'eth' as const,confirmations:2};
@@ -158,6 +160,38 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
       const block=await client.getBlockNumber({cacheTime:0});
       assert.deepEqual(await fresh.lastGame(empty,block),{id:0n,complete:false});
       assert.deepEqual(await fresh.lastGame(empty,block),{id:0n,complete:true});
+    });
+    await t.test('deployed pre-bonus bytecode keeps player/admin reads and free-spin reveals working without welcome writes', async () => {
+      const deployedFixture = JSON.parse(await readFile(new URL('./contracts/deployed-slot.json', import.meta.url), 'utf8'));
+      const legacySlot = await deploy(slotAbi, deployedFixture.slotBytecode, [owner.address, keeper.address, payment, 50000n]);
+      const legacyBlock = await client.getBlockNumber({cacheTime: 0});
+      async function configure(functionName: string, args: unknown[]) {
+        const hash = await adminWallet.writeContract({address: legacySlot, abi: slotAbi as Abi, functionName, args});
+        assert.equal((await client.waitForTransactionReceipt({hash})).status, 'success');
+      }
+      await configure('setNoWinWeight', [0]);
+      for (let symbol = 0; symbol < 3; symbol++) await configure('configurePrize', [symbol, 3, zeroAddress, 0n, 1n, 0, symbol === 2 ? 400 : 300]);
+      await configure('grantFreeSpins', [player.address, 2n]);
+      const legacyReader = createSlotReader({...config, address: legacySlot, deploymentBlock: legacyBlock});
+      const legacyEngine = createSlotEngine(legacyReader, toHex(keeper.getHdKey().privateKey!) as Hex);
+      try {
+        const snapshot = await legacyReader.snapshot(player.address, true);
+        assert.equal(snapshot.player!.welcomeFreeSpinsGranted, null);
+        assert.equal(snapshot.player!.freeSpins, '2');
+        assert.equal(snapshot.settings.ticketPrice, '50000');
+        const nonce = await client.getTransactionCount({address: keeper.address});
+        assert.equal((await legacyEngine.queueWelcome(player.address)).status, 'unsupported');
+        await legacyEngine.tick();
+        assert.equal(await client.getTransactionCount({address: keeper.address}), nonce);
+        assert.equal((await legacyEngine.playerView(player.address)).welcome?.status, 'unsupported');
+        await legacyEngine.start(player.address, 0n, 'free', {assertSession: () => {}});
+        const pending = await until(async () => {const state = await legacyReader.player(player.address); return state.game?.pending ? state : null;}, 'Legacy free spin not started');
+        assert.equal(pending.freeSpins, 1n);
+        const head = await client.getBlockNumber({cacheTime: 0});
+        await mine(Number(pending.game!.targetBlock - head + 1n)); await legacyEngine.tick(); await mine();
+        const result = await legacyReader.game(pending.latestGameId);
+        assert.equal(result.confirmed, true); assert.equal(result.status, 'won');
+      } finally {legacyEngine.stop();}
     });
   } finally {engine?.stop();process.kill('SIGTERM');}
 });

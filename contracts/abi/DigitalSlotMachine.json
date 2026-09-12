@@ -8,6 +8,11 @@
         "internalType": "address"
       },
       {
+        "name": "initialGameManager",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
         "name": "paymentToken_",
         "type": "address",
         "internalType": "contract IERC20"

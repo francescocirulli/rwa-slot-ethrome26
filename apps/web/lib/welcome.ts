@@ -2,7 +2,7 @@ import type {Address} from 'viem';
 import type {Identity, Wallet, WalletService} from './types';
 import type {SlotEngine} from './slot/engine';
 
-export type WelcomeView = {status: 'unavailable' | 'checking' | 'ineligible' | 'pending' | 'granted'; amount: '2'; error?: string};
+export type WelcomeView = {status: 'unavailable' | 'unsupported' | 'checking' | 'ineligible' | 'pending' | 'granted'; amount: '2'; error?: string};
 export function createWelcomeService(wallets: WalletService, slot: SlotEngine) {
   const pending = new Map<string, Promise<WelcomeView>>();
   async function request(user: Identity, wallet: Wallet): Promise<WelcomeView> {

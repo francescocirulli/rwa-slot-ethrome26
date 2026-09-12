@@ -119,7 +119,7 @@ function Phone() {
   }, [ready, authenticated, loaded, secret, ended, api, apply, clearSession]);
   useEffect(() => {if (ready && !authenticated && session) clearSession();}, [ready, authenticated, session, clearSession]);
   const sessionId = session?.id;
-  const welcomeDone = session?.welcome?.status === 'granted' || session?.welcome?.status === 'ineligible';
+  const welcomeDone = session?.welcome?.status === 'granted' || session?.welcome?.status === 'ineligible' || session?.welcome?.status === 'unsupported';
   useEffect(() => {
     if (!sessionId || !authenticated || welcomeDone) return;
     let cancelled = false, timer: ReturnType<typeof setTimeout>;
@@ -129,7 +129,7 @@ function Phone() {
         const value: SessionView = await api('/phone/welcome', {});
         if (!cancelled && current === generation.current && value.id === sessionId) {
           apply(value);
-          if (value.welcome?.status === 'granted' || value.welcome?.status === 'ineligible') return;
+          if (value.welcome?.status === 'granted' || value.welcome?.status === 'ineligible' || value.welcome?.status === 'unsupported') return;
         }
       } catch { /* Pairing stays usable; retry the idempotent bonus without renewing activity. */ }
       if (!cancelled) timer = setTimeout(recoverWelcome, 10000);

@@ -53,12 +53,24 @@ test('real pairing UI, wallet, receive QR, verified signature and logout at iPad
 test('offline idle timeout hides wallet and a late poll cannot bring it back', async ({page, context, browser}) => {
   const phone = await phoneContext(browser);
   await page.clock.install(); await link(page, phone);
+  let releasePoll!: () => void, pollStarted!: () => void;
+  const held = new Promise<void>(resolve => {pollStarted = resolve;});
+  const release = new Promise<void>(resolve => {releasePoll = resolve;});
+  await page.route('**/api/relay/tablet', async route => {
+    const response = await route.fetch();
+    pollStarted(); await release;
+    await route.fulfill({response});
+  }, {times: 1});
+  await page.clock.runFor(2100); await held;
   await context.setOffline(true);
   await page.clock.fastForward(181000);
   await expect(page.locator('#wallet-panel')).toBeHidden();
   await expect(page.locator('#full-address')).toHaveText('');
+  // Let the failed logout and pairing XHRs settle before restoring the network.
+  // Jumping 26s across a live HTTP request used to race its 25s timeout in CI.
+  await expect(page.locator('#retry')).toBeVisible();
   await context.setOffline(false);
-  await page.clock.fastForward(26000);
+  releasePoll();
   await expect(page.locator('#login-qr')).toBeVisible();
   await expect(page.locator('#wallet-panel')).toBeHidden();
   await phone.close();

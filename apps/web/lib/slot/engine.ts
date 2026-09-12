@@ -142,12 +142,14 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex) {
     if (operation) await reconcile(operation);
     const bonus = welcome.get(player.toLowerCase());
     return serializable({...state, operation: operation || null,
-      welcome: state.welcomeFreeSpinsGranted ? {status: 'granted', amount: '2'} : bonus ? {status: 'pending', amount: '2', error: bonus.error} : null});
+      welcome: state.welcomeFreeSpinsGranted === null ? {status: 'unsupported', amount: '2'} : state.welcomeFreeSpinsGranted ? {status: 'granted', amount: '2'} : bonus ? {status: 'pending', amount: '2', error: bonus.error} : null});
   }
   async function queueWelcome(player: Address): Promise<WelcomeView> {
     return locked(`welcome:${player.toLowerCase()}`, async () => {
       await reader.validate();
-      if (await client.readContract({...contract, functionName: 'welcomeFreeSpinsGranted', args: [player]})) {
+      const granted = await reader.welcomeGranted(player);
+      if (granted === null) return {status: 'unsupported', amount: '2'};
+      if (granted) {
         welcome.delete(player.toLowerCase()); return {status: 'granted', amount: '2'};
       }
       if (!backend) return {status: 'unavailable', amount: '2', error: 'Il bonus sarà accreditato quando il servizio sarà pronto.'};

@@ -1,4 +1,4 @@
-import {createPublicClient, formatUnits, defineChain, http, erc20Abi, keccak256, toHex, zeroAddress, type Address, type Hash} from 'viem';
+import {BaseError, ContractFunctionRevertedError, createPublicClient, formatUnits, defineChain, http, erc20Abi, keccak256, toHex, zeroAddress, type Address, type Hash} from 'viem';
 import {slotAbi} from './abi';
 import {GAME_STATES, serializable, type SlotConfig} from './config';
 import {SlotError} from './errors';
@@ -102,13 +102,22 @@ export function createSlotReader(config: SlotConfig) {
     const paid = payout ? {...payout, formattedAmount: metadata ? formatUnits(payout.amount, metadata.decimals) : payout.amount.toString(), tokenSymbol: metadata?.symbol || null, decimals: metadata?.decimals ?? null} : null;
     return {id, ...raw, status: GAME_STATES[status], confirmed, resultBlock, transactionHash, payout: paid};
   }
+  async function welcomeGranted(address: Address, blockNumber?: bigint): Promise<boolean | null> {
+    try {return await client.readContract({...contract, functionName: 'welcomeFreeSpinsGranted', args: [address], blockNumber});}
+    catch (error) {
+      // The original immutable Base deployment predates welcome credits. A reverted
+      // optional getter is unavailable, never an unclaimed bonus. RPC failures still fail the read.
+      if (error instanceof BaseError && error.walk(cause => cause instanceof ContractFunctionRevertedError) instanceof ContractFunctionRevertedError) return null;
+      throw error;
+    }
+  }
   async function player(address: Address, blockNumber?: bigint) {
     const block = blockNumber ?? await client.getBlockNumber({cacheTime: 0});
     const [[freeSpins, activeGameId], allowance, balance, welcomeFreeSpinsGranted] = await Promise.all([
       client.readContract({...contract, functionName: 'getPlayerState', args: [address], blockNumber: block}),
       client.readContract({address: config.paymentToken, abi: erc20Abi, functionName: 'allowance', args: [address, config.address], blockNumber: block}),
       client.readContract({address: config.paymentToken, abi: erc20Abi, functionName: 'balanceOf', args: [address], blockNumber: block}),
-      client.readContract({...contract, functionName: 'welcomeFreeSpinsGranted', args: [address], blockNumber: block}),
+      welcomeGranted(address, block),
     ]);
     const last = activeGameId ? {id: activeGameId, complete: true} : await lastGame(address, block);
     return {address, freeSpins, allowance, balance, welcomeFreeSpinsGranted, historyReady: last.complete, latestGameId: last.id,
@@ -143,7 +152,7 @@ export function createSlotReader(config: SlotConfig) {
       gasMode: config.gasMode, confirmations: config.confirmations, block, settings: values, catalog: prizes, permissions, player: state, inventory,
       pendingOwner: pendingOwner ? {address: pendingOwner[0], schedule: pendingOwner[1]} : null});
   }
-  return {config, chain, client, contract, validate, settings, catalog, roles, lastGame, player, game, activeGames, history, snapshot};
+  return {config, chain, client, contract, validate, settings, catalog, roles, lastGame, player, welcomeGranted, game, activeGames, history, snapshot};
 }
 export type SlotReader = ReturnType<typeof createSlotReader>;
 export type SlotSnapshot = Awaited<ReturnType<SlotReader['snapshot']>>;

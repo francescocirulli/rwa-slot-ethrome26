@@ -65,8 +65,18 @@ backend-key placeholder and an unset contract continue to support login, but
 cannot award credits. The bonus is not live until the updated contract and
 keeper are configured.
 
+The original Base deployment at `0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c`
+does **not** include welcome credits and is not upgradeable. The app reports the
+bonus as `unsupported`, stops automatic phone retries for it, and leaves regular
+wallet, balance, admin and spin operations available. It never substitutes a
+repeatable `grantFreeSpins` call for the once-only grant. Deploying the updated
+contract is a separate release operation; merging app code does not enable the
+bonus on the old address.
+
 The ABI and app test bytecode are regenerated from the Foundry build. Tests
 cover contract permissions, additive accounting, duplicate grants, verified
 wallet eligibility, authenticated recovery, unchanged idle deadlines, keeper
 submission and restart recovery on Anvil, and pending/available/empty/offline
-counter states at iPad sizes. These checks do not send real Base transactions.
+counter states at iPad sizes. A pinned fixture from the original deployment is
+also exercised on Anvil to verify reads, manual credits, free-spin starts and
+reveals without attempting welcome writes. These checks do not send real Base transactions.

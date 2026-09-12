@@ -219,14 +219,15 @@ contract DigitalSlotMachine is AccessControlDefaultAdminRules, ERC1155Holder, Pa
         _;
     }
 
-    constructor(address initialOwner, IERC20 paymentToken_, uint256 ticketPrice_)
+    constructor(address initialOwner, address initialGameManager, IERC20 paymentToken_, uint256 ticketPrice_)
         AccessControlDefaultAdminRules(OWNER_TRANSFER_DELAY, initialOwner)
     {
-        if (address(paymentToken_) == address(0)) revert ZeroAddress();
+        if (initialGameManager == address(0) || address(paymentToken_) == address(0)) revert ZeroAddress();
         if (ticketPrice_ == 0) revert InvalidPrice();
 
         paymentToken = paymentToken_;
         ticketPrice = ticketPrice_;
+        _grantRole(GAME_MANAGER_ROLE, initialGameManager);
     }
 
     /// @notice Pays for a new spin and locks its future target block.
