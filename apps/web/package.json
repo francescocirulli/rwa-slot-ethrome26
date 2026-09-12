@@ -10,7 +10,7 @@
     "build": "next build && node scripts/prepare-standalone.mjs",
     "start": "node .next/standalone/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/account.test.ts tests/welcome.test.ts tests/privy.test.ts tests/relay.test.ts tests/play-relay.test.ts tests/gas.test.ts tests/transactions.test.ts tests/admin.test.ts tests/wallet-authorization.test.ts tests/swaps.test.ts tests/backend-key.test.ts tests/hardware.test.ts tests/welcome-history.test.ts tests/funding.test.ts tests/prize-actions.test.ts tests/inventory.test.ts",
+    "test": "tsx --test tests/account.test.ts tests/welcome.test.ts tests/privy.test.ts tests/relay.test.ts tests/play-relay.test.ts tests/gas.test.ts tests/transactions.test.ts tests/admin.test.ts tests/wallet-authorization.test.ts tests/swaps.test.ts tests/backend-key.test.ts tests/hardware.test.ts tests/welcome-history.test.ts tests/funding.test.ts tests/prize-actions.test.ts tests/inventory.test.ts tests/demo-model.test.ts",
     "test:browser": "playwright test",
     "test:chain": "forge build --root ../../contracts && tsx --test tests/slot-chain.test.ts"
   },
