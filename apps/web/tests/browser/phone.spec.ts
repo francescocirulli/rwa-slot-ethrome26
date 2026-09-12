@@ -1,4 +1,5 @@
 import {test,expect,type Page} from '@playwright/test';
+import QRCode from 'qrcode';
 import {WALLET_ASSETS,NFT_PRIZES} from '../../lib/assets';
 import {BASE_PRIZE_COLLECTION,BASE_PRIZE_IDS} from '../../lib/prize-collection';
 const address='0x0000000000000000000000000000000000000011',recipient='0x0000000000000000000000000000000000000022',contract='0x0000000000000000000000000000000000000099';
@@ -60,4 +61,52 @@ test('pending spin disables wallet writes; unavailable reads never look like zer
   await expect(page.getByText('Spin in progress #4.',{exact:false})).toBeVisible();await expect(page.getByRole('button',{name:'Review approval'})).toBeDisabled();await expect(page.getByRole('button',{name:'Send NVIDIA · NVDAc'})).toBeDisabled();
   await page.unrouteAll({behavior:'wait'});await setup(page,{unavailable:true});await page.goto('/phone-fixture');
   await expect(page.getByText('Prize balances and approval unavailable.',{exact:false})).toBeVisible();await expect(page.getByRole('button',{name:'Review approval'})).toBeDisabled();
+});
+
+
+test('camera scanner decodes the iPad QR locally, stops the camera and requires explicit pairing confirmation',async({page})=>{
+  await setup(page);
+  const secret='a'.repeat(64),picture=await QRCode.toDataURL('http://localhost:3101/phone#pair='+secret,{width:512,margin:4});
+  await page.addInitScript(({picture})=>{
+    (window as any).cameraRequests=0;
+    Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:async()=>{
+      (window as any).cameraRequests++;
+      const image=new Image();image.src=picture;await image.decode();
+      const canvas=document.createElement('canvas');canvas.width=512;canvas.height=512;canvas.getContext('2d')!.drawImage(image,0,0);
+      const stream=canvas.captureStream(5);(window as any).cameraTrack=stream.getTracks()[0];return stream;
+    }}});
+  },{picture});
+  await page.goto('/phone-fixture');
+  expect(await page.evaluate(()=>(window as any).cameraRequests)).toBe(0);
+  await page.getByRole('button',{name:'Scansiona QR dell’iPad'}).click();
+  await expect(page.getByLabel('Il codice coincide.')).toBeVisible();
+  await expect(page.getByRole('button',{name:'Collega il wallet'})).toBeDisabled();
+  expect(await page.evaluate(()=>(window as any).cameraTrack.readyState)).toBe('ended');
+  await expect(page.getByRole('button',{name:'Accedi con passkey'})).toBeHidden();
+  await page.getByLabel('Il codice coincide.').check();await page.getByRole('button',{name:'Collega il wallet'}).click();
+  await expect(page.getByRole('button',{name:'Termina collegamento all’iPad'})).toBeVisible();
+});
+
+test('denied camera offers local photo scanning and rejects a foreign pairing origin',async({page})=>{
+  await setup(page);
+  await page.addInitScript(()=>{Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:async()=>{throw new DOMException('denied','NotAllowedError');}}});});
+  await page.goto('/phone-fixture');await page.getByRole('button',{name:'Scansiona QR dell’iPad'}).click();
+  await expect(page.getByText('Consenti l’accesso alla fotocamera',{exact:false})).toBeVisible();
+  const secret='b'.repeat(64),image=async(origin:string)=>({name:'qr.png',mimeType:'image/png',buffer:await QRCode.toBuffer(origin+'/phone#pair='+secret,{width:512,margin:4})});
+  await page.locator('input[type=file]').setInputFiles(await image('https://other.example'));
+  await expect(page.getByText('Scansiona il QR mostrato da questa app sull’iPad.')).toBeVisible();
+  await expect(page.getByRole('button',{name:'Collega il wallet'})).toBeHidden();
+  await page.locator('input[type=file]').setInputFiles(await image('http://localhost:3101'));
+  await expect(page.getByLabel('Il codice coincide.')).toBeVisible();await expect(page.getByRole('dialog')).toBeHidden();
+});
+
+test('closing scanner while permission is pending stops a late camera stream',async({page})=>{
+  await setup(page);
+  await page.addInitScript(()=>{Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:()=>new Promise(resolve=>{(window as any).allowCamera=()=>{
+    const canvas=document.createElement('canvas');canvas.width=16;canvas.height=16;const stream=canvas.captureStream();(window as any).cameraTrack=stream.getTracks()[0];resolve(stream);
+  };})}});});
+  await page.goto('/phone-fixture');await page.getByRole('button',{name:'Scansiona QR dell’iPad'}).click();await page.getByRole('button',{name:'Chiudi scanner'}).click();
+  await page.evaluate(()=>(window as any).allowCamera());
+  await expect.poll(()=>page.evaluate(()=>(window as any).cameraTrack.readyState)).toBe('ended');
+  await expect(page.getByRole('dialog')).toBeHidden();
 });

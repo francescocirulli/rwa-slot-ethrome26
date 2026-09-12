@@ -40,7 +40,7 @@ export function PhoneWallet({wallet,transaction,paired,reload,loading=false}:{wa
     </section>
     {portfolio?.busy&&<div className="phone-progress" role="status">Spin in progress{portfolio.gameId?' #'+portfolio.gameId:''}. You can see balances; changes and transfers resume after the result.</div>}
     {!portfolio&&<div className="phone-error" role="alert">Prize balances and approval unavailable. Refresh to retry.</div>}
-    {portfolio&&!portfolio.canTransact&&!portfolio.busy&&<p className="phone-progress" role="status">{portfolio.contract?'Checking the onchain state before enabling operations.':'The slot is not configured yet. The wallet can receive funds.'}</p>}
+    {portfolio&&!portfolio.canTransact&&!portfolio.busy&&<p className="phone-progress" role="status">{portfolio.contract?'Wallet connected. Onchain reads are unavailable: press “Refresh balances” to retry. An iPad connection is not required.':'The slot is not configured yet. The wallet can receive funds.'}</p>}
     <section className="phone-card"><span className="eyebrow">SPENDING ON THE SLOT</span><h2>Your USDC limit.</h2>
       <div className="play-facts"><span>Remaining approval<b>{portfolio?.allowance!=null?formatUnits(BigInt(portfolio.allowance),6)+' USDC':'—'}</b></span><span>Free spins<b>{portfolio?.freeSpins??'—'}</b></span></div>
       <p>This is the amount the contract may spend on spins. The approval does not transfer USDC and does not link an iPad.</p>

@@ -5,6 +5,7 @@ import {PrivyProvider, useCreateWallet, useLoginWithEmail, useLoginWithPasskey, 
 import {base} from 'viem/chains';
 import {PhoneGame} from './game';
 import {PhoneWallet} from './wallet';
+import {PairingScanner} from './scanner';
 import type {AccountView} from '@/lib/account';
 import {useContractTransaction} from '@/lib/slot/use-transaction';
 import {TransactionConfirmation} from '@/lib/slot/transaction-review';
@@ -45,6 +46,7 @@ function Phone() {
   const {wallets, ready: walletsReady} = useWallets();
   const {addSigners} = useSigners();
   const [secret, setSecret] = useState('');
+  const [scanning,setScanning]=useState(false);
   const [loaded, setLoaded] = useState(false);
   const [recovering, setRecovering] = useState(true);
   const [info, setInfo] = useState<{code: string; origin: string; expiresAt: number} | null>(null);
@@ -228,6 +230,8 @@ function Phone() {
     <div className="intro"><span className="eyebrow">YOUR WALLET, ALWAYS WITH YOU</span><h1>{connectedSession ? <>Nice pull.<br/>You are in<span>.</span></> : authenticated ? <>Your wallet.<br/>Your winnings<span>.</span></> : <>One phone.<br/>A little luck<span>.</span></>}</h1><p>{connectedSession ? session.state === 'approved' ? 'The iPad is finishing the link.' : 'Your wallet is linked to the iPad.' : authenticated ? 'Manage your tokens and prizes. Scan a QR code whenever you want to play on the iPad.' : 'Sign in to your wallet to see tokens and prizes, even without an iPad.'}</p></div>
     {checking && <div className="phone-progress" role="status">Checking your access and the link to the iPad…</div>}
     {ready && authenticated && <div className="phone-account-state"><span>● ACCOUNT CONNECTED</span><b>{user?.email?.address || 'Passkey login'}</b><small>{connectedSession ? 'Wallet linked to this iPad' : 'No iPad linked to this page'}</small></div>}
+    {ready&&loaded&&!connectedSession&&!info&&<button className="phone-primary" disabled={!!busy||transaction.busy||transaction.pending} onClick={()=>{setError('');setScanning(true);}}>Scansiona QR dell’iPad ↗</button>}
+    {scanning&&<PairingScanner onClose={()=>setScanning(false)} onRead={value=>{generation.current++;setScanning(false);setInfo(null);setConfirmed(false);setEnded(false);setRecovering(false);setError('');setSecret(value);try{sessionStorage.setItem('slot-pair',value);}catch{}}}/>}
     {error && <div className="phone-error" role="alert">{error}</div>}
     {busy && <div className="phone-progress" role="status">{busy}…</div>}
     {!checking && !authenticated && <section className="phone-card"><span className="eyebrow">01 / GET VERIFIED</span><h2>Your entrance.</h2><button className="phone-primary" disabled={!canAct} onClick={() => run('Signing in', async () => {await loginWithPasskey();})}>Sign in with passkey <span>↗</span></button><button className="phone-secondary" disabled={!canAct} onClick={() => run('Creating passkey', async () => {await signupWithPasskey();})}>First time? Create a passkey</button><div className="divider">OR WITH EMAIL</div><form onSubmit={(event) => {event.preventDefault(); void run(emailSent ? 'Verifying code' : 'Sending code', async () => {if (emailSent) await loginWithCode({code}); else {await sendCode({email}); setEmailSent(true);}});}}><label htmlFor="email">Your email</label><input id="email" type="email" autoComplete="email" value={email} disabled={emailSent || !!busy} onChange={(event) => setEmail(event.target.value)} required placeholder="you@example.com"/>{emailSent && <><label htmlFor="code">Code from your email</label><input id="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} required placeholder="000000"/><p className="small">Check your spam folder too.</p></>}<button className="phone-primary" disabled={!canAct} type="submit">{emailSent ? 'Confirm code' : 'Send me the code'} <span>↗</span></button>{emailSent && <button className="phone-text" type="button" disabled={!canAct} onClick={() => {setEmailSent(false); setCode('');}}>Change email or request a new code</button>}</form></section>}

@@ -103,6 +103,21 @@ export function createSlotReader(config: SlotConfig) {
     const paid = payout ? {...payout, formattedAmount: metadata ? formatUnits(payout.amount, metadata.decimals) : payout.amount.toString(), tokenSymbol: metadata?.symbol || null, decimals: metadata?.decimals ?? null} : null;
     return {id, ...raw, status: GAME_STATES[status], confirmed, resultBlock, transactionHash, payout: paid};
   }
+  // Wallet management needs current state, not the unbounded history of past spins.
+  // Also inspect the confirmed block so a just-settled round stays locked until finality.
+  async function walletState(address: Address) {
+    await validate();
+    const block = await client.getBlockNumber({cacheTime: 0});
+    const confirmedBlock = block >= BigInt(config.confirmations - 1) ? block - BigInt(config.confirmations - 1) : 0n;
+    const [[freeSpins, activeGameId], [, confirmedActiveId], allowance, balance] = await Promise.all([
+      client.readContract({...contract, functionName: 'getPlayerState', args: [address], blockNumber: block}),
+      client.readContract({...contract, functionName: 'getPlayerState', args: [address], blockNumber: confirmedBlock}),
+      client.readContract({address: config.paymentToken, abi: erc20Abi, functionName: 'allowance', args: [address, config.address], blockNumber: block}),
+      client.readContract({address: config.paymentToken, abi: erc20Abi, functionName: 'balanceOf', args: [address], blockNumber: block}),
+    ]);
+    return {address,freeSpins,allowance,balance,activeGameId,
+      busy:activeGameId !== 0n || confirmedActiveId !== 0n,block};
+  }
   async function player(address: Address, blockNumber?: bigint) {
     const block = blockNumber ?? await client.getBlockNumber({cacheTime: 0});
     const [[freeSpins, activeGameId], allowance, balance] = await Promise.all([
@@ -150,7 +165,7 @@ export function createSlotReader(config: SlotConfig) {
       gasMode: config.gasMode, confirmations: config.confirmations, block, settings: values, catalog: prizes, permissions, player: state, inventory, funding:reserves,
       pendingOwner: pendingOwner ? {address: pendingOwner[0], schedule: pendingOwner[1]} : null});
   }
-  return {config, chain, client, contract, validate, settings, catalog, roles, lastGame, player, game, activeGames, history, snapshot, funding};
+  return {config, chain, client, contract, validate, settings, catalog, roles, lastGame, player, walletState, game, activeGames, history, snapshot, funding};
 }
 export type SlotReader = ReturnType<typeof createSlotReader>;
 export type SlotSnapshot = Awaited<ReturnType<SlotReader['snapshot']>>;
