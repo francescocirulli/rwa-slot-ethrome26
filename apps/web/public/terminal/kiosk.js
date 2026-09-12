@@ -31,9 +31,10 @@
       audioEnabled = true;
       if (audio.resume) audio.resume().then(audioLabel, audioLabel);
       tone(660, 0, 0.12); audioLabel();
-    } catch (ignore) {el('audio-enable').textContent = 'Sound unavailable';}
+    } catch (ignore) {el('audio-enable').title = 'Sound unavailable';}
   }
-  function audioLabel() {el('audio-enable').textContent = audioEnabled && audio && audio.state === 'running' ? 'Sound on' : 'Sound off';}
+  function toolState(id, on, label) {var button = el(id); button.classList.toggle('is-on', on); button.setAttribute('aria-label', label); button.title = label; var caption = button.querySelector('small'); if (caption && button.getAttribute('data-caption')) caption.textContent = on ? button.getAttribute('data-caption') : caption.getAttribute('data-default') || caption.textContent;}
+  function audioLabel() {toolState('audio-enable', !!(audioEnabled && audio && audio.state === 'running'), audioEnabled && audio && audio.state === 'running' ? 'Sound on' : 'Sound off');}
   el('audio-enable').onclick = function () {if (audioEnabled && audio && audio.state === 'running') {audioEnabled = false; audio.suspend(); audioLabel();} else unlockAudio();};
   function wake() {
     if (active || busy) return;
@@ -92,9 +93,10 @@
   el('settings-open').onclick = function () {openDialog('settings-dialog', 'settings-close');};
   el('settings-close').onclick = function () {closeDialog('settings-dialog', 'settings-open');};
   el('settings-logout').onclick = function () {el('settings-dialog').hidden = true; el('logout').click();};
+  // The session scripts rewrite body.className on every redraw, so the panel state lives on <html>.
   el('panel-toggle').onclick = function () {
-    var collapsed = document.body.classList.toggle('panel-collapsed');
-    el('panel-toggle').textContent = collapsed ? 'Show wallet' : 'Hide wallet';
+    var collapsed = document.documentElement.classList.toggle('panel-collapsed');
+    toolState('panel-toggle', collapsed, collapsed ? 'Show wallet' : 'Hide wallet');
     el('panel-toggle').setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   };
   el('hardware-open').onclick = function () {el('settings-dialog').hidden = true; el('hardware-dialog').hidden = false; el('hardware-code').focus();};
@@ -108,7 +110,7 @@
   var fullscreenButton = el('fullscreen-toggle'), root = document.documentElement;
   var fullscreenSupported = !!(root.requestFullscreen || root.webkitRequestFullscreen);
   function fullscreenActive() {return !!(document.fullscreenElement || document.webkitFullscreenElement);}
-  function fullscreenLabel() {var active = fullscreenActive(); fullscreenButton.textContent = active ? '⤡' : '⤢'; fullscreenButton.setAttribute('aria-label', active ? 'Exit full screen' : 'Full screen'); fullscreenButton.title = fullscreenButton.getAttribute('aria-label');}
+  function fullscreenLabel() {var active = fullscreenActive(); toolState('fullscreen-toggle', active, active ? 'Exit full screen' : 'Full screen');}
   if (!fullscreenSupported) fullscreenButton.hidden = true;
   fullscreenButton.onclick = function () {
     var result;
@@ -120,7 +122,7 @@
   };
   document.addEventListener('fullscreenchange', fullscreenLabel); document.addEventListener('webkitfullscreenchange', fullscreenLabel);
   fullscreenLabel();
-  el('mode-switch').textContent = demo ? 'Back to live' : 'Demo';
+  toolState('mode-switch', demo, demo ? 'Back to live' : 'Switch to demo');
   el('mode-switch').onclick = function () {if (window.slotCanSwitchMode && !window.slotCanSwitchMode()) return; window.location.href = demo ? '/' : '/?demo=1';};
   document.addEventListener('visibilitychange', function () {gate = ''; ready = false; if (document.hidden) {window.clearInterval(spinSound); spinSound = null;} else {audioLabel(); poll();}});
   window.setInterval(function () {drawAttract(); audioLabel();}, 500);
