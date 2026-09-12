@@ -8,10 +8,13 @@ import {personalWrites,type WriteCoordinator} from '../admin/write-coordinator';
 import {withWalletAuthorization} from '../wallet-authorization';
 import type {EnsService} from './service';
 import {ENS_PARENT} from './config';
+import {createEnsRetries,ensDefiniteFailure,ensRetryableRejection} from './retry';
 
-type Review={id:string;claimId:Hex;userId:string;wallet:Wallet;expires:number;transaction:{to:Address;data:Hex;chainId:number};stage:'preparing'|'prepared'|'sending'|'submitted'|'uncertain'|'failed';submission?:SubmittedSpin};
-export function createEnsApi({service,walletService,origin,gasMode='usdc',writes=personalWrites()}:{service:EnsService|null;walletService?:WalletService;origin:string;gasMode?:GasMode;writes?:WriteCoordinator}){
+type Review={id:string;claimId:Hex;userId:string;wallet:Wallet;expires:number;transaction:{to:Address;data:Hex;chainId:number};stage:'preparing'|'prepared'|'sending'|'submitted'|'uncertain'|'failed';submission?:SubmittedSpin;attempt:number;retryToken?:string};
+export function createEnsApi({service,walletService,origin,gasMode='usdc',writes=personalWrites(),retrySecret}:{service:EnsService|null;walletService?:WalletService;origin:string;gasMode?:GasMode;writes?:WriteCoordinator;retrySecret?:string}){
   const reviews=new Map<string,Review>(),preparing=new Set<string>();
+  const retries=retrySecret?createEnsRetries(retrySecret):undefined;
+  const retryScope=(r:Pick<Review,'userId'|'wallet'|'claimId'>)=>JSON.stringify([r.userId,r.wallet.id,r.wallet.address.toLowerCase(),r.claimId]);
   const view=(r:Review,name:string)=>({id:r.id,claimId:r.claimId,name,address:r.wallet.address,quantity:1,registrationPayer:'backend',gasMode,expires:r.expires});
   async function hold(r:Review){
     await writes.acquire(r.wallet.address.toLowerCase(),r.id,async()=>{
@@ -54,6 +57,8 @@ export function createEnsApi({service,walletService,origin,gasMode='usdc',writes
       }
       if(action==='prepare'){
         if(!isHex(body.claimId)||body.claimId.length!==66)throw new SlotError('Input','Invalid claim.',400);
+        const attempt=retries?retries.read(retryScope({userId:user.userId,wallet,claimId:body.claimId}),body.retryToken):0;
+        if(body.retryToken&&!retries)throw new SlotError('EnsRetry','Voucher recovery is not configured.',503);
         if(preparing.has(wallet.id))throw new SlotError('EnsBusy','Your voucher review is being prepared. Wait a moment, then continue.',409);
         preparing.add(wallet.id);
         try{
@@ -69,7 +74,7 @@ export function createEnsApi({service,walletService,origin,gasMode='usdc',writes
           }
           if(reviews.size>=256)throw new SlotError('EnsBusy','Too many pending ENS requests.',503);
           const id=randomBytes(32).toString('hex');
-          const r:Review={id,claimId:body.claimId,userId:user.userId,wallet,transaction:{to:owner,data:'0x',chainId:8453},expires:Date.now()+90000,stage:'preparing'};
+          const r:Review={id,attempt,claimId:body.claimId,userId:user.userId,wallet,transaction:{to:owner,data:'0x',chainId:8453},expires:Date.now()+90000,stage:'preparing'};
           await hold(r);
           try{
             const {claim,transaction}=await service.prepareReview(owner,body.claimId);
@@ -87,7 +92,7 @@ export function createEnsApi({service,walletService,origin,gasMode='usdc',writes
         reviews.delete(r.id);writes.release(owner.toLowerCase(),r.id);return reply({cancelled:true});
       }
       if(action==='status'){
-        if(r.stage==='failed')return reply({stage:r.stage});
+        if(r.stage==='failed')return reply({stage:r.stage,retryToken:r.retryToken});
         if(r.stage==='prepared'&&r.expires<Date.now()){r.stage='failed';writes.release(owner.toLowerCase(),r.id);return reply({stage:r.stage});}
         const claim=await service.getClaim(r.claimId,owner);
         if(claim.stage!=='voucher')writes.release(owner.toLowerCase(),r.id);
@@ -107,12 +112,25 @@ export function createEnsApi({service,walletService,origin,gasMode='usdc',writes
         if(currentTransaction.to!==r.transaction.to||currentTransaction.data!==r.transaction.data||currentTransaction.chainId!==r.transaction.chainId)throw new SlotError('EnsReview','Voucher review changed. Prepare again.',409);
         // Both client confirmation and the exact Privy request bytes are authorized.
         attempted=true;
-        r.submission=await withWalletAuthorization(request,user,authorization=>walletService.sendOwned!(wallet,authorization,r.transaction,'ens-voucher:'+r.claimId,gasMode,()=>{},assertValid));
+        r.submission=await withWalletAuthorization(request,user,async authorization=>{
+          const send=()=>walletService.sendOwned!(wallet,authorization,r.transaction,'ens-voucher:'+r.claimId+(r.attempt?':retry:'+r.attempt:''),gasMode,()=>{},assertValid);
+          try{return await send();}catch(error){
+            // Privy caches terminal errors as well as successful sends. Permit
+            // one fresh request under the same explicit voucher confirmation.
+            // Never advance after an unknown result or idempotency conflict.
+            if(!retries||!ensRetryableRejection(error)||r.attempt>=1024)throw error;
+            r.attempt++;
+            const refreshed=await service.prepareVoucher(owner,r.claimId);
+            if(refreshed.to!==r.transaction.to||refreshed.data!==r.transaction.data||refreshed.chainId!==r.transaction.chainId)throw new SlotError('EnsReview','Voucher review changed. Prepare again.',409);
+            return send();
+          }
+        });
         r.stage='submitted';return reply({stage:r.stage,submission:r.submission});
       }catch(error){
-        r.stage=!attempted||definiteSendFailure(error)?'failed':'uncertain';if(r.stage==='failed')writes.release(owner.toLowerCase(),r.id);
-        const errorMessage=error instanceof SlotError?error.message:!attempted?'Voucher checks are temporarily unavailable. This request did not submit a transfer. Continue to try again.':transactionError(error);
-        return reply({error:errorMessage,code:error instanceof SlotError?error.code:'EnsSendUnavailable',stage:r.stage},error instanceof SlotError?error.status:503);
+        r.stage=!attempted||ensDefiniteFailure(error)?'failed':'uncertain';
+        if(attempted&&ensRetryableRejection(error))r.retryToken=retries?.next(retryScope(r),r.attempt);if(r.stage==='failed')writes.release(owner.toLowerCase(),r.id);
+        const errorMessage=error instanceof SlotError?error.message:r.stage==='uncertain'?'The Base voucher submission needs verification. No second transfer will be sent. Refresh ENS to check its status.':!attempted?'Voucher checks are temporarily unavailable. This request did not submit a transfer. Continue to try again.':transactionError(error);
+        return reply({error:errorMessage,code:error instanceof SlotError?error.code:'EnsSendUnavailable',stage:r.stage,retryToken:r.retryToken},error instanceof SlotError?error.status:503);
       }
     }catch(error){
       if(error instanceof SlotError)return reply({error:error.message,code:error.code},error.status);

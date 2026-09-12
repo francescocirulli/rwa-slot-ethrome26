@@ -12,6 +12,7 @@ export function ensApi(){
     shared.ensApi=createEnsApi({service,
       walletService:appId&&secret?createWalletService(appId,secret):undefined,
       origin:process.env.APP_ORIGIN||(process.env.RAILWAY_PUBLIC_DOMAIN?`https://${process.env.RAILWAY_PUBLIC_DOMAIN}`:'http://localhost:3000'),
+      retrySecret:secret,
       gasMode:process.env.PRIVY_GAS_MODE==='eth'?'eth':'usdc'});
   }
   return shared.ensApi;

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {APIError} from '@privy-io/node';
 import {zeroAddress,type Address,type Hex} from 'viem';
 import {createEnsApi} from '../lib/ens/api';
 import {ensConfig,normalizeLabel} from '../lib/ens/config';
@@ -16,7 +17,7 @@ function fixture(){
  prepareVoucher:async()=>{if(c.stage!=='voucher')throw Error('Already consumed');return {to:zeroAddress,data:'0x1234',chainId:8453};},fulfill:async()=>{completed++;return c;}} as unknown as EnsService;
  service.prepareReview=async(owner,id)=>({claim:await service.getClaim(id,owner),transaction:await service.prepareVoucher(owner,id)});
  const walletService={...f.service,sendOwned:async(_wallet:unknown,authorization:any,transaction:any,_key:string,mode:string)=>{assert.equal(transaction.chainId,8453);assert.equal(mode,'usdc');sends++;await authorization.sign_fns[0](new Uint8Array([1,2,3]));return {transactionId:'test-transaction'};}};
- const api=createEnsApi({service,walletService,origin,writes});
+ const api=createEnsApi({service,walletService,origin,writes,retrySecret:'test-only-stable-retry-secret'});
  async function call(body?:unknown,token='player-a',headers:Record<string,string>={}){
    const req=new Request(origin+'/api/ens?address='+zeroAddress,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,Origin:origin,'Content-Type':'application/json','X-Slot-Request':'1',...headers},body:body?JSON.stringify(body):undefined});
    const response=(body as any)?.action==='send'?await authorizedTestRequest(req,'did:privy:'+token,api):await api(req);
@@ -153,4 +154,67 @@ test('ENS catch-up drains bounded pages promptly and backs off after a read fail
  await worker.tick();assert.deepEqual(worker.state(),{cursor:100n,pending:0,catchingUp:true});
  fail=true;await assert.rejects(worker.tick());assert.equal(worker.state().catchingUp,false);assert.equal(worker.state().cursor,100n);
  fail=false;await worker.tick();assert.deepEqual(worker.state(),{cursor:200n,pending:0,catchingUp:false});worker.stop();
+});
+
+test('funding after a cached rejection uses a signed retry cursor and recovers across server restart',async()=>{
+ const f=fixture();let funded=false,actualTransfers=0;
+ const provider=new Map<string,{transactionId:string}|APIError>(),keys:string[]=[];
+ f.walletService.sendOwned=async(_wallet,_authorization,_transaction,key)=>{
+  keys.push(key);
+  if(!provider.has(key)){provider.set(key,funded?{transactionId:'funded-transfer'}:new APIError(400,{error:'Insufficient USDC balance'},'Rejected',new Headers()));if(funded)actualTransfers++;}
+  const result=provider.get(key)!;if(result instanceof APIError)throw result;return result;
+ };
+ const first=await f.call({action:'prepare',claimId});
+ const rejected=await f.call({action:'send',id:first.body.id,confirm:true});
+ assert.equal(rejected.body.stage,'failed');assert.ok(rejected.body.retryToken);
+ assert.equal((await f.call({action:'status',id:first.body.id})).body.retryToken,rejected.body.retryToken);
+ funded=true;
+ // Losing the cursor replays the old rejected key and recovers the same cursor.
+ const old=await f.call({action:'prepare',claimId});
+ const cached=await f.call({action:'send',id:old.body.id,confirm:true});
+ assert.equal(cached.body.retryToken,rejected.body.retryToken);assert.equal(keys[0],keys[2]);assert.equal(keys[1],keys[3]);
+ const api=createEnsApi({service:f.service,walletService:f.walletService,origin,writes:createWriteCoordinator(),retrySecret:'test-only-stable-retry-secret'});
+ async function call(body:object){
+  const req=new Request(origin+'/api/ens',{method:'POST',headers:{Authorization:'Bearer player-a',Origin:origin,'Content-Type':'application/json','X-Slot-Request':'1'},body:JSON.stringify(body)});
+  const response=await authorizedTestRequest(req,'did:privy:player-a',api);return {status:response.status,body:await response.json()};
+ }
+ const next=await call({action:'prepare',claimId,retryToken:rejected.body.retryToken});assert.equal(next.status,200);
+ const sent=await call({action:'send',id:next.body.id,confirm:true});assert.equal(sent.body.stage,'submitted');
+ assert.notEqual(keys[3],keys[4]);assert.equal(actualTransfers,1);
+ await call({action:'send',id:next.body.id,confirm:true});assert.equal(keys.length,5);
+ assert.equal((await call({action:'prepare',claimId,retryToken:rejected.body.retryToken})).status,409);
+});
+
+test('ENS retry cursors cannot be forged, used by another wallet, or minted for uncertain sends',async()=>{
+ const f=fixture();
+ assert.equal((await f.call({action:'prepare',claimId,retryToken:'1.'+'A'.repeat(43)})).status,400);
+ f.walletService.sendOwned=async()=>{throw new APIError(400,{error:'Insufficient USDC balance'},'Rejected',new Headers());};
+ const prepared=await f.call({action:'prepare',claimId});
+ const failed=await f.call({action:'send',id:prepared.body.id,confirm:true});
+ assert.equal((await f.call({action:'prepare',claimId,retryToken:failed.body.retryToken},'player-b')).status,400);
+ for(const [error,stage] of [
+  [new APIError(500,{error:'Unknown provider result'},'Unknown',new Headers()),'uncertain'],
+  [new APIError(400,{error:'Idempotency key reused with different parameters'},'Conflict',new Headers()),'uncertain'],
+  [new APIError(400,{error:'Insufficient USDC balance',transaction_id:'pending'},'Pending',new Headers()),'uncertain'],
+  [new APIError(401,{error:'Authentication expired'},'Auth',new Headers()),'failed'],
+ ] as const){
+  const g=fixture();g.walletService.sendOwned=async()=>{throw error;};
+  const p=await g.call({action:'prepare',claimId}),r=await g.call({action:'send',id:p.body.id,confirm:true});
+  assert.equal(r.body.stage,stage);assert.equal(r.body.retryToken,undefined);
+  if(stage==='uncertain')assert.equal((await g.call({action:'prepare',claimId})).status,409);
+ }
+});
+
+test('a funded wallet escapes the legacy cached rejection within one confirmation',async()=>{
+ const f=fixture();const keys:string[]=[];let transfers=0,signatures=0;
+ f.walletService.sendOwned=async(_wallet,authorization,_transaction,key)=>{
+  keys.push(key);await authorization.sign_fns[0](new Uint8Array([1,2,3]));signatures++;
+  if(key==='ens-voucher:'+claimId)throw new APIError(400,{error:'Insufficient USDC balance'},'Cached rejection',new Headers());
+  transfers++;return {transactionId:'funded-transfer'};
+ };
+ const p=await f.call({action:'prepare',claimId});
+ const r=await f.call({action:'send',id:p.body.id,confirm:true});
+ assert.equal(r.body.stage,'submitted');assert.equal(transfers,1);assert.equal(signatures,2);
+ assert.deepEqual(keys,['ens-voucher:'+claimId,'ens-voucher:'+claimId+':retry:1']);
+ await f.call({action:'send',id:p.body.id,confirm:true});assert.equal(transfers,1);
 });
