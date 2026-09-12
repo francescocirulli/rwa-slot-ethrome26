@@ -1,0 +1,30 @@
+{
+  "network": "base-mainnet",
+  "chainId": 8453,
+  "deployedAt": "2026-09-12T09:48:19Z",
+  "deployer": "0x8e251547f0fD650e0573711EF733F13eBA1505aD",
+  "contracts": {
+    "SlotPrize1155": {
+      "address": "0x8D411D8efCDb0d528E4F6659B44223264Fd0B719",
+      "transactionHash": "0x0a07f01be5056e96e36f89faa6dbc51fac46494138a8485f7d4e54e6f9cd459c",
+      "blockNumber": 51208576,
+      "owner": "0x8e251547f0fD650e0573711EF733F13eBA1505aD",
+      "launchTokenIds": {
+        "GADGET": 1,
+        "ENS_REGISTRATION": 2,
+        "URBE_HUB_DAY_PASS": 3,
+        "SHIRT": 4
+      }
+    },
+    "DigitalSlotMachine": {
+      "address": "0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c",
+      "transactionHash": "0x20761fcd3ef65a66f42b24b5ba55e8b34dcf33ab5f15a8cf1057cf3d54799372",
+      "blockNumber": 51208577,
+      "owner": "0xC81f6728a10B20a8981d5C2601Aa185417229035",
+      "gameManager": "0x8e251547f0fD650e0573711EF733F13eBA1505aD",
+      "paymentToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "ticketPrice": 50000,
+      "ticketPriceUSDC": "0.05"
+    }
+  }
+}
