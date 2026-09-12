@@ -166,12 +166,19 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
     });
     await t.test('a long-idle history cache resumes in bounded requests instead of blocking the terminal',async()=>{
       const empty=mnemonicToAccount(mnemonic,{addressIndex:3}).address;
-      const fresh=createSlotReader(config);
-      assert.deepEqual(await fresh.lastGame(empty,await client.getBlockNumber({cacheTime:0})),{id:0n,complete:true});
-      await mine(24001);
+      const head=await client.getBlockNumber({cacheTime:0});
+      // Exceed the same 12-page budget using the production's capped page size.
+      // Mining 24,001 blocks only tests Anvil's speed and can exhaust the suite timeout.
+      const fresh=createSlotReader({...config,logPageBlocks:5n,historyFromBlock:head});
+      assert.deepEqual(await fresh.lastGame(empty,head),{id:0n,complete:true});
+      let requests=0;const readEvents=fresh.client.getContractEvents;
+      fresh.client.getContractEvents=(async (args:Parameters<typeof readEvents>[0])=>{requests++;assert.ok((args.toBlock as bigint)-(args.fromBlock as bigint)<5n);return readEvents(args);}) as typeof readEvents;
+      await mine(61);
       const block=await client.getBlockNumber({cacheTime:0});
       assert.deepEqual(await fresh.lastGame(empty,block),{id:0n,complete:false});
+      assert.equal(requests,12);requests=0;
       assert.deepEqual(await fresh.lastGame(empty,block),{id:0n,complete:true});
+      assert.ok(requests>0&&requests<=12);
     });
     await t.test('collection ownership, reviewed mint/deposit and grouped reserves gate new paid and free spins',async()=>{
       const artifact=JSON.parse(await readFile(new URL('../../../contracts/out/SlotPrize1155.sol/SlotPrize1155.json',import.meta.url),'utf8'));
