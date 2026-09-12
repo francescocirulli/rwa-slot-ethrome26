@@ -5,7 +5,7 @@ import {createServer} from 'node:http';
 import {privateKeyToAccount} from 'viem/accounts';
 import {parse} from 'acorn';
 import {resolveExpiry} from '@arkiv-network/sdk';
-import {seasonAt,rank,pointsFor} from '../lib/arkiv/model';
+import {seasonAt,rank,pointsFor,seasonCountdown} from '../lib/arkiv/model';
 import {loadArkivConfig,type ArkivConfig} from '../lib/arkiv/config';
 import {createArkivStore,entitiesFor,type ConfirmedGame,type ArkivStore} from '../lib/arkiv/store';
 import {createSeasonService} from '../lib/arkiv/service';
@@ -43,6 +43,10 @@ test('all season contributions share an absolute expiry, including late arrivals
   assert.equal(seasonAt(160n,100n,60n)!.id,'2');
   const first=entitiesFor(config,{chainId:8453,address:player},game,1000n,season,1000n);
   const last=entitiesFor(config,{chainId:8453,address:player},game,1118n,season,1000n);
+  for(const entity of first) {
+    assert.ok(Object.keys(entity.attributes!).every(name=>/^[a-z][a-z0-9_.-]*$/.test(name)),'Tiramisu rejects uppercase attribute names at gas estimation');
+    assert.deepEqual(entity.attributes!.game_id,{type:'u256',value:1n});
+  }
   assert.equal(first.length,2);assert.equal(last.length,2);
   assert.equal(resolveExpiry(first[1].expires,{currentBlock:101n}).target,160n);
   assert.equal(resolveExpiry(last[1].expires,{currentBlock:159n}).target,160n);
@@ -58,11 +62,14 @@ test('ranking deduplicates replay, aggregates all players and expires at the bou
   assert.equal(rows[0].spins,205);assert.equal(rows[0].points,6150);assert.equal(rows.length,2);
   assert.deepEqual(rank(entries,160n),[]);
   assert.equal(pointsFor(false,5),0);assert.equal(pointsFor(true,3),30);assert.equal(pointsFor(true,5),100);
+  assert.equal(seasonCountdown(2591990),'29d 23h 59m');
+  assert.equal(seasonCountdown(3661),'1h 1m 1s');
+  assert.equal(seasonCountdown(61),'1:01');
 });
 test('configuration requires a stable anchor and a separate signer',()=>{
   assert.equal(loadArkivConfig({}),null);
   const env={ARKIV_ENABLED:'true',ARKIV_WRITER_ADDRESS:player,ARKIV_SEASON_ANCHOR_BLOCK:'100',ARKIV_BASE_FROM_BLOCK:'1'};
-  assert.equal(loadArkivConfig(env)!.seasonBlocks,60n);
+  assert.equal(loadArkivConfig(env)!.seasonBlocks,1296000n);
   assert.throws(()=>loadArkivConfig({...env,ARKIV_SEASON_ANCHOR_BLOCK:''}));
   assert.throws(()=>loadArkivConfig({...env,ARKIV_WS_URL:'https://example.com'}));
   assert.throws(()=>loadArkivConfig({...env,ARKIV_PRIVATE_KEY:'0x'+'1'.repeat(64),SLOT_BACKEND_PRIVATE_KEY:'0x'+'1'.repeat(64)}));
@@ -100,12 +107,12 @@ test('real SDK query follows every page, keeps the block snapshot and ranks the 
     const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk));
     const body=JSON.parse(Buffer.concat(chunks).toString());calls++;
     const [query,options]=body.params;
-    if(body.method!=='arkiv_query'||!query.includes('$creator')||!query.includes('playedAt >= u64(1000)')||options.atBlock!=='0x9f') {
+    if(body.method!=='arkiv_query'||!query.includes('$creator')||!query.includes('played_at >= u64(1000)')||options.atBlock!=='0x9f') {
       res.end(JSON.stringify({jsonrpc:'2.0',id:body.id,error:{code:-32000,message:'Unexpected query'}}));return;
     }
     const ids=options.cursor?[201]:Array.from({length:200},(_,i)=>i+1);
     const data=ids.map(id=>({key:'0x'+String(id).padStart(64,'0'),expiresAt:'0xa0',attributes:[
-      {name:'gameId',type:'u256',value:String(id)},
+      {name:'game_id',type:'u256',value:String(id)},
       {name:'player',type:'addr',value:'0x'+String(id).padStart(40,'0')},
       {name:'points',type:'i32',value:id===201?100:30},
       {name:'won',type:'bool',value:true}

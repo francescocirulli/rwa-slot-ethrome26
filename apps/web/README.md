@@ -377,6 +377,10 @@ otherwise provide a separate Arkiv signing key. `ARKIV_API_KEY` authenticates bo
 server transports. Keep one always-on service replica and one Arkiv writer; this adds a public database
 without adding a second keeper or distributed write coordination.
 
+The phone header includes a **Leaderboard** shortcut, so standings are reachable
+without scrolling past wallet assets. Season timers show days and hours for the
+default 30-day schedule; history retention is configured separately.
+
 ## ENSv2 on the phone
 
 Optional ENS voucher redemption registers `*.wallstreetslot.eth` on Sepolia

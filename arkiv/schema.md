@@ -41,16 +41,16 @@ Shared by `spin` and `season-spin`:
 | `project` | str | Application namespace |
 | `schema` | i32 | Version 1 |
 | `kind` | str | `spin` or `season-spin` |
-| `sourceChain` | u64 | Base chain ID |
+| `source_chain` | u64 | Base chain ID |
 | `slot` | addr | Source contract |
-| `gameId` | u256 | Source round ID; logical deduplication key within source scope |
+| `game_id` | u256 | Source round ID; logical deduplication key within source scope |
 | `player` | addr | Wallet for history and ranking |
-| `playedAt` | u64 | Base reveal block timestamp, in seconds |
+| `played_at` | u64 | Base reveal block timestamp, in seconds |
 | `won` | bool | Verified result |
 | `points` | i32 | 0, 30 or 100 |
 | `matches` | i32 | Match count |
 | `symbol` | i32 | Winning symbol ID |
-| `prizeKind` | i32 | Original payout kind, zero for a loss |
+| `prize_kind` | i32 | Original payout kind, zero for a loss |
 
 Additional seasonal attributes:
 
@@ -58,7 +58,7 @@ Additional seasonal attributes:
 | --- | --- | --- |
 | `schedule` | str | `<anchorBlock>:<seasonBlocks>`; scopes schedule revisions |
 | `season` | u64 | One-based season number |
-| `seasonEnd` | u64 | Shared absolute expiry block |
+| `season_end` | u64 | Shared absolute expiry block |
 
 The `spin` JSON payload contains the source transaction hash, result block,
 wallet, complete symbol grid, actual payout token/ID/amount and match result.
@@ -78,8 +78,8 @@ Given anchor `A`, length `L`, and Arkiv block `B >= A`:
 
 Before A the UI displays the upcoming first season. Anchor and length must be
 configured identically across restarts. Change the project namespace if changing
-the schedule after publishing data. The default length of 60 blocks is roughly
-two minutes; longer seasons use the same mechanism. The countdown estimates two
+the schedule after publishing data. The default length of 1,296,000 blocks is roughly
+30 days; a 60-block season is available for the two-minute bounty demo. The countdown estimates two
 seconds per remaining block. Network progress, not the browser clock, decides the
 boundary. Zero displays "Waiting for season change" until a successful query.
 
@@ -98,8 +98,8 @@ The leaderboard predicate combines source/creator scope with:
 kind = str('season-spin')
 AND schedule = str('<anchor>:<length>')
 AND season = u64(<season>)
-AND playedAt >= u64(<actual season-start timestamp>)
-AND seasonEnd = u64(<shared end block>)
+AND played_at >= u64(<actual season-start timestamp>)
+AND season_end = u64(<shared end block>)
 ```
 
 The timestamp range excludes entries attributed to the wrong time window;
