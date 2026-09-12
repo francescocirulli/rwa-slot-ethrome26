@@ -1,11 +1,16 @@
-// Generated from foundry-slot DigitalSlotMachine.sol, Solidity 0.8.30. Do not edit by hand.
-// Source keccak256: 0xc9369216b2eff2f0587f4e0f3ba6e91a1f0e6d89df61dfb843fb71fc86023916
+// Generated from contracts/src/DigitalSlotMachine.sol, Solidity 0.8.30. Do not edit by hand.
+// Source keccak256: 0x32197c536bb2f31bcd73e0edc722ff7521dc04446fcefb48e799242995fa5ccc
 export const slotAbi = [
   {
     "type": "constructor",
     "inputs": [
       {
         "name": "initialOwner",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "initialGameManager",
         "type": "address",
         "internalType": "address"
       },

@@ -27,7 +27,7 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
     const payment=await deploy(fixtures.MockERC20.abi,fixtures.MockERC20.bytecode,['USDC test','USDC',6]);
     const prize=await deploy(fixtures.MockERC20.abi,fixtures.MockERC20.bytecode,['Stock test','STOCK',18]);
     const nft=await deploy(fixtures.MockERC1155.abi,fixtures.MockERC1155.bytecode,[]);
-    const slot=await deploy(slotAbi,fixtures.slotBytecode,[owner.address,payment,1000000n]);
+    const slot=await deploy(slotAbi,fixtures.slotBytecode,[owner.address,owner.address,payment,1000000n]);
     const deployed=await client.getBlockNumber({cacheTime:0});
     async function write(functionName: string,args: unknown[]=[]) {const hash=await adminWallet.writeContract({address:slot,abi:slotAbi as Abi,functionName,args});const r=await client.waitForTransactionReceipt({hash});assert.equal(r.status,'success');return r;}
     const config={address:slot,deploymentBlock:deployed,chainId:31337,rpcUrl:rpc,paymentToken:payment,gasMode:'eth' as const,confirmations:2};
