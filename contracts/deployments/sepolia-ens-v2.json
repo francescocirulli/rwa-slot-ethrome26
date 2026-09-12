@@ -1,0 +1,151 @@
+{
+  "network": "ethereum-sepolia",
+  "chainId": 11155111,
+  "parent": "wallstreetslot.eth",
+  "status": "sepolia-setup-and-live-smoke-verified",
+  "sourceCommit": "c38611721f93498372d622a1605a02d368508997",
+  "upstreamCommit": "97a57293f3b4279d94b571e678edb53ce62638f4",
+  "deployer": "0x8e251547f0fD650e0573711EF733F13eBA1505aD",
+  "rpc": "https://ethereum-sepolia-rpc.publicnode.com",
+  "parentExpiry": 1820786052,
+  "contracts": {
+    "UserRegistry": {
+      "address": "0x6D9E4b4a02D966D460D5fFBA87fDE09a7Ba34b21"
+    },
+    "ParentPermissionedResolver": {
+      "address": "0x202ea0a1d8f2dc90ea4f265c89ae3b5ec5127b91"
+    },
+    "SlotENSRegistrar": {
+      "address": "0x84f6ddfe529d5f38af2a95e38b6a23f9b4cdaa69",
+      "deploymentBlock": 11691693,
+      "transactionHash": "0xbc1820effe74d3427324758ad242ee2d80e68bedfd7b6eb255fc19075142c32e"
+    }
+  },
+  "baseRedemption": {
+    "status": "pending-coordinated-maintenance"
+  },
+  "contractSourceHashes": {
+    "ENSVoucherRedemption": "d1ce11c53ed585e1e6e615076545bbb493646ceceace34e6af5acb8fbf62cb85",
+    "SlotENSRegistrar": "58a874b04f8b0a420256dd84937a9b3b0174a3366b6297372e23e10d97847723"
+  },
+  "confirmedTransactions": [
+    {
+      "step": "commit",
+      "transactionHash": "0x91424f0d1f5a5c5506d57a91b139536f3c4271c0e5a538ceb772e5c6311c21e9",
+      "blockNumber": 11691652,
+      "gasUsed": 45433,
+      "effectiveGasPrice": 1043902264
+    },
+    {
+      "step": "mint",
+      "transactionHash": "0xf86f2172f37626c5a556a1602fa7bc6845e886cc3f23bb319d61b8b2a8caf841",
+      "blockNumber": 11691658,
+      "gasUsed": 51368,
+      "effectiveGasPrice": 1103745481
+    },
+    {
+      "step": "approve",
+      "transactionHash": "0xd1e83289a7e3948c2773bc8ed41e0d5edd6fa9e0cc0c2f148baa902152a798ef",
+      "blockNumber": 11691660,
+      "gasUsed": 46353,
+      "effectiveGasPrice": 939548818
+    },
+    {
+      "step": "register",
+      "transactionHash": "0x375e57429bda82f2902fca6d6576d18758ffc32038087c1406e3caa4832d07ee",
+      "blockNumber": 11691662,
+      "gasUsed": 210709,
+      "effectiveGasPrice": 1004818540
+    },
+    {
+      "step": "deployRegistry",
+      "transactionHash": "0xed248f69f200fb96db9210ab5723352795908846c56df3ebffe722e56363b0c1",
+      "blockNumber": 11691664,
+      "gasUsed": 176513,
+      "effectiveGasPrice": 1078282778
+    },
+    {
+      "step": "setSubregistry",
+      "transactionHash": "0x93426908bbc34d4ca9de555cb8fd35dc1a24bc68cb52e63f4477fe3bb06cfca8",
+      "blockNumber": 11691666,
+      "gasUsed": 57578,
+      "effectiveGasPrice": 960375147
+    },
+    {
+      "step": "deployParentResolver",
+      "transactionHash": "0x761af6e88abd3c33a2130981242ad576bdfb58ba02de4809b52b49f34072e01c",
+      "blockNumber": 11691668,
+      "gasUsed": 176703,
+      "effectiveGasPrice": 1003424783
+    },
+    {
+      "step": "setResolver",
+      "transactionHash": "0x794feb79072ab4a79f134c430fadf471056422f281b972bbbecbd87859791832",
+      "blockNumber": 11691688,
+      "gasUsed": 40466,
+      "effectiveGasPrice": 1040454163
+    },
+    {
+      "step": "setAddr",
+      "transactionHash": "0x6fc05b7a11667b9d3e19aefa7243db95c36f3f9c4a960463d1d85a390d7ca75d",
+      "blockNumber": 11691690,
+      "gasUsed": 63873,
+      "effectiveGasPrice": 1089143394
+    },
+    {
+      "step": "deployClaimRegistrar",
+      "transactionHash": "0xbc1820effe74d3427324758ad242ee2d80e68bedfd7b6eb255fc19075142c32e",
+      "blockNumber": 11691693,
+      "gasUsed": 1320032,
+      "effectiveGasPrice": 1064863029
+    },
+    {
+      "step": "grantRegistrarRole",
+      "transactionHash": "0xa7cb479e345bd4b886cf6d1d120c4203977566097048e66ea74f7970267e0bfc",
+      "blockNumber": 11691695,
+      "gasUsed": 63239,
+      "effectiveGasPrice": 991583044
+    },
+    {
+      "step": "smokeReserve",
+      "transactionHash": "0xd99e5bc65df0000b48508f850023f41ece153bbc416271e0b98a373f21883193",
+      "blockNumber": 11691699,
+      "gasUsed": 163268,
+      "effectiveGasPrice": 950789594
+    },
+    {
+      "step": "smokeFulfill",
+      "transactionHash": "0x48a957de88deb0907401f75a3e1cd5ea7b78c34dd632ca03b54a091440ac46b8",
+      "blockNumber": 11691701,
+      "gasUsed": 474579,
+      "effectiveGasPrice": 1050544508
+    }
+  ],
+  "verifiedAt": "2026-09-12T22:03:17.282626+00:00",
+  "totalGasCostWei": "3016165348848151",
+  "smokeTest": {
+    "name": "setup-check.wallstreetslot.eth",
+    "syntheticAttestation": true,
+    "baseVoucherConsumed": false,
+    "owner": "0x8e251547f0fD650e0573711EF733F13eBA1505aD",
+    "resolvedAddress": "0x8e251547f0fD650e0573711EF733F13eBA1505aD",
+    "resolver": "0xBCF236BafF118e028db6788Bcd6D10D7922Aeb14",
+    "claimId": "0x8a30ded57bde95154cb70e3ac27189cb494743de2e5fa5887c6488f72d35756f",
+    "source": "0x288c45a1b8625bcb225814e1f607da361389cb34f76551dec4507ad7e35c6e6a",
+    "ownerHasAllResolverRoles": true,
+    "registrarHasResolverAdminRole": false
+  },
+  "railwayConfiguration": {
+    "stagedWithoutDeployment": [
+      "SEPOLIA_RPC_URL",
+      "ENS_SUBREGISTRY_ADDRESS",
+      "ENS_DEPLOYMENT_BLOCK"
+    ],
+    "featureEnabled": false,
+    "remaining": [
+      "ENS_REGISTRAR_ADDRESS",
+      "ENS_REDEMPTION_ADDRESS",
+      "ENS_REDEMPTION_BLOCK"
+    ]
+  }
+}

@@ -10,11 +10,37 @@ The player's personal Privy wallet receives ownership of the subname.
 ## Deployment status
 
 The implementation is opt-in. Empty `ENS_REGISTRAR_ADDRESS` disables the feature.
-No live ENS deployment is implied by committing the code. Record the actual
-addresses, source commit, transaction hashes and deployment blocks after setup.
+The parent was registered on Sepolia with the existing backend EOA on September
+12, 2026 (UTC). The deployment manifest records public addresses, source hashes and
+confirmed receipts: [Sepolia deployment](../../../contracts/deployments/sepolia-ens-v2.json).
+Base redemption and production activation remain pending coordinated maintenance
+and the normal PR release workflow. No real player voucher has been consumed.
 ENSv2 is beta software; this integration pins the official Sepolia deployment
 from `ensdomains/contracts-v2` commit
 `97a57293f3b4279d94b571e678edb53ce62638f4` in `lib/ens/upstream.json`.
+
+## Current activation state
+
+Sepolia setup uses these public values:
+
+| Variable | Value |
+| --- | --- |
+| `SEPOLIA_RPC_URL` | `https://ethereum-sepolia-rpc.publicnode.com` |
+| `ENS_SUBREGISTRY_ADDRESS` | `0x6D9E4b4a02D966D460D5fFBA87fDE09a7Ba34b21` |
+| `ENS_REGISTRAR_ADDRESS` | `0x84f6ddfe529d5f38af2a95e38b6a23f9b4cdaa69` |
+| `ENS_DEPLOYMENT_BLOCK` | `11691693` |
+
+The RPC, subregistry and deployment block were staged on Railway with
+`--skip-deploys`. `ENS_REGISTRAR_ADDRESS` is deliberately still unset there:
+setting it enables the feature and requires a deployed Base redemption contract
+and `ENS_REDEMPTION_ADDRESS` / `ENS_REDEMPTION_BLOCK` together. No production
+app deployment was performed as part of ENS setup.
+
+Base deployment requires the admin to pause the slot, drain active games and
+coordinate stopping backend writes. The existing backend does not have the
+slot's `PAUSER_ROLE`. Do not assert `--keeper-stopped` while it is still active.
+After Base deployment, configure all remaining values and release the phone
+implementation through the PR into `dev`, then the release PR into `main`.
 
 ## Voucher semantics and costs
 
@@ -157,6 +183,14 @@ forge test --root ../../contracts --match-contract SlotENSForkTest \
 The fork test uses actual ENSv2 factory, registry and resolver contracts with
 local state changes only. It is skipped in ordinary non-fork Foundry runs.
 Tests do not consume a real player's voucher or sign through live Privy.
+
+For an explicitly authorized live Sepolia smoke test, set
+`ENS_REGISTRAR_ADDRESS` from the manifest and run
+`npx tsx scripts/test-ens-live.ts --apply` where the existing backend key resides.
+It registers `setup-check.wallstreetslot.eth` for the backend using a clearly
+identified synthetic attestation. This checks the real registrar, ownership,
+resolver permissions and Universal Resolver, but does **not** test Base voucher
+consumption or live Privy authorization. Omit `--apply` to verify without writes.
 
 Sources: [ENSv2 deployments](https://docs.ens.domains/learn/deployments/),
 [subname registrars](https://docs.ens.domains/ensv2/tutorial-contract-developers/),
