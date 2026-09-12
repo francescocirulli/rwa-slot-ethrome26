@@ -9,12 +9,20 @@ See the [schema and trade-offs](schema.md).
 
 1. Use the existing web service with one always-on replica. Install dependencies
    with `npm ci` inside `apps/web`.
-2. Obtain a dedicated Arkiv wallet, test GLM and a Tiramisu access key from the
+2. Choose the server signing wallet, obtain test GLM and a Tiramisu access key from the
    [Arkiv Hub](https://hub.arkiv.network/). Keep secrets server-side.
 3. Configure the `ARKIV_*` values in `apps/web/.env.example` in your local ignored
    `.env.local`. The Base contract configuration must already be valid.
-4. Set `ARKIV_WRITER_ADDRESS` to the dedicated writer. Leave `ARKIV_PRIVATE_KEY`
-   empty for a read-only viewer. Never reuse the keeper or admin wallet key.
+4. Choose one signer source: a separate `ARKIV_PRIVATE_KEY`, or explicit reuse of
+   the existing keeper via `ARKIV_USE_SLOT_BACKEND_KEY=true` with `ARKIV_PRIVATE_KEY`
+   empty. Reuse reads `SLOT_BACKEND_PRIVATE_KEY` directly. The public writer address
+   is derived automatically; an explicit `ARKIV_WRITER_ADDRESS` must match. A
+   read-only viewer uses the address with both signing sources disabled.
+   Player and shared admin Privy wallets remain separate from the keeper.
+   Base and Tiramisu use independent nonce sequences; keep only one writer per chain.
+   Reusing the key couples custody across those networks, so an incident affects both.
+   Set `ARKIV_API_KEY` and leave the HTTP/WebSocket URLs as base URLs. The server
+   attaches the key to both; do not also embed it in the URLs.
 5. Set `ARKIV_SEASON_ANCHOR_BLOCK` to an explicitly chosen Tiramisu block, ideally
    shortly ahead of the current head, and keep it fixed across restarts. Set
    `ARKIV_BASE_FROM_BLOCK` to the first Base block to import, at or after deployment.

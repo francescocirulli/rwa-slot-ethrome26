@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createServer} from 'node:http';
+import {privateKeyToAccount} from 'viem/accounts';
 import {parse} from 'acorn';
 import {resolveExpiry} from '@arkiv-network/sdk';
 import {seasonAt,rank,pointsFor} from '../lib/arkiv/model';
@@ -118,4 +119,19 @@ test('Base ingestion uses bounded confirmed logs and refuses an unconfirmed resu
     try {await new Promise(resolve=>setTimeout(resolve,20));assert.equal(published,confirmed?1:0);}
     finally {service.stop();}
   }
+});
+
+test('backend key reuse is explicit, derives the writer and attaches the API key to both transports',()=>{
+  // Public Anvil fixture key. Never fund or use outside tests.
+  const key='0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+  const env={ARKIV_ENABLED:'true',ARKIV_USE_SLOT_BACKEND_KEY:'true',SLOT_BACKEND_PRIVATE_KEY:key,ARKIV_API_KEY:'test/key',ARKIV_SEASON_ANCHOR_BLOCK:'100',ARKIV_BASE_FROM_BLOCK:'1'};
+  const result=loadArkivConfig(env)!;
+  assert.equal(result.writer,privateKeyToAccount(key).address);assert.equal(result.privateKey,key);
+  assert.equal(new URL(result.httpUrl).pathname,'/test%2Fkey');assert.equal(new URL(result.wsUrl).pathname,'/test%2Fkey');
+  assert.throws(()=>loadArkivConfig({...env,ARKIV_WRITER_ADDRESS:player}),/mismatch/);
+  assert.throws(()=>loadArkivConfig({...env,ARKIV_PRIVATE_KEY:key}),/one Arkiv signing key source/);
+  assert.throws(()=>loadArkivConfig({...env,SLOT_BACKEND_PRIVATE_KEY:'REPLACE_ME'}));
+  assert.throws(()=>loadArkivConfig({...env,SLOT_BACKEND_PRIVATE_KEY:''}));
+  assert.throws(()=>loadArkivConfig({...env,ARKIV_USE_SLOT_BACKEND_KEY:'false'}),/WRITER_ADDRESS/);
+  assert.throws(()=>loadArkivConfig({...env,ARKIV_RPC_URL:'not-a-url'}),/^Error: Invalid Arkiv transport configuration$/);
 });

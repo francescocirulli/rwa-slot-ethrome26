@@ -2,8 +2,10 @@
 
 Observed on 2026-09-12. SDK **@arkiv-network/sdk 0.8.1**, Node 22.21.1,
 viem from the web package lockfile. Target: Tiramisu, chain 7738577.
-This report separates observed behavior from remaining tests. No Arkiv credentials,
-private keys, funded writes or production configuration were used in this work.
+This report separates observed behavior from remaining tests. Initial diagnostics
+used anonymous RPC access. Credentials were subsequently entered through a secure
+local form for setup; they are never included here. No funded writes or production
+configuration changes have been performed.
 
 ## 1. Leaderboard ordering requires complete pagination
 
@@ -77,7 +79,8 @@ with a dated change log and explicit controlling source, would remove uncertaint
 
 ## Remaining live validation
 
-- Dedicated testnet writer funding, actual write fees and publishing latency.
+- Actual write fees and publishing latency. The selected writer balance was verified
+  at 10 GLM on Tiramisu through authenticated read-only RPC.
 - Atomic history/contribution writes on the selected public endpoint.
 - Same populated query before and empty query after an actual season expiry.
 - Two-player gameplay recording and application-level reconnect recording.

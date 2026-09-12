@@ -329,10 +329,12 @@ ambiguous backend submissions retain the same signed transaction and nonce.
 ## Arkiv seasons
 
 The phone leaderboard and iPad **Ranks** panel read a shared Arkiv season. Confirmed
-Base spins are indexed by a dedicated writer in the existing service; all season
+Base spins are indexed by one writer in the existing service; all season
 contributions expire at one common Arkiv block. History uses separate retention.
 The countdown waits for the network before changing seasons. Optional configuration
 is documented in [Arkiv setup](../../arkiv/README.md) and the
 [schema](../../arkiv/schema.md). No credentials means a supported unconfigured state.
-Keep one always-on service replica and one Arkiv writer; this adds a public database
+An explicit `ARKIV_USE_SLOT_BACKEND_KEY=true` reuses the keeper EOA on Tiramisu;
+otherwise provide a separate Arkiv signing key. `ARKIV_API_KEY` authenticates both
+server transports. Keep one always-on service replica and one Arkiv writer; this adds a public database
 without adding a second keeper or distributed write coordination.

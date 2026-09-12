@@ -23,7 +23,9 @@ has longer retention, so leaderboard expiry does not erase it immediately.
 
 - Results and actual prizes: the configured DigitalSlotMachine on Base (8453).
 - Queryable index: Arkiv Tiramisu (7738577), SDK pinned to 0.8.1.
-- Writer/owner/creator: one dedicated server wallet funded with test GLM.
+- Writer/owner/creator: one server wallet funded with test GLM. By explicit
+  configuration it can reuse the existing keeper EOA on Tiramisu; default is a
+  separate key. Player and shared Privy admin wallets remain distinct.
 - Player: a typed address attribute, not the owner of the Arkiv entity.
 - Every query filters immutable `$creator`, project, schema, source chain and slot.
 - Never store Privy IDs, names, emails, JWTs, pairing secrets or private keys.
@@ -111,7 +113,9 @@ the 50 most recently created records, explicitly not the complete history.
 ## Process coordination and recovery
 
 Arkiv is the added database. Coordination remains in the existing single,
-always-on Node service: one scanner and one dedicated Arkiv signer. No second
+always-on Node service: one scanner and one Arkiv signing queue. Explicit keeper-key
+reuse still uses independent Base and Tiramisu nonce sequences and couples custody
+across the two networks. No second
 keeper, distributed writer or service replica is introduced. Never share the
 writer with another deployment. Reads need no private key.
 

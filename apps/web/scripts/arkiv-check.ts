@@ -5,11 +5,13 @@ import {str,u64} from '@arkiv-network/sdk/attr';
 import {eq,gte} from '@arkiv-network/sdk/query';
 import {http,webSocket} from 'viem';
 import {watchBlocks} from 'viem/actions';
+import {arkivEndpoints} from '../lib/arkiv/config';
 async function main() {
-  const client=createPublicClient({chain:tiramisu,transport:http(process.env.ARKIV_RPC_URL,{retryCount:0,timeout:12000})});
+  const {httpUrl,wsUrl}=arkivEndpoints();
+  const client=createPublicClient({chain:tiramisu,transport:http(httpUrl,{retryCount:0,timeout:12000})});
   const page=await client.select({key:true}).where(eq('project',str(process.env.ARKIV_PROJECT||'wall-street-slot-ethrome26')),gte('season',u64(1))).fetch();
   console.log(JSON.stringify({check:'compound-query',block:String(page.blockNumber),entities:page.entities.length}));
-  const live=createPublicClient({chain:tiramisu,transport:webSocket(process.env.ARKIV_WS_URL,{retryCount:0,reconnect:{attempts:5,delay:1000}})});
+  const live=createPublicClient({chain:tiramisu,transport:webSocket(wsUrl,{retryCount:0,reconnect:{attempts:5,delay:1000}})});
   let blocks=0,errors=0,events=0;
   await new Promise<void>((resolve,reject)=>{
     const stops:(()=>void)[]=[];
