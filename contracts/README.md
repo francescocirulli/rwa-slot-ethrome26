@@ -94,7 +94,9 @@ configured because each column needs three distinct symbols; the confirmed payta
 
 ## ERC-1155 prize collection
 
-`SlotPrize1155` provides the four launch rewards with JSON and SVG artwork returned entirely as base64 data URIs:
+`SlotPrize1155` provides four constructor-defined launch rewards with JSON and SVG artwork returned entirely as
+base64 data URIs. The recorded Base mainnet collection also includes Magnet, created after deployment with the
+same fully on-chain metadata format:
 
 | Token ID | Reward |
 |---:|---|
@@ -102,11 +104,13 @@ configured because each column needs three distinct symbols; the confirmed payta
 | 2 | ENS registration |
 | 3 | Urbe Hub day pass |
 | 4 | Shirt |
+| 5 | Magnet |
 
 The collection owner can call `mint(recipient, tokenId, amount)` or `mintBatch(...)` for existing IDs. New
-sequential IDs start from 5 and can be created with an initial receiver, supply, and complete metadata URI through
-`createAndMint(recipient, amount, metadataURI)`. The four launch IDs begin with zero supply and are minted only
-when inventory is required.
+sequential IDs start from 5 on a fresh deployment and can be created with an initial receiver, supply, and complete
+metadata URI through `createAndMint(recipient, amount, metadataURI)`. On Base mainnet, Magnet occupies ID 5 and
+`nextTokenId` is now 6. The four constructor-defined IDs begin with zero supply and are minted only when inventory
+is required; the first Magnet unit was minted directly to the slot contract.
 
 ## Solvency
 
