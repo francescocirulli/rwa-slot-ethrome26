@@ -1,3 +1,4 @@
+import {approvalFundingError} from '../lib/approval-funding';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {decodeFunctionData,erc20Abi} from 'viem';
@@ -16,7 +17,7 @@ function fixture() {
   const sends:any[]=[],writes=createWriteCoordinator();
   const reader={config:{address:contract,paymentToken:recipient,chainId:8453,gasMode:'usdc',confirmations:2},validate:async()=>{},catalog:async()=>[],
     walletState:async()=>({busy:pending||unconfirmed}),
-    client:{simulateContract:async()=>{},readContract:async({functionName}:any)=>functionName==='decimals'?decimals:balance}} as any;
+    client:{getBalance:async()=>0n,simulateContract:async()=>{},readContract:async({functionName}:any)=>functionName==='decimals'?decimals:balance}} as any;
   const service={authenticate:async(token:string)=>{if(!['owner','other'].includes(token))throw new Error();return {userId:token,wallets:[{id:token,address:token==='owner'?address:recipient}]};},
     sendOwned:async(wallet:any,authorization:any,transaction:any)=>{if(fail)throw new Error('network timeout');sends.push({wallet,authorization,transaction});return {transactionId:'pending-provider'};}} as unknown as WalletService;
   const api=createContractApi({walletService:service,origin,getSlot:()=>({reader}) as SlotEngine,personalCoordinator:writes});
@@ -93,3 +94,30 @@ test('portfolio coalesces reads and distinguishes zero allowance, busy rounds an
   const value=await unavailable(address);assert.equal(value.allowance,null);assert.equal(value.canTransact,false);
 });
 test.afterEach(()=>walletAuthorizations().dispose());
+
+test('approval preflight requires gas funds and rechecks them before sending, including revocation',async()=>{
+  const f=fixture();f.balance(0n);
+  assert.equal((await f.call('prepare',{action:'approveBudget',args:['5000000']})).status,409);
+  assert.equal((await f.call('prepare',{action:'approveBudget',args:['0']})).status,409);
+  f.reader.client.getBalance=async()=>1n;
+  const p=await f.call('prepare',{action:'approveBudget',args:['5000000']});assert.equal(p.status,200);
+  f.reader.client.getBalance=async()=>0n;
+  await f.call('send',{id:p.body.id,confirm:true});assert.equal(f.sends.length,0);
+  assert.equal((await f.call('status',p.body.id)).body.stage,'failed');
+  f.balance(1000000n);f.reader.config.gasMode='eth';
+  assert.equal((await f.call('prepare',{action:'approveBudget',args:['5000000']})).status,409);
+  f.reader.client.getBalance=async()=>{throw new Error('RPC unavailable');};
+  assert.equal((await f.call('prepare',{action:'approveBudget',args:['5000000']})).status,409);
+});
+
+
+test('paid play reserves the ticket balance, requires USDC even with ETH, and preserves fee fallback',()=>{
+  assert.match(approvalFundingError(0n,1n,'usdc',50000n)!,/Add USDC on Base/);
+  assert.match(approvalFundingError(50000n,0n,'usdc',50000n)!,/approval fees/);
+  assert.equal(approvalFundingError(50001n,0n,'usdc',50000n),null);
+  assert.equal(approvalFundingError(50000n,1n,'usdc',50000n),null);
+  assert.equal(approvalFundingError(1n,null,'usdc'),null);
+  assert.equal(approvalFundingError(null,1n,'usdc'),null);
+  assert.match(approvalFundingError(null,1n,'usdc',50000n)!,/unavailable/);
+  assert.match(approvalFundingError(1000000n,null,'eth')!,/unavailable/);
+});
