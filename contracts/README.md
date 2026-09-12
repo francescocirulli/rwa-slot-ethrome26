@@ -268,3 +268,14 @@ Machine-readable addresses and deployment transactions are recorded in
 [`abi/DigitalSlotMachine.json`](abi/DigitalSlotMachine.json) and [`abi/SlotPrize1155.json`](abi/SlotPrize1155.json).
 
 See [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) for the outcome-generation and inventory rationale.
+
+## ENS voucher redemption
+
+`ENSVoucherRedemption` permanently locks one existing ENS prize (ID 2) with a
+backend-signed reservation permit. The original collection cannot burn tokens.
+`SlotENSRegistrar` uses the real ENSv2 UserRegistry and PermissionedResolver on
+Sepolia, with a backend-attested Base consumption ID. The player owns the name
+and resolver; the backend controls the parent namespace. See the
+[ENS setup and trust model](../apps/web/docs/ens.md) for deployment, fees,
+finality and recovery requirements. These contracts are separate deployments;
+the slot and existing prize collection are unchanged.

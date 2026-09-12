@@ -4,7 +4,7 @@ import {SlotError} from './slot/errors';
 
 const key=()=>randomBytes(32).toString('hex');
 const cancelled=()=>new SlotError('Cancelled','Wallet authorization interrupted or expired. Confirm the operation again.',409);
-export const authorizationPaths=new Set(['/api/admin/member','/api/admin/proof','/api/admin/assets/execute','/api/admin/contract/send','/api/contract/send']);
+export const authorizationPaths=new Set(['/api/ens','/api/admin/member','/api/admin/proof','/api/admin/assets/execute','/api/admin/contract/send','/api/contract/send']);
 type Challenge={id:string;payload:string;resolve:(signature:string)=>void;reject:(error:Error)=>void};
 type Channel={userId:string;path:string;claimed:boolean;closed:boolean;challenge?:Challenge;wake:Set<()=>void>;timer:ReturnType<typeof setTimeout>};
 

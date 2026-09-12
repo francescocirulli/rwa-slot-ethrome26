@@ -1,5 +1,6 @@
 'use client';
 import {useState} from 'react';
+import {PhoneENS} from './ens';
 import {formatUnits, isAddress, parseUnits, zeroAddress} from 'viem';
 import type {AccountView} from '@/lib/account';
 import {portfolioApprovalError} from '@/lib/approval-funding';
@@ -58,6 +59,7 @@ export function PhoneWallet({wallet,transaction,paired,reload,loading=false,show
       <div className="wallet-holdings">{holdings.map(holding=><div className="holding" key={holding.key}>{holding.logo?<img src={holding.logo} width="30" height="30" alt=""/>:<span className="holding-nft" aria-hidden="true">✦</span>}<div><b>{holding.name}</b><span>{holding.formatted??'Unavailable'}{holding.tokenId?' · NFT #'+holding.tokenId:''}</span></div><button className="phone-text" disabled={locked||holding.balance===null||BigInt(holding.balance)<=0n} onClick={()=>{setSelection(holding);setAmount('');setRecipient('');setError('');}}>Send<span className="sr-only"> {holding.name}</span> ↗</button></div>)}</div>
       {selection&&<form className="wallet-send" onSubmit={event=>{event.preventDefault();void transfer();}}><h3>Send {selection.name}</h3><p className="small">Available: {holdings.find(item=>item.key===selection.key)?.formatted??'—'} · Base network</p><label htmlFor="send-address">External recipient address</label><input id="send-address" autoComplete="off" spellCheck={false} value={recipient} onChange={event=>setRecipient(event.target.value.trim())} placeholder="0x…" disabled={locked} required/><label htmlFor="send-amount">{selection.tokenId?'NFT quantity (whole)':'Token amount'}</label><input id="send-amount" inputMode={selection.tokenId?'numeric':'decimal'} value={amount} onChange={event=>setAmount(event.target.value.replace(',','.'))} disabled={locked} required/><p className="small">Check the recipient network: the transfer happens on Base. Before signing you will see amount, address and how gas is paid.</p><button className="phone-primary" disabled={locked}>Review transfer ↗</button><button type="button" className="phone-text" disabled={transaction.busy} onClick={()=>setSelection(null)}>Close transfer</button></form>}
     </section>
+    <PhoneENS key={wallet.address} address={wallet.address} onChanged={reload}/>
     {transaction.confirmed>0&&!transaction.busy&&!transaction.pending&&<div className="ready-card" role="status">Transaction confirmed on Base. Balances refresh automatically.</div>}
     {transaction.pending&&<div className="phone-progress" role="status">Transaction under verification. Do not send it again.<button className="phone-text" disabled={transaction.busy} onClick={()=>void transaction.check()}>Check transaction</button></div>}
     {transaction.unrecoverable&&<div className="phone-error" role="alert">The service restarted and no longer knows this request. Verify it on BaseScan, then discard it to continue.<button className="phone-text" disabled={transaction.busy} onClick={()=>transaction.discard()}>Discard request</button></div>}

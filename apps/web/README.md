@@ -376,3 +376,11 @@ An explicit `ARKIV_USE_SLOT_BACKEND_KEY=true` reuses the keeper EOA on Tiramisu;
 otherwise provide a separate Arkiv signing key. `ARKIV_API_KEY` authenticates both
 server transports. Keep one always-on service replica and one Arkiv writer; this adds a public database
 without adding a second keeper or distributed write coordination.
+
+## ENSv2 on the phone
+
+Optional ENS voucher redemption registers `*.wallstreetslot.eth` on Sepolia
+using the existing backend EOA. The player receives the ENS name and pays no
+Sepolia gas. Existing Base ENS vouchers are permanently locked, not burned;
+the reviewed Base transaction uses the player's normal gas payment path.
+See [ENS setup, costs and recovery](docs/ens.md) before enabling the feature.
