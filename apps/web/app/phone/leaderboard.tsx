@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
-import {emptyView,type LeaderboardView} from '@/lib/arkiv/model';
+import {emptyView,seasonCountdown,type LeaderboardView} from '@/lib/arkiv/model';
 export function SeasonLeaderboard() {
   const [view,setView]=useState<LeaderboardView>({...emptyView(),status:'connecting',message:'Connecting to the season leaderboard…'});
   const [received,setReceived]=useState(0),[now,setNow]=useState(0);
@@ -13,8 +13,8 @@ export function SeasonLeaderboard() {
   },[]);
   const stale=view.status!=='live'||now-received>15000;
   const remaining=Math.max(0,view.remainingSeconds-Math.floor((now-received)/1000));
-  const countdown=stale?'Waiting for connection':remaining>0?`${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')}`:'Waiting for season change';
-  return <section className="phone-card season-card" aria-label="Season leaderboard">
+  const countdown=stale?'Waiting for connection':remaining>0?seasonCountdown(remaining):'Waiting for season change';
+  return <section id="season-leaderboard" className="phone-card season-card" aria-label="Season leaderboard">
     <span className="eyebrow">LEADERBOARD · ARKIV</span><h2>{view.season?`Season ${view.season.id}`:'Seasons'}</h2>
     {view.status!=='disabled'&&<p className="season-countdown">{view.season?'Next season':'First season'} · <strong>{countdown}</strong></p>}
     <p role="status">{view.message || (stale?'Reconnecting. Standings may be out of date.':'Live standings · 3 matches: 30 pts · 5 matches: 100 pts')}</p>

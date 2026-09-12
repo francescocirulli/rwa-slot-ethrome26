@@ -26,7 +26,9 @@ See the [schema and trade-offs](schema.md).
 5. Set `ARKIV_SEASON_ANCHOR_BLOCK` to an explicitly chosen Tiramisu block, ideally
    shortly ahead of the current head, and keep it fixed across restarts. Set
    `ARKIV_BASE_FROM_BLOCK` to the first Base block to import, at or after deployment.
-6. Use `ARKIV_SEASON_BLOCKS=60` for the approximately two-minute demo. Keep
+6. Use `ARKIV_SEASON_BLOCKS=1296000` for approximately 30-day seasons (the default).
+   Use `60` only for the approximately two-minute bounty demo. Season expiry and
+   the separate `ARKIV_HISTORY_DAYS=30` retention are independent. Keep
    `ARKIV_HISTORY_DAYS=30` for history independent of season expiry. Start with
    `ARKIV_ENABLED=true` only when configuration is complete.
 7. Start the app using `npm run dev`. After an authorized real spin, wait for its

@@ -8,6 +8,12 @@ export function seasonAt(block: bigint, anchor: bigint, length: bigint): Season 
   return {id: String(index + 1n), startBlock: anchor + index * length, endBlock: anchor + (index + 1n) * length};
 }
 export function pointsFor(won: boolean, matches: number) {return won ? matches === 5 ? 100 : matches === 3 ? 30 : 0 : 0;}
+export function seasonCountdown(seconds:number) {
+  const value=Math.max(0,Math.floor(seconds));
+  if(value>=86400) return `${Math.floor(value/86400)}d ${Math.floor(value%86400/3600)}h ${Math.floor(value%3600/60)}m`;
+  if(value>=3600) return `${Math.floor(value/3600)}h ${Math.floor(value%3600/60)}m ${value%60}s`;
+  return `${Math.floor(value/60)}:${String(value%60).padStart(2,'0')}`;
+}
 export type Contribution = {gameId: string; player: string; points: number; won: boolean; expiresAt: bigint};
 export type Ranking = {player: string; points: number; spins: number; wins: number};
 export function rank(entries: Contribution[], block: bigint): Ranking[] {
