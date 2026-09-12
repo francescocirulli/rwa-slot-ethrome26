@@ -2,6 +2,7 @@ import {encodeFunctionData, decodeFunctionData, erc20Abi, getAddress, isAddress,
 import {slotAbi} from './abi';
 import type {SlotReader} from './reader';
 import {SlotError} from './errors';
+import {BASE_PRIZE_COLLECTION,prizeCollectionAbi} from '../prize-collection';
 export const ADMIN_ACTIONS = [
   {name: 'pause', label: 'Metti in pausa', role: 'pauser', fields: []},
   {name: 'unpause', label: 'Riattiva la macchina', role: 'pauser', fields: []},
@@ -13,6 +14,8 @@ export const ADMIN_ACTIONS = [
   {name: 'setFreeSpins', label: 'Imposta saldo free spin', role: 'manager', fields: ['Wallet player', 'Nuovo saldo free spin']},
   {name: 'fundERC20', label: 'Deposita token ERC20', role: 'any', fields: ['Token di pagamento o premio configurato', 'Importo nelle unità minime del token']},
   {name: 'fundERC1155', label: 'Deposita premi ERC1155', role: 'any', fields: ['Token premio configurato', 'Token ID', 'Quantità']},
+  {name: 'mintERC1155', label: 'Crea premi ERC1155', role: 'any', fields: ['Collezione premi', 'Token ID esistente', 'Quantità', 'Destinazione: wallet oppure slot']},
+  {name: 'acceptPrizeOwnership', label: 'Accetta proprietà collezione ERC1155', role: 'any', fields: ['Collezione premi']},
   {name: 'withdrawERC20', label: 'Preleva token ERC20', role: 'treasurer', fields: ['Indirizzo token', 'Wallet destinatario', 'Importo nelle unità minime del token']},
   {name: 'withdrawERC1155', label: 'Preleva premi ERC1155', role: 'treasurer', fields: ['Indirizzo token', 'Token ID', 'Wallet destinatario', 'Quantità']},
   {name: 'withdrawNative', label: 'Preleva ETH', role: 'treasurer', fields: ['Wallet destinatario', 'Importo in wei']},
@@ -49,6 +52,16 @@ export function buildAction(reader: SlotReader, account: Address, action: string
   } else if (action === 'fundERC1155') {
     if (inputs.length !== 3) throw new SlotError('Input', 'Parametri incompleti.', 400);
     to = address(inputs[0]); data = encodeFunctionData({abi: nftAbi, functionName: 'safeTransferFrom', args: [account, reader.config.address, uint(inputs[1]), uint(inputs[2]), '0x']});
+  } else if (action === 'mintERC1155' || action === 'acceptPrizeOwnership') {
+    if (inputs.length !== (action === 'mintERC1155' ? 4 : 1)) throw new SlotError('Input', 'Parametri incompleti.', 400);
+    to = address(inputs[0]);
+    const collection = reader.config.prizeCollection || BASE_PRIZE_COLLECTION;
+    if (to.toLowerCase() !== collection.toLowerCase()) throw new SlotError('Asset', 'Collezione premi non autorizzata.', 403);
+    if (action === 'acceptPrizeOwnership') data = encodeFunctionData({abi:prizeCollectionAbi,functionName:'acceptOwnership'});
+    else {
+      if (!['wallet','slot'].includes(inputs[3]) || uint(inputs[2]) === 0n) throw new SlotError('Input', 'Quantità o destinazione non valida.', 400);
+      data = encodeFunctionData({abi:prizeCollectionAbi,functionName:'mint',args:[inputs[3] === 'wallet' ? account : reader.config.address,uint(inputs[1]),uint(inputs[2])]});
+    }
   } else {
     if (!ADMIN_ACTIONS.some(item => item.name === action)) throw new SlotError('Action', 'Operazione non consentita.', 400);
     const definition = slotAbi.find(item => item.type === 'function' && item.name === action) as AbiFunction;
@@ -59,14 +72,22 @@ export function buildAction(reader: SlotReader, account: Address, action: string
 }
 export async function prepareAction(reader: SlotReader, account: Address, action: string, inputs: string[]) {
   await reader.validate();
+  const tx = buildAction(reader, account, action, inputs);
   if (action === 'fundERC20' || action === 'fundERC1155') {
     const token = address(inputs[0] || ''), catalog = await reader.catalog();
     const allowed = action === 'fundERC20' && token.toLowerCase() === reader.config.paymentToken.toLowerCase() ||
-      catalog.some(prize => prize.kind === (action === 'fundERC20' ? 1 : 2) && prize.token.toLowerCase() === token.toLowerCase());
+      catalog.some(prize => prize.kind === (action === 'fundERC20' ? 1 : 2) && prize.token.toLowerCase() === token.toLowerCase() && (action !== 'fundERC1155' || prize.tokenId === uint(inputs[1])));
     if (!allowed) throw new SlotError('Asset', 'Configura prima questo token nel catalogo premi.');
   }
-  const tx = buildAction(reader, account, action, inputs);
-  const abi = action === 'approveBudget' || action === 'fundERC20' ? erc20Abi : action === 'fundERC1155' ? nftAbi : slotAbi;
+  if (action === 'mintERC1155' || action === 'acceptPrizeOwnership') {
+    const owner = await reader.client.readContract({address:tx.to,abi:prizeCollectionAbi,functionName:action === 'mintERC1155' ? 'owner' : 'pendingOwner'});
+    if (owner.toLowerCase() !== account.toLowerCase()) throw new SlotError('PrizeOwner', action === 'mintERC1155' ? 'Il wallet condiviso deve essere owner della collezione ERC1155 per creare premi.' : 'Avvia prima il trasferimento della collezione verso il wallet condiviso.', 403);
+    if (action === 'mintERC1155') {
+      if (!(await reader.client.readContract({address:tx.to,abi:prizeCollectionAbi,functionName:'tokenExists',args:[uint(inputs[1])]}))) throw new SlotError('Asset','Questo token ID non esiste nella collezione.');
+      if (inputs[3] === 'slot' && !(await reader.catalog()).some(prize=>prize.kind===2 && prize.token.toLowerCase()===tx.to.toLowerCase() && prize.tokenId===uint(inputs[1]))) throw new SlotError('Asset','Configura questo token ID nel catalogo prima di creare premi direttamente nella slot.');
+    }
+  }
+  const abi = action === 'approveBudget' || action === 'fundERC20' ? erc20Abi : action === 'fundERC1155' ? nftAbi : action === 'mintERC1155' || action === 'acceptPrizeOwnership' ? prizeCollectionAbi : slotAbi;
   const decoded = decodeFunctionData({abi: abi as Abi, data: tx.data});
   // ETH is not required for preflight: Privy quotes and collects USDC gas at send.
   await reader.client.simulateContract({account, address: tx.to, abi: abi as Abi, functionName: decoded.functionName, args: decoded.args, value: 0n, gasPrice: 0n});

@@ -56,6 +56,7 @@ function setup(welcome?: WelcomeService) {
 test('tablet bundle parses as ES5 and never includes wallet SDK or credential storage', () => {
   const js = readFileSync('public/terminal/client.js', 'utf8');
   parse(js, {ecmaVersion: 5});
+  for (const file of ['demo.js', 'kiosk.js']) parse(readFileSync('public/terminal/' + file, 'utf8'), {ecmaVersion: 5});
   const game = readFileSync('public/terminal/game.js', 'utf8');
   parse(game, {ecmaVersion: 5});
   assert.doesNotMatch(game, /localStorage|sessionStorage|Bearer /);

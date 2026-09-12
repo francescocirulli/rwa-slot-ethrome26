@@ -22,7 +22,9 @@ balance. ID 1 is free spin, read from `freeSpins(wallet)`; it has no token contr
 `lib/assets.ts` is the app catalog. The terminal's ES5 labels and bundled artwork
 use the same stable IDs. `scripts/build-prize-symbols.mjs` regenerates the 12 tile SVGs
 from downloaded local brand assets and code-drawn placeholders. The initial idle grid,
-reveal results, admin inventory and prize cards use these tiles.
+reveal results, admin inventory and prize cards use these tiles. Symbol 11 uses a
+separate `jackpot.svg` only on the terminal reels; the Gold tile and actual DGLD
+amount remain visible in confirmed payout details and admin balances.
 
 ## Contract funding
 
@@ -37,6 +39,46 @@ After deployment, configure each prize with its ID and address above using
 button requires a matching ID/address in the onchain catalog. An address mismatch
 never gets displayed as a reserve for the supported token. Contract ABI changes are
 not needed. Swap and inventory reads work before slot deployment; funding requires it.
+
+## Inventory and ERC1155 minting
+
+Inventory reads the shared Privy wallet and slot reserves at one block. Each token
+shows wallet balance, total slot balance, reserved balance and balance available
+for another round. ETH and USDC are included even though they are not prize
+symbols. RPC failures display unavailable values rather than zero. Deposit forms
+keep both balances visible and reject quantities above the verified wallet balance.
+
+The default prize collection is `0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`.
+`SLOT_PRIZE1155_ADDRESS` optionally overrides it server-side; keep its value aligned
+with the configured prize catalog and update collaborator permissions after a change.
+The deployed collection IDs are Gadget 1, ENS 2, Urbe pass 3, Shirt 4 and Magnet 5
+(the latter verified on Base on 2026-09-12). These balances remain visible before
+catalog configuration. Other collections use the explicit catalog mapping.
+
+- **Deposit NFT** uses `safeTransferFrom(sharedWallet, slot, id, quantity, '0x')`.
+- **Mint NFT** uses `mint(recipient, id, quantity)` for an existing collection ID.
+  The recipient is either the shared wallet or the slot. Minting directly into the
+  slot requires that exact collection/ID in the catalog. New token IDs, batch minting
+  and arbitrary external recipients are not exposed by these actions.
+- **Accept collection ownership** uses `acceptOwnership()` and is available only
+  to the Privy wallet owner account when `pendingOwner()` is the shared address.
+  The current onchain owner must first initiate the two-step ownership transfer.
+
+On 2026-09-12 the collection owner was the backend EOA
+`0x8e251547f0fD650e0573711EF733F13eBA1505aD`, not the shared Privy wallet.
+The app reads that state fresh and disables mint until the shared address owns the
+collection. It never substitutes the backend private key for admin authorization.
+No ownership transfer or live mint is performed as part of deploying this app.
+
+Mint and deposit share the existing reviewed Privy transaction flow, role/state
+simulation, wallet write lock and receipt tracking. The server rechecks collection,
+ID, recipient and ownership after review. Wallet ownership alone does not bypass
+the ERC1155 contract's `onlyOwner` restriction.
+
+New collaborator policies allow only the configured collection's `mint`, on Base,
+with zero ETH value and the shared wallet/slot as recipient. Previous exact policies
+retain their contract and swap capabilities but cannot mint until the owner explicitly
+updates permissions. Collection ownership acceptance remains owner-only in the app.
 
 ## LI.FI API and Privy setup
 

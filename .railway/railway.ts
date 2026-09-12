@@ -36,6 +36,7 @@ export default defineRailway(() => {
       SLOT_DEPLOYMENT_BLOCK: preserve(),
       SLOT_BACKEND_PRIVATE_KEY: preserve(),
       LIFI_API_KEY: preserve(),
+      SLOT_HARDWARE_TOKEN: preserve(),
     },
   });
   return project('rwa-slot-ethrome26', {resources: [web]});

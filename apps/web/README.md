@@ -163,8 +163,12 @@ Monorepo deployment procedures and variables:
 [`../../.railway/README.md`](../../.railway/README.md).
 The contract has not been deployed yet. `SLOT_BACKEND_PRIVATE_KEY=REPLACE_ME`
 keeps the keeper disabled until a real key is supplied.
-Arduino is not connected yet: `window.slotPullLever()` is the terminal entry
-point for the future lever adapter.
+Arduino input now reaches `window.slotPullLever()` through the authenticated
+hardware API, called directly over HTTPS by the board. No local bridge or Mac is
+required. The real mode remains default;
+the terminal can switch to an isolated demo without wallet or onchain requests.
+Motion reveals the QR from an idle screensaver; iPad audio requires one initial
+touch. See [cabinet wiring, firmware, pairing and demo setup](../../arduino/README.md).
 
 ## Validation
 
@@ -186,7 +190,7 @@ Terminal browser tests use test pairing APIs and controlled onchain snapshots.
 They verify both transaction stages, confirmations, the row-major grid, winning
 line, logout and 1024×768 / 1024×650 layouts. Backend tests cover authentication,
 exact budgets, isolation and revocation during asynchronous operations.
-Both terminal bundles are checked for ES5 compatibility.
+All terminal bundles are checked for ES5 compatibility.
 
 Manual checks in `scripts/live-privy-check.mjs` and `scripts/live-admin-check.mjs`
 create test Privy accounts with virtual passkeys and empty wallets. They neither
@@ -217,3 +221,17 @@ precision, deployment mapping, Privy gas setup, collaborator permission
 upgrades and recovery behavior. Both owner and authorized collaborators can
 swap; gas uses the shared USDC balance with ETH fallback. Brand sources are
 recorded in [public/brands/SOURCES.md](public/brands/SOURCES.md).
+
+## Prize funding and ERC1155 management
+
+Inventory compares the shared Privy wallet with the slot's total, reserved and
+available balances, including ETH, USDC, RWA tokens and configured ERC1155 IDs.
+Deposit forms accept quantities; mint can create existing NFT IDs into the shared
+wallet or directly into the slot. Both use reviewed Privy transactions. The default
+collection is the deployed Base address; `SLOT_PRIZE1155_ADDRESS` is optional.
+Mint requires collection ownership and the updated collaborator policy. See
+[setup and ownership requirements](docs/assets-and-swaps.md#inventory-and-erc1155-minting).
+
+The terminal blocks new paid/free spins when prize reserves cannot cover a round
+or reserve reads are unavailable. Confirmed wins display the actual award and a
+BaseScan reveal link. Gold uses jackpot artwork only on the reels.

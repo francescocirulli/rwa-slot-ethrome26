@@ -18,3 +18,43 @@
 .is-connected .orbit-seal{display:none}.free-spin-summary{width:174px;flex-shrink:0;padding:12px 15px;background:#302738;border:1px solid #6c5e77;border-radius:12px;color:#f4f0de;transform:rotate(2deg);box-shadow:4px 4px 0 #17131f}.free-spin-eyebrow{display:block;font:bold 9px 'Courier New',monospace;letter-spacing:.7px}.free-spin-eyebrow>span{float:right}.free-spin-summary strong{display:block;font:bold 44px/1.1 'Courier New',monospace;font-variant-numeric:tabular-nums;margin:3px 0;overflow-wrap:break-word}.free-spin-summary>span:last-child{display:block;font-size:10px;line-height:1.35}.has-free-spins .free-spin-summary{background:#e8f77a;border-color:#e8f77a;color:#242032}.has-free-spins .free-spin-button{background:#e8f77a;color:#242032;border-color:#e8f77a;font-weight:bold;box-shadow:0 3px 0 #17131f}.has-free-spins .free-spin-button span{color:#242032;font-size:14px}.has-free-spins #spin-paid{background:transparent;box-shadow:none;color:#e9dfef;border-color:#63536f}.bonus-pending{border-style:dashed}.game-enabled .headline{align-items:center}
 @media(max-height:720px) and (min-width:850px){.free-spin-summary{width:170px;padding:9px 12px}.free-spin-summary strong{font-size:36px}.free-spin-summary>span:last-child{font-size:9px}}
 @media(max-width:540px){.free-spin-summary{width:133px;padding:10px}.free-spin-eyebrow{font-size:8px}.free-spin-summary strong{font-size:34px}.game-enabled .headline h1{font-size:43px}}
+
+/* Kiosk controls remain reachable above the attract screen. */
+.kiosk-tools {display:flex;align-items:center;justify-content:center;gap:8px;position:relative;z-index:31}
+.kiosk-tools button {min-height:44px;border:1px solid #a7a1b6;background:#f7f5ee;color:#211b34;border-radius:8px;padding:8px 12px;font:600 12px Arial,sans-serif;cursor:pointer}
+.kiosk-tools button:disabled {opacity:.5;cursor:wait}
+.attract-screen {position:fixed;z-index:30;left:0;right:0;top:88px;bottom:0;background:#211931;color:#faf4d9;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:hidden}
+.attract-screen[hidden] {display:none}
+.attract-screen h2 {font-size:76px;line-height:.97;letter-spacing:-3px;margin:20px 0;color:#e5ff85}
+.attract-screen p {font-size:21px;margin:12px 0 24px}
+.attract-screen .primary-button {width:300px;background:#e5ff85;color:#211931}
+.attract-screen small {margin-top:18px;color:#c5bed7}
+.attract-stars {font-size:74px;letter-spacing:30px;color:#d9acff;animation:attract-float 5s ease-in-out infinite}
+@keyframes attract-float {50% {transform:translateY(-12px) rotate(5deg);opacity:.7}}
+body[data-mode="demo"] .network {font-size:0}
+body[data-mode="demo"] .network:after {content:'DEMO · SIMULAZIONE';font-size:12px;color:#6b367f;font-weight:800}
+body[data-mode="demo"] .network span, body[data-mode="demo"] .network i {display:none}
+body[data-mode="demo"] .panel-footnote {display:none}
+.demo-panel {padding-top:12px;border-top:1px solid #d8d3df;margin-top:10px;font-size:12px}
+.demo-panel label {display:block;margin-bottom:5px;font-weight:bold}
+.demo-panel select {width:100%;min-height:38px;background:#fff;border:1px solid #a7a1b6;border-radius:6px;padding:6px;font:inherit}
+.demo-panel .text-button {display:inline-block;width:auto;margin:6px 8px 0 0;font-size:12px;min-height:32px}
+#hardware-code {display:block;width:100%;box-sizing:border-box;font:32px monospace;letter-spacing:6px;padding:10px;margin:12px 0;border:1px solid #a7a1b6;border-radius:8px}
+@media (max-height:700px) {.attract-screen {top:72px}.attract-screen h2 {font-size:58px}.attract-stars {font-size:48px}.demo-panel {padding-top:6px;margin-top:5px}body[data-mode="demo"] .wallet-address {margin-top:6px}body[data-mode="demo"] .balance-heading h2 {font-size:24px}body[data-mode="demo"] .balance-line strong {font-size:32px}}
+@media (prefers-reduced-motion:reduce) {.attract-stars {animation:none}}
+#hardware-dialog {z-index:40}
+body[data-mode="demo"] .wallet-address {display:none}
+body[data-mode="demo"] .network:after {color:#e5ff85}
+.kiosk-tools {gap:0}
+.kiosk-tools button + button {margin-left:8px}
+.machine[data-feedback="win"] {animation:result-glow .8s ease-in-out 5}
+.machine[data-feedback="loss"] {animation:result-loss 1s ease-out}
+@keyframes result-glow {50% {box-shadow:0 0 22px #e5ff85;border-color:#e5ff85}}
+@keyframes result-loss {50% {opacity:.6}}
+@media (prefers-reduced-motion:reduce) {.machine[data-feedback] {animation:none}}
+.game-tx{display:inline-flex;align-items:center;min-height:44px;color:#e9fb6b;font:10px "Courier New",monospace;text-decoration:underline}.won-prize{float:left;width:48px;height:48px;margin:0 10px 6px 0}.game-won strong{color:#e9fb6b}.game-availability{margin-top:10px;padding:9px 12px;border:1px solid #b68d63;border-radius:8px;background:#3f3037;color:#f5d7ac;font-size:11px;line-height:1.4}.game-progress{max-width:calc(100% - 180px)}
+@media(max-height:720px) and (min-width:850px){.game-progress{max-width:calc(100% - 160px)}.game-controls{margin-top:12px}.game-availability{font-size:10px;padding:7px 10px;margin-top:7px}.won-prize{width:38px;height:38px}}
+@media(max-width:849px){.game-progress{max-width:none}}
+/* Keep the confirmed prize, transaction link and funding notice in one iPad view. */
+@media(min-width:850px) and (max-height:850px){.game-enabled .topbar{height:84px}.game-enabled .headline{height:100px}.game-enabled .cell{height:65px}.game-enabled .cell img{width:56px;height:56px}.game-enabled .game-controls{margin-top:12px}.game-enabled .cabinet{padding-top:22px;padding-bottom:18px}.game-enabled .bottom-bar{height:38px}}
+@media(min-width:850px) and (max-height:720px){.game-enabled .topbar{height:68px}.game-enabled .main-layout{padding-top:12px}.game-enabled .headline{height:94px}.game-enabled .cell{height:48px}.game-enabled .cell img{width:44px;height:44px}.game-enabled .cabinet{padding-top:16px;padding-bottom:14px}.game-enabled .bottom-bar{height:32px}.game-progress strong{font-size:15px;margin:6px 0}.game-enabled .free-spin-summary{padding:7px 12px}.game-enabled .free-spin-summary strong{font-size:32px}}
