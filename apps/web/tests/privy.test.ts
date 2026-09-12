@@ -48,3 +48,21 @@ test('Privy transaction payload preserves native ETH input, USDC gas and request
     assert.equal(requests.length,1);const req=requests[0];assert.equal(req.id,'shared-wallet');assert.equal(req.body.params.transaction.value,'0xe35fa931a0000');assert.equal(req.body.params.transaction.chain_id,8453);assert.equal(req.body.sponsor,true);assert.deepEqual(req.body.sponsor_options,{asset:'usdc'});assert.equal(await req.body.authorization_context.sign_fns[0](Buffer.from('payload')),testSignature('owner'));assert.equal(req.body.authorization_context.user_jwts,undefined);assert.equal(result.userOperationHash,'0x'+'7'.repeat(64));assert.equal(result.hash,undefined);
   }finally{rpc.mock.restore();}
 });
+
+test('welcome wallet metadata requires the first embedded wallet and rejects imported or mismatched wallets', async () => {
+  const wallet = {id: 'first', address: '0x0000000000000000000000000000000000000001', index: 0};
+  const user = {userId: 'did:privy:owner', wallets: [wallet]};
+  const createdAt = Date.now();
+  let actual: Record<string, unknown> = {address: wallet.address, chain_type: 'ethereum', created_at: createdAt, imported_at: null};
+  const rpc = mock.method(PrivyClient.prototype, 'wallets', () => ({get: async (id: string) => {assert.equal(id, wallet.id); return actual;}}) as any);
+  try {
+    const service = createWalletService('test-app', 'test-secret');
+    assert.deepEqual(await service.welcomeWallet!(user), {wallet, createdAt});
+    assert.equal(await service.welcomeWallet!({...user, wallets: [{...wallet, index: 1}]}), null);
+    assert.equal(await service.welcomeWallet!({...user, wallets: [{id: wallet.id, address: wallet.address}]}), null);
+    for (const invalid of [{imported_at: 1}, {archived_at: 1}, {created_at: 0}, {created_at: NaN}, {created_at: Date.now() + 120000}, {chain_type: 'solana'}, {address: '0x0000000000000000000000000000000000000002'}]) {
+      const previous = actual; actual = {...actual, ...invalid};
+      assert.equal(await service.welcomeWallet!(user), null); actual = previous;
+    }
+  } finally {rpc.mock.restore();}
+});

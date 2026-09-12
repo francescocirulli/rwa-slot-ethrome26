@@ -119,6 +119,17 @@ The owner or a game manager can replace a player's free-spin balance with `setFr
 without overwriting existing ones with `grantFreeSpins(player, amount)`, and consume one credit with
 `startFreeSpin(player)`. Winning a free spin increments the same onchain counter.
 
+## Welcome bonus
+
+The owner or a game manager can call `grantWelcomeFreeSpins(player)` to add
+exactly `WELCOME_FREE_SPINS` (2) credits once per wallet. Existing credits are
+preserved. `welcomeFreeSpinsGranted(player)` permanently records the award, and
+repeated calls revert with `WelcomeFreeSpinsAlreadyGranted`, even after the
+balance is spent or reset. Both `FreeSpinsGranted` and
+`WelcomeFreeSpinsGranted` are emitted on the first successful grant. The trusted
+backend verifies new-wallet eligibility; the contract enforces the fixed amount
+and prevents duplicates. See the [app integration](../apps/web/docs/welcome-free-spins.md).
+
 ## Frontend interface
 
 User-facing reads:

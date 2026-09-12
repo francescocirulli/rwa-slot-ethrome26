@@ -55,6 +55,7 @@ contract DigitalSlotMachineTest is Test {
         uint64 oldDelayBlocks, uint64 newDelayBlocks, uint64 oldWindowBlocks, uint64 newWindowBlocks
     );
     event FreeSpinsGranted(address indexed player, uint256 amount, uint256 newCount);
+    event WelcomeFreeSpinsGranted(address indexed player, uint256 amount, uint256 newCount);
 
     function setUp() public {
         usdc = new MockERC20("USD Coin", "USDC", 6);
@@ -214,6 +215,38 @@ contract DigitalSlotMachineTest is Test {
         emit FreeSpinsGranted(FREE_PLAYER, 3, 5);
         slot.grantFreeSpins(FREE_PLAYER, 3);
         assertEq(slot.freeSpins(FREE_PLAYER), 5);
+    }
+
+    function testWelcomeGrantAddsExactlyTwoOnceAndKeepsExistingCredits() public {
+        slot.grantFreeSpins(FREE_PLAYER, 3);
+        vm.expectEmit(true, false, false, true, address(slot));
+        emit FreeSpinsGranted(FREE_PLAYER, 2, 5);
+        vm.expectEmit(true, false, false, true, address(slot));
+        emit WelcomeFreeSpinsGranted(FREE_PLAYER, 2, 5);
+        slot.grantWelcomeFreeSpins(FREE_PLAYER);
+        assertEq(slot.freeSpins(FREE_PLAYER), 5);
+        assertTrue(slot.welcomeFreeSpinsGranted(FREE_PLAYER));
+
+        slot.setFreeSpins(FREE_PLAYER, 0);
+        vm.expectRevert(abi.encodeWithSelector(DigitalSlotMachine.WelcomeFreeSpinsAlreadyGranted.selector, FREE_PLAYER));
+        slot.grantWelcomeFreeSpins(FREE_PLAYER);
+        assertEq(slot.freeSpins(FREE_PLAYER), 0);
+        assertTrue(slot.welcomeFreeSpinsGranted(FREE_PLAYER));
+        slot.grantWelcomeFreeSpins(OTHER_PLAYER);
+        assertEq(slot.freeSpins(OTHER_PLAYER), 2);
+    }
+
+    function testWelcomeGrantRequiresManagerAndRejectsZeroAddress() public {
+        vm.expectRevert(abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, OPERATOR, slot.GAME_MANAGER_ROLE()));
+        vm.prank(OPERATOR);
+        slot.grantWelcomeFreeSpins(FREE_PLAYER);
+        assertFalse(slot.welcomeFreeSpinsGranted(FREE_PLAYER));
+        slot.grantRole(slot.GAME_MANAGER_ROLE(), OPERATOR);
+        vm.prank(OPERATOR);
+        slot.grantWelcomeFreeSpins(FREE_PLAYER);
+        assertEq(slot.freeSpins(FREE_PLAYER), 2);
+        vm.expectRevert(DigitalSlotMachine.ZeroAddress.selector);
+        slot.grantWelcomeFreeSpins(address(0));
     }
 
     function testSpinStartedEventContainsFrontendReceiptData() public {

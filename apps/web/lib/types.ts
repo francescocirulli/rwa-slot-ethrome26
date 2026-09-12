@@ -1,12 +1,13 @@
 import type {Address, Hash} from 'viem';
 import type {SubmittedSpin} from './slot/engine';
 import type {GasMode, GasToken} from './slot/gas';
+import type {WelcomeView} from './welcome';
 export const IDLE_MS = 180_000;
 export const PAIR_MS = 300_000;
 export const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const;
 export const CHAIN_ID = 8453;
 
-export type Wallet = {id: string; address: string};
+export type Wallet = {id: string; address: string; index?: number};
 export type Identity = {userId: string; wallets: Wallet[]};
 export type WalletAuthorization = {sign_fns: [(payload:Uint8Array)=>Promise<string>]};
 export type Grant = {
@@ -20,6 +21,7 @@ export type Session = {
   state: 'pending' | 'approved' | 'active'; createdAt: number; expiresAt: number;
   userId?: string; wallet?: Wallet; grant?: Grant; proof?: SignatureProof;
   busy?: boolean; qr?: string; playGrant?: PlayGrant;
+  welcome?: WelcomeView;
 };
 export type Balance = {amount: string | null; updatedAt: number | null; stale: boolean};
 export type SessionView = {
@@ -27,10 +29,12 @@ export type SessionView = {
   qr?: string; address?: string; depositQr?: string; balance?: Balance;
   grant?: {active: boolean; signerId: string; policyId: string; message: string};
   proof?: SignatureProof;
+  welcome?: WelcomeView;
   playGrant?: {active: boolean; signerId: string; policyId: string; contract: Address; chainId: number; budget: string; gasMode?: GasMode};
 };
 export interface WalletService {
   authenticate(token: string): Promise<Identity>;
+  welcomeWallet?(user: Identity): Promise<{wallet: Wallet; createdAt: number} | null>;
   verifyIdentityToken?(token:string,userId:string):Promise<void>;
   prepare(wallet: Wallet, userId: string, sessionId: string, code: string): Promise<Grant>;
   activate(grant: Grant): Promise<void>;

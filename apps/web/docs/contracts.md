@@ -33,11 +33,20 @@ Logout destroys authorization for new games, but an already submitted transactio
 may still be included. The keeper finishes the round for the original player.
 It does not use browser sessions to choose the recipient.
 
+## Welcome credits
+
+The backend also calls `grantWelcomeFreeSpins(player)` after verified player
+onboarding. This adds exactly two credits once per wallet without replacing
+existing credits. `welcomeFreeSpinsGranted(player)` and the
+`WelcomeFreeSpinsGranted` event make the award durable without a database.
+The onchain flag remains set after spending credits or admin balance changes.
+Eligibility and launch timing are described in [welcome free spins](welcome-free-spins.md).
+
 ## Reads, events and grid
 
 `getContractSettings`, `getPrizeCatalog`, `getPlayerState`, `getGame`,
-`getGameStatus`, `getActiveGameIds`, ERC20/ERC1155 inventories, `owner`, `hasRole`
-and pending ownership transfers are read through server-side RPC.
+`getGameStatus`, `getActiveGameIds`, ERC20/ERC1155 inventories, `owner`, `hasRole`,
+`welcomeFreeSpinsGranted` and pending ownership transfers are read through server-side RPC.
 RPC URLs and keys are not passed to the browser.
 
 The contract grid is **row-major**: index `row * 5 + column`. The iPad converts
@@ -87,7 +96,7 @@ The contract enforces roles and preconditions again when the transaction is mine
 - Roles and delayed administration transfer (owner).
 - Deposits of configured tokens through `transfer` / `safeTransferFrom`.
 
-The owner can perform role operations. `startFreeSpin` and `revealRound` are
+The owner can perform role operations. `startFreeSpin`, `grantWelcomeFreeSpins` and `revealRound` are
 excluded from admin transactions: the backend handles them. No endpoint lets
 the backend EOA sign arbitrary calldata.
 

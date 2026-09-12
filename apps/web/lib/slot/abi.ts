@@ -1,5 +1,5 @@
-// Generated from foundry-slot DigitalSlotMachine.sol, Solidity 0.8.30. Do not edit by hand.
-// Source keccak256: 0xc9369216b2eff2f0587f4e0f3ba6e91a1f0e6d89df61dfb843fb71fc86023916
+// Generated from contracts/src/DigitalSlotMachine.sol, Solidity 0.8.30. Do not edit by hand.
+// Source keccak256: 0x361c0e90e981e3905cc3ae138b527d8ac5afc4689a6a1008ef56352bb335703f
 export const slotAbi = [
   {
     "type": "constructor",
@@ -278,6 +278,19 @@ export const slotAbi = [
         "name": "",
         "type": "bytes32",
         "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "WELCOME_FREE_SPINS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -1025,6 +1038,19 @@ export const slotAbi = [
   },
   {
     "type": "function",
+    "name": "grantWelcomeFreeSpins",
+    "inputs": [
+      {
+        "name": "player",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "hasRole",
     "inputs": [
       {
@@ -1561,6 +1587,25 @@ export const slotAbi = [
     "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "welcomeFreeSpinsGranted",
+    "inputs": [
+      {
+        "name": "player",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "granted",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -2254,6 +2299,31 @@ export const slotAbi = [
     "anonymous": false
   },
   {
+    "type": "event",
+    "name": "WelcomeFreeSpinsGranted",
+    "inputs": [
+      {
+        "name": "player",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "newCount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
     "type": "error",
     "name": "AccessControlBadConfirmation",
     "inputs": []
@@ -2735,6 +2805,17 @@ export const slotAbi = [
     "inputs": [
       {
         "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "WelcomeFreeSpinsAlreadyGranted",
+    "inputs": [
+      {
+        "name": "player",
         "type": "address",
         "internalType": "address"
       }

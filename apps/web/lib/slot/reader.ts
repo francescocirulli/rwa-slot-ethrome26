@@ -104,13 +104,14 @@ export function createSlotReader(config: SlotConfig) {
   }
   async function player(address: Address, blockNumber?: bigint) {
     const block = blockNumber ?? await client.getBlockNumber({cacheTime: 0});
-    const [[freeSpins, activeGameId], allowance, balance] = await Promise.all([
+    const [[freeSpins, activeGameId], allowance, balance, welcomeFreeSpinsGranted] = await Promise.all([
       client.readContract({...contract, functionName: 'getPlayerState', args: [address], blockNumber: block}),
       client.readContract({address: config.paymentToken, abi: erc20Abi, functionName: 'allowance', args: [address, config.address], blockNumber: block}),
       client.readContract({address: config.paymentToken, abi: erc20Abi, functionName: 'balanceOf', args: [address], blockNumber: block}),
+      client.readContract({...contract, functionName: 'welcomeFreeSpinsGranted', args: [address], blockNumber: block}),
     ]);
     const last = activeGameId ? {id: activeGameId, complete: true} : await lastGame(address, block);
-    return {address, freeSpins, allowance, balance, historyReady: last.complete, latestGameId: last.id,
+    return {address, freeSpins, allowance, balance, welcomeFreeSpinsGranted, historyReady: last.complete, latestGameId: last.id,
       game: last.id ? await game(last.id, block) : null};
   }
   async function activeGames(blockNumber?: bigint) {

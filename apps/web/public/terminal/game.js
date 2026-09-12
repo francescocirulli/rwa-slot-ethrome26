@@ -38,6 +38,8 @@
     revision++; snapshot = null; fetching = false; sending = false; shownResult = ''; window.clearTimeout(timer); timer = null; window.clearTimeout(settleTimer);
     spin(false); resetGrid(); show('game-controls', false); show('game-unconfigured', true); show('play-consent-status', false);
     document.body.classList.remove('game-enabled');
+    document.body.classList.remove('has-free-spins'); show('free-spin-summary', false);
+    el('free-spin-balance').textContent = '—'; el('free-spin-count').textContent = '—'; el('free-spin-note').textContent = '';
     el('spin-paid').disabled = true; el('spin-free').disabled = true;
     var originals = [2, 1, 0, 4, 3, 5, 6, 11, 8, 7, 9, 10, 11, 2, 1];
     var images = document.querySelectorAll('.cell img');
@@ -57,12 +59,17 @@
     var inFlight = sending || operation && ['submitting','confirming','uncertain'].indexOf(operation.stage) !== -1 && operation.afterGameId === player.latestGameId;
     var pending = game && game.pending, waitingConfirmation = game && game.hasResult && !game.confirmed;
     var unavailable = !online || inFlight || pending || waitingConfirmation || !player.historyReady || snapshot.settings.paused || snapshot.settings.totalOutcomeWeight !== 1000 || snapshot.settings.configuredPrizeCount < 3 || !snapshot.keeper.configured || snapshot.keeper.balanceWei === '0';
-    el('ticket-label').textContent = amount(snapshot.settings.ticketPrice) + ' USDC'; el('free-spin-count').textContent = player.freeSpins;
+    var hasFreeSpins = atLeast(player.freeSpins, '1'), welcome = player.welcome || currentSession.welcome;
+    show('free-spin-summary', true); document.body.classList.toggle('has-free-spins', hasFreeSpins && online);
+    el('free-spin-summary').classList.toggle('bonus-pending', !!welcome && (welcome.status === 'checking' || welcome.status === 'pending'));
+    el('ticket-label').textContent = amount(snapshot.settings.ticketPrice) + ' USDC';
+    el('free-spin-count').textContent = online ? player.freeSpins : '—'; el('free-spin-balance').textContent = online ? player.freeSpins : '—';
+    el('free-spin-note').textContent = !online ? 'Saldo da aggiornare.' : welcome && welcome.status === 'checking' ? 'Verifica bonus di benvenuto…' : welcome && welcome.status === 'pending' ? 'Bonus di benvenuto: +2 in arrivo.' : hasFreeSpins ? 'La leva li usa per primi. Gas incluso.' : 'Nessun free spin disponibile.';
     el('spin-paid').disabled = !!unavailable || !grant || !grant.active || !atLeast(player.allowance, snapshot.settings.ticketPrice) || !atLeast(player.balance, snapshot.settings.ticketPrice);
     el('spin-free').disabled = !!unavailable || !snapshot.keeper.canStartFreeSpin || player.freeSpins === '0';
     var hasBudget = atLeast(player.allowance, snapshot.settings.ticketPrice);
-    el('play-consent-title').textContent = grant && grant.active ? hasBudget ? 'Giocate autorizzate.' : 'Budget da rinnovare.' : 'Autorizza il budget sul telefono.';
-    el('play-consent-copy').textContent = grant && grant.active ? hasBudget ? 'Budget USDC residuo: ' + amount(player.allowance) + '. Il telefono può restare chiuso.' : 'Budget residuo: ' + amount(player.allowance) + ' USDC. Per sceglierne uno nuovo, esci e ricollegati dal telefono. I free spin restano disponibili.' : 'Scegli quanto autorizzare per giocare dall’iPad. I free spin non usano USDC.';
+    el('play-consent-title').textContent = hasFreeSpins && !(grant && grant.active) ? 'Puoi già giocare gratis.' : grant && grant.active ? hasBudget ? 'Giocate autorizzate.' : 'Budget da rinnovare.' : 'Autorizza il budget sul telefono.';
+    el('play-consent-copy').textContent = hasFreeSpins && !(grant && grant.active) ? 'Tira la leva o premi USA FREE SPIN. Non serve ricaricare né autorizzare USDC.' : grant && grant.active ? hasBudget ? 'Budget USDC residuo: ' + amount(player.allowance) + '. Il telefono può restare chiuso.' : 'Budget residuo: ' + amount(player.allowance) + ' USDC. Per sceglierne uno nuovo, esci e ricollegati dal telefono. I free spin restano disponibili.' : 'Scegli quanto autorizzare per giocare dall’iPad. I free spin non usano USDC.';
     if (inFlight || pending && game.status !== 'expired' || waitingConfirmation) {
       spin(true); resetGrid(); shownResult = '';
       if (!online) status('ATTESA ONCHAIN', 'Cerchiamo il segnale.', 'La giocata continua sul contratto. Non inviare una nuova richiesta.');
@@ -94,6 +101,7 @@
       if (code === 401) {var event = document.createEvent('Event'); event.initEvent('slot-expired', false, false); window.dispatchEvent(event); return;}
       if (error) {online = false; if (snapshot) render();}
       else if (data.configured && data.sessionId === currentSession.id) {online = true; snapshot = data; render();}
+      else if (!data.configured) {show('free-spin-summary', true); el('free-spin-note').textContent = 'La slot non è ancora attiva.';}
       timer = window.setTimeout(poll, 2000);
     });
   }
@@ -113,6 +121,8 @@
     if (changed) clear();
     currentSession = data;
     if (!data || data.state !== 'active') return;
+    show('free-spin-summary', true);
+    if (!snapshot && !el('free-spin-note').textContent) el('free-spin-note').textContent = 'Lettura del saldo…';
     if (snapshot) render();
     if (changed || !timer) poll();
   });

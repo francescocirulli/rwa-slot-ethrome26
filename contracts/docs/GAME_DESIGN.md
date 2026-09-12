@@ -110,6 +110,9 @@ any prize inventory is insufficient, so its USDC payment is not retained.
 - An owner or game manager can set the balance with `setFreeSpins` or add to it safely with `grantFreeSpins`.
 - An owner or game manager starts a credited spin on behalf of the player with `startFreeSpin`.
 - A `FreeSpin` prize increments the same balance.
+- `grantWelcomeFreeSpins` adds exactly two welcome credits once per wallet;
+  `welcomeFreeSpinsGranted` prevents repeats independently of the current balance.
+  The backend checks wallet eligibility before using this privileged function.
 - `FreeSpinConsumed` and `FreeSpinsAwarded` expose both directions to indexers and frontends.
 
 ## Active-game indexing and settings

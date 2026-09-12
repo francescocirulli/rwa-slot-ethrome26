@@ -71,12 +71,36 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
       const duplicate=await engine!.start(player.address,0n,'paid',paid);assert.equal(duplicate.gameId,firstId.toString());assert.equal(sends,1);
     });
     let freeId=0n;
+    await t.test('welcome grant is sent by the keeper once, survives restart and costs the player nothing', async () => {
+      const balance = await client.readContract({address: payment, abi: erc20Abi, functionName: 'balanceOf', args: [player.address]});
+      const playerEth = await client.getBalance({address: player.address});
+      const grants = await Promise.all([engine!.queueWelcome(player.address), engine!.queueWelcome(player.address)]);
+      assert.ok(grants.every(grant => grant.status === 'pending'));
+      const sender = engine!.reader.client, sendRaw = sender.sendRawTransaction;
+      let broadcasts = 0;
+      sender.sendRawTransaction = async request => {broadcasts++; await sendRaw(request); throw new Error('Simulated lost broadcast response');};
+      try {await engine!.tick();} finally {sender.sendRawTransaction = sendRaw;}
+      assert.equal(broadcasts, 1);
+      await until(async () => (await reader.player(player.address)).welcomeFreeSpinsGranted || null, 'Welcome bonus not recorded');
+      assert.equal((await reader.player(player.address)).freeSpins, 2n);
+      const events = await client.getContractEvents({address: slot, abi: slotAbi, eventName: 'WelcomeFreeSpinsGranted', args: {player: player.address}, fromBlock: deployed});
+      assert.equal(events.length, 1); assert.equal(events[0].args.amount, 2n);
+      const transaction = await client.getTransaction({hash: events[0].transactionHash});
+      assert.equal(transaction.from.toLowerCase(), keeper.address.toLowerCase());
+      assert.equal(await client.getBalance({address: player.address}), playerEth);
+      assert.equal(await client.readContract({address: payment, abi: erc20Abi, functionName: 'balanceOf', args: [player.address]}), balance);
+      engine!.stop(); engine = createSlotEngine(createSlotReader(config), toHex(keeper.getHdKey().privateKey!) as Hex);
+      assert.equal((await engine.queueWelcome(player.address)).status, 'granted');
+      await engine.tick(); assert.equal((await reader.player(player.address)).freeSpins, 2n);
+    });
     await t.test('free spin is sent by backend for player and does not debit USDC',async()=>{
-      await write('grantFreeSpins',[player.address,2n]);await engine!.tick();
+      await engine!.tick();
       const balance=await client.readContract({address:payment,abi:erc20Abi,functionName:'balanceOf',args:[player.address]});
       await engine!.start(player.address,firstId,'free',{assertSession:()=>{}});
       const next=await until(async()=>{const state=await reader.player(player.address);return state.game?.pending?state:null;},'Free spin missing');
       freeId=next.latestGameId;assert.equal(next.game!.freeSpin,true);assert.equal(next.game!.player,player.address);assert.equal(next.freeSpins,1n);
+      assert.equal((await engine!.queueWelcome(player.address)).status, 'granted');
+      assert.equal((await reader.player(player.address)).freeSpins, 1n);
       assert.equal(await client.readContract({address:payment,abi:erc20Abi,functionName:'balanceOf',args:[player.address]}),balance);
       const logs=await client.getContractEvents({address:slot,abi:slotAbi,eventName:'SpinStarted',args:{gameId:freeId},fromBlock:deployed});
       const tx=await client.getTransaction({hash:logs[0].transactionHash});assert.equal(tx.from.toLowerCase(),keeper.address.toLowerCase());
