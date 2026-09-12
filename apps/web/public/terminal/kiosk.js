@@ -9,8 +9,8 @@
   function call(path, body, callback) {
     var req = new XMLHttpRequest(); req.open('POST', '/api/hardware/' + path, true); req.timeout = 1800;
     req.setRequestHeader('Content-Type', 'application/json'); req.setRequestHeader('X-Slot-Request', '1');
-    req.onload = function () {var data; try {data = JSON.parse(req.responseText);} catch (ignore) {data = {}; } callback(req.status >= 200 && req.status < 300 ? null : data.error || 'Hardware non disponibile.', data, req.status);};
-    req.onerror = req.ontimeout = function () {callback('Backend hardware non raggiungibile.', null, 0);};
+    req.onload = function () {var data; try {data = JSON.parse(req.responseText);} catch (ignore) {data = {}; } callback(req.status >= 200 && req.status < 300 ? null : data.error || 'Hardware unavailable.', data, req.status);};
+    req.onerror = req.ontimeout = function () {callback('Hardware backend unreachable.', null, 0);};
     req.send(JSON.stringify(body));
   }
   function tone(frequency, offset, duration, volume) {
@@ -31,9 +31,9 @@
       audioEnabled = true;
       if (audio.resume) audio.resume().then(audioLabel, audioLabel);
       tone(660, 0, 0.12); audioLabel();
-    } catch (ignore) {el('audio-enable').textContent = 'Audio non disponibile';}
+    } catch (ignore) {el('audio-enable').textContent = 'Sound unavailable';}
   }
-  function audioLabel() {el('audio-enable').textContent = audioEnabled && audio && audio.state === 'running' ? 'Audio ON · silenzia' : 'Attiva audio';}
+  function audioLabel() {el('audio-enable').textContent = audioEnabled && audio && audio.state === 'running' ? 'Sound ON · mute' : 'Enable sound';}
   el('audio-enable').onclick = function () {if (audioEnabled && audio && audio.state === 'running') {audioEnabled = false; audio.suspend(); audioLabel();} else unlockAudio();};
   function wake() {
     if (active || busy) return;
@@ -62,10 +62,10 @@
   });
   function command() {
     if (document.hidden) return {cmd: 'idle'};
-    if (phase === 'result' && Date.now() < effectUntil) return {cmd: 'result', tier: result.tier, hub: result.hub, l1: demo ? 'DEMO risultato' : result.tier ? 'Hai vinto!' : result.hub ? 'URBE PASS!' : 'Nessun premio', l2: demo ? 'Premio simulato' : result.hub ? 'Hub: 1 gg gratis' : 'Tira per giocare'};
-    if (busy) return {cmd: 'spin', l1: demo ? 'DEMO gira...' : 'Gira gira...', l2: demo ? 'Simulazione' : 'Attesa onchain'};
-    if (active) return {cmd: ready ? 'ready' : 'blocked', l1: demo ? 'DEMO' : 'Lucky Signal', l2: ready ? 'Tira la leva!' : 'Attendi / crediti'};
-    return {cmd: Date.now() < awakeUntil ? 'attract' : 'idle', l1: 'Lucky Signal', l2: Date.now() < awakeUntil ? demo ? 'Entra nella demo' : 'Scansiona il QR' : 'Avvicinati!'};
+    if (phase === 'result' && Date.now() < effectUntil) return {cmd: 'result', tier: result.tier, hub: result.hub, l1: demo ? 'DEMO result' : result.tier ? 'You won!' : result.hub ? 'URBE PASS!' : 'No prize', l2: demo ? 'Demo prize' : result.hub ? 'Hub: 1 free day' : 'Pull to play'};
+    if (busy) return {cmd: 'spin', l1: demo ? 'DEMO spinning..' : 'Spinning...', l2: demo ? 'Simulation' : 'Waiting onchain'};
+    if (active) return {cmd: ready ? 'ready' : 'blocked', l1: demo ? 'DEMO' : 'Wall Street Slot', l2: ready ? 'Pull the lever!' : 'Wait / credits'};
+    return {cmd: Date.now() < awakeUntil ? 'attract' : 'idle', l1: 'Wall Street Slot', l2: Date.now() < awakeUntil ? demo ? 'Enter the demo' : 'Scan the QR code' : 'Step right up!'};
   }
   function poll() {
     if (polling || pairBusy || document.hidden) return;
@@ -75,7 +75,7 @@
       polling = false; bound = !error; hardwareOnline = !!data && !!data.online;
       el('hardware-open').textContent = hardwareOnline && bound ? 'Arduino ON' : 'Hardware';
       if (error) {el('hardware-status').textContent = error; if (code === 401 || code === 503) {window.clearInterval(hardwareTimer); hardwareTimer = window.setInterval(poll, 4000);} return;}
-      el('hardware-status').textContent = hardwareOnline ? 'Arduino collegato.' : 'Arduino offline. Controlla alimentazione e Wi-Fi.';
+      el('hardware-status').textContent = hardwareOnline ? 'Arduino linked.' : 'Arduino offline. Check power and Wi-Fi.';
       for (var i = 0; i < data.events.length; i++) {
         var event = data.events[i];
         if (event.evt === 'motion') wake();
@@ -88,10 +88,26 @@
   el('hardware-close').onclick = function () {el('hardware-dialog').hidden = true; el('hardware-open').focus();};
   el('hardware-pair').onclick = function () {
     if (pairBusy) return; pairBusy = true;
-    call('pair', {code: el('hardware-code').value}, function (error) {pairBusy = false; el('hardware-status').textContent = error || 'Collegamento riuscito.'; if (!error) {el('hardware-code').value = ''; window.clearInterval(hardwareTimer); hardwareTimer = window.setInterval(poll, 300); poll();}});
+    call('pair', {code: el('hardware-code').value}, function (error) {pairBusy = false; el('hardware-status').textContent = error || 'Linked successfully.'; if (!error) {el('hardware-code').value = ''; window.clearInterval(hardwareTimer); hardwareTimer = window.setInterval(poll, 300); poll();}});
   };
   el('hardware-motion').hidden = !demo; el('hardware-motion').onclick = function () {el('hardware-dialog').hidden = true; wake();};
-  el('mode-switch').textContent = demo ? 'DEMO · torna al reale' : 'REALE · passa a demo';
+  // Full screen is a display preference: it never touches sessions, eligibility or audio state.
+  var fullscreenButton = el('fullscreen-toggle'), root = document.documentElement;
+  var fullscreenSupported = !!(root.requestFullscreen || root.webkitRequestFullscreen);
+  function fullscreenActive() {return !!(document.fullscreenElement || document.webkitFullscreenElement);}
+  function fullscreenLabel() {fullscreenButton.textContent = fullscreenActive() ? 'Exit full screen' : 'Full screen';}
+  if (!fullscreenSupported) fullscreenButton.hidden = true;
+  fullscreenButton.onclick = function () {
+    var result;
+    try {
+      if (fullscreenActive()) result = (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else result = (root.requestFullscreen || root.webkitRequestFullscreen).call(root);
+    } catch (ignore) {fullscreenButton.textContent = 'Full screen unavailable'; return;}
+    if (result && result.then) result.then(fullscreenLabel, function () {fullscreenButton.textContent = 'Full screen unavailable';});
+  };
+  document.addEventListener('fullscreenchange', fullscreenLabel); document.addEventListener('webkitfullscreenchange', fullscreenLabel);
+  fullscreenLabel();
+  el('mode-switch').textContent = demo ? 'DEMO · back to live' : 'LIVE · switch to demo';
   el('mode-switch').onclick = function () {if (window.slotCanSwitchMode && !window.slotCanSwitchMode()) return; window.location.href = demo ? '/' : '/?demo=1';};
   document.addEventListener('visibilitychange', function () {gate = ''; ready = false; if (document.hidden) {window.clearInterval(spinSound); spinSound = null;} else {audioLabel(); poll();}});
   window.setInterval(function () {drawAttract(); audioLabel();}, 500);

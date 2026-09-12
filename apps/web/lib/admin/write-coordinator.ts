@@ -7,7 +7,7 @@ export function createWriteCoordinator(){
     while(true){
       const previous=leases.get(walletId);
       if(previous?.id===id)return;
-      if(previous){const finished=await previous.done();if(leases.get(walletId)!==previous)continue;if(!finished)throw new SlotError('WalletBusy','Il wallet condiviso ha un’operazione in corso. Verificala prima di continuare.',409);}
+      if(previous){const finished=await previous.done();if(leases.get(walletId)!==previous)continue;if(!finished)throw new SlotError('WalletBusy','The shared wallet has an operation in progress. Check it before continuing.',409);}
       leases.set(walletId,{id,done});return;
     }
   },release(walletId:string,id:string){if(leases.get(walletId)?.id===id)leases.delete(walletId);}};

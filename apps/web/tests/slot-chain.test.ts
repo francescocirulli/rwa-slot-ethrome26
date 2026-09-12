@@ -198,11 +198,11 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
         const head=await client.getBlockNumber({cacheTime:0});await mine(Number(pending.game!.targetBlock-head+1n));await fundingEngine.tick();await mine();
         assert.equal((await fundingReader.game(pending.latestGameId)).confirmed,true);
         assert.equal((await fundingReader.funding()).assets[0].reserved,0n);
-        await assert.rejects(prepareAction(fundingReader,player.address,'mintERC1155',[collection,'1','1','wallet']),/owner della collezione/);
+        await assert.rejects(prepareAction(fundingReader,player.address,'mintERC1155',[collection,'1','1','wallet']),/must own the ERC1155 collection/);
         const transfer=await adminWallet.writeContract({address:collection,abi:artifact.abi,functionName:'transferOwnership',args:[player.address]});await client.waitForTransactionReceipt({hash:transfer});
         const accept=await prepareAction(fundingReader,player.address,'acceptPrizeOwnership',[collection]);const accepted=await userWallet.sendTransaction({to:accept.to,data:accept.data});await client.waitForTransactionReceipt({hash:accepted});
         assert.equal(await client.readContract({address:collection,abi:prizeCollectionAbi,functionName:'owner'}),player.address);
-        await assert.rejects(prepareAction(fundingReader,owner.address,'mintERC1155',[collection,'1','1','wallet']),/owner della collezione/);
+        await assert.rejects(prepareAction(fundingReader,owner.address,'mintERC1155',[collection,'1','1','wallet']),/must own the ERC1155 collection/);
       }finally{fundingEngine.stop();}
     });
     await t.test('the deployed contract receives the welcome bonus once without replacing manual credits', async legacyTest => {

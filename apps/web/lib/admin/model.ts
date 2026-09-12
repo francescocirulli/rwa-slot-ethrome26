@@ -7,5 +7,5 @@ export type AdminAccountView = AccountView & {
   members:AdminMember[]; operationsEnabled:boolean; swapEnabled?:boolean; mintEnabled?:boolean;
 };
 export function adminProofMessage(address:string) {
-  return `Lucky Signal — verifica accesso al wallet admin condiviso.\nWallet: ${address}\nQuesta firma dimostra soltanto l’accesso. Non autorizza acquisti, trasferimenti, login su altri servizi o modifiche ai permessi.`;
+  return `Wall Street Slot — shared admin wallet access check.\nWallet: ${address}\nThis signature only proves accesso. Non autorizza acquisti, trasferimenti, login su altri servizi o modifiche ai permessi.`;
 }

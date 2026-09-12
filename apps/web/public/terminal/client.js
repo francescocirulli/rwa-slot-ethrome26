@@ -17,10 +17,10 @@
     xhr.onload = function () {
       if (current !== generation) return;
       var result;
-      try { result = JSON.parse(xhr.responseText); } catch (ignore) { callback('Risposta non disponibile. Riprova.', null, xhr.status); return; }
-      callback(xhr.status >= 200 && xhr.status < 300 ? null : result.error || 'Operazione non completata.', result, xhr.status);
+      try { result = JSON.parse(xhr.responseText); } catch (ignore) { callback('Response unavailable. Try again.', null, xhr.status); return; }
+      callback(xhr.status >= 200 && xhr.status < 300 ? null : result.error || 'Operation not completed.', result, xhr.status);
     };
-    xhr.onerror = xhr.ontimeout = function () { if (current === generation) callback('Connessione interrotta. Controlla il Wi-Fi.', null, 0); };
+    xhr.onerror = xhr.ontimeout = function () { if (current === generation) callback('Connection lost. Check the Wi-Fi.', null, 0); };
     xhr.send(data === null ? null : JSON.stringify(data));
   }
   function updateDeadline(data) {
@@ -42,11 +42,11 @@
   function network(ok) {
     connected = ok;
     show('connection-banner', !ok); show('retry', !ok);
-    el('retry').textContent = 'Riprova la connessione ↗';
+    el('retry').textContent = 'Retry the connection ↗';
     if (session) draw();
     else if (!ok) {
       state('offline', 'OFFLINE', 'warning');
-      transition('Ci manca il segnale.', 'Controlla il Wi-Fi. Ritroveremo la sessione appena torna la connessione.', 'CONNESSIONE INTERROTTA');
+      transition('No signal.', 'Check the Wi-Fi. We will recover the session as soon as the connection is back.', 'CONNECTION LOST');
     }
   }
   function clearUser() {
@@ -59,13 +59,13 @@
     el('balance').removeAttribute('title'); el('balance').style.fontSize = '';
     el('short-address').textContent = ''; el('full-address').textContent = '';
     el('proof-value').textContent = ''; el('proof-message').textContent = '';
-    el('machine-status').textContent = 'IL PROSSIMO COLPO È TUO.';
-    el('cabinet-label').textContent = 'IL TUO POSTO TI ASPETTA';
-    el('cabinet-copy').textContent = 'Collega il wallet dal telefono.';
-    el('footer-state').textContent = 'SCANSIONA. COLLEGATI. PRENDI POSTO.';
+    el('machine-status').textContent = 'EVERY SPIN IS A TRANSACTION.';
+    el('cabinet-label').textContent = 'YOUR SEAT IS WAITING';
+    el('cabinet-copy').textContent = 'Connect your wallet from your phone.';
+    el('footer-state').textContent = 'SCAN. LINK. TAKE A SEAT.';
     el('sign-button').disabled = true; el('deposit-toggle').disabled = true;
     document.body.className = '';
-    el('balance-status').textContent = 'Lettura del saldo su Base…';
+    el('balance-status').textContent = 'Reading balance on Base…';
     window.clearTimeout(balanceTimer);
   }
   function draw() {
@@ -74,7 +74,7 @@
     show('session-feedback', !!feedback && data.state === 'pending'); el('session-feedback').textContent = feedback;
     if (data.state === 'pending') {
       document.body.className = feedback ? 'has-feedback' : '';
-      state(connected ? 'signed-out' : 'offline', connected ? 'LIBERO' : 'OFFLINE', connected ? '' : 'warning');
+      state(connected ? 'signed-out' : 'offline', connected ? 'OPEN' : 'OFFLINE', connected ? '' : 'warning');
       show('transition-panel', false); show('welcome', true); show('wallet-panel', false);
       if (data.qr && el('login-qr').getAttribute('src') !== data.qr) el('login-qr').src = data.qr;
       show('login-qr', connected && !!data.qr); show('qr-loading', !connected || !data.qr);
@@ -83,19 +83,19 @@
     }
     el('login-qr').removeAttribute('src'); show('welcome', false);
     if (data.state === 'approved') {
-      state('linking', 'COLLEGAMENTO', 'warning');
-      transition('Il tuo posto si apre.', 'Il telefono ha confermato il wallet. Completiamo il collegamento su questo iPad.', 'WALLET RICONOSCIUTO');
+      state('linking', 'LINKING', 'warning');
+      transition('Your seat is opening.', 'Your phone confirmed the wallet. Finishing the link on this iPad.', 'WALLET RECOGNIZED');
       return;
     }
     show('transition-panel', false); show('wallet-panel', true);
     document.body.className = 'is-connected';
     var verified = proof && proof.status === 'verified';
     state(!connected ? 'offline' : verified ? 'verified' : authorized ? 'authorized' : 'awaiting-permission',
-      !connected ? 'OFFLINE' : verified ? 'VERIFICATO' : authorized ? 'COLLEGATO' : 'COLLEGATO', !connected ? 'warning' : 'connected');
-    el('machine-status').textContent = !connected ? 'CONNESSIONE INTERROTTA' : 'QUESTO POSTO È TUO.';
-    el('cabinet-label').textContent = 'WALLET COLLEGATO';
-    el('cabinet-copy').textContent = !connected ? 'Riconnessione in corso…' : verified ? 'Collegamento verificato. Benvenuto a bordo.' : authorized ? 'La firma di prova è disponibile sull’iPad.' : 'Completa l’autorizzazione sul telefono.';
-    el('footer-state').textContent = 'IL TUO WALLET. LA TUA SESSIONE.';
+      !connected ? 'OFFLINE' : verified ? 'VERIFIED' : authorized ? 'LINKED' : 'LINKED', !connected ? 'warning' : 'connected');
+    el('machine-status').textContent = !connected ? 'CONNECTION LOST' : 'THIS SEAT IS YOURS.';
+    el('cabinet-label').textContent = 'WALLET LINKED';
+    el('cabinet-copy').textContent = !connected ? 'Reconnecting…' : verified ? 'Link verified. Welcome aboard.' : authorized ? 'The signature proof is available on the iPad.' : 'Finish the approval on your phone.';
+    el('footer-state').textContent = 'YOUR WALLET. YOUR SESSION. ONCHAIN.';
     var address = data.address || '';
     el('short-address').textContent = address.slice(0, 6) + ' ··· ' + address.slice(-6);
     el('full-address').textContent = address;
@@ -103,10 +103,10 @@
     el('deposit-toggle').disabled = !address;
     el('sign-button').disabled = !connected || !authorized || !!proof || signing;
     show('sign-button', !verified); show('proof-toggle', !!verified);
-    el('sign-button-label').textContent = signing || (proof && proof.status === 'pending') ? 'FIRMA IN CORSO…' : !authorized ? 'ATTENDI IL TELEFONO' : proof ? 'PROVA NON COMPLETATA' : 'PROVA IL COLLEGAMENTO';
+    el('sign-button-label').textContent = signing || (proof && proof.status === 'pending') ? 'SIGNING…' : !authorized ? 'WAIT FOR YOUR PHONE' : proof ? 'PROOF NOT COMPLETED' : 'TEST THE LINK';
     el('signature-icon').textContent = verified ? '✓' : authorized ? '↗' : '02';
-    el('signature-title').textContent = verified ? 'Firma verificata.' : proof ? (proof.status === 'pending' ? 'Verifica in corso…' : 'Prova non completata.') : authorized ? 'Il telefono può riposare.' : 'Autorizzazione in attesa.';
-    el('signature-description').textContent = verified ? 'Collegamento riuscito. Nessun fondo spostato.' : proof ? (proof.status === 'pending' ? 'Il wallet sta firmando il messaggio di prova.' : 'Esci e ricollega il wallet per una nuova prova.') : authorized ? 'Prova la firma, anche con il telefono chiuso.' : 'Il wallet è collegato. Conferma sul telefono per abilitare la firma di prova.';
+    el('signature-title').textContent = verified ? 'Signature verified.' : proof ? (proof.status === 'pending' ? 'Verifying…' : 'Proof not completed.') : authorized ? 'Your phone can rest.' : 'Approval pending.';
+    el('signature-description').textContent = verified ? 'Link successful. No funds moved.' : proof ? (proof.status === 'pending' ? 'The wallet is signing the proof message.' : 'Log out and link the wallet again for a new proof.') : authorized ? 'Test the signature, even with your phone closed.' : 'The wallet is linked. Confirm on your phone to enable the signature proof.';
     if (verified) { el('proof-message').textContent = proof.message; el('proof-value').textContent = proof.signature; }
     checkDeadline();
   }
@@ -129,12 +129,12 @@
         var balance = result.balance;
         if (balance.amount !== null) {
           var parts = balance.amount.split('.'), fraction = (parts[1] || '') + '00';
-          el('balance').textContent = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + fraction.slice(0, 2);
+          el('balance').textContent = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + fraction.slice(0, 2);
           el('balance').title = balance.amount + ' USDC';
           el('balance').style.fontSize = parts[0].length > 6 ? '28px' : '';
         }
-        el('balance-status').textContent = balance.stale ? (balance.amount === null ? 'Saldo non disponibile · riproviamo tra poco' : 'Ultimo saldo disponibile · aggiornamento in attesa') : 'USDC su Base · saldo aggiornato';
-      } else el('balance-status').textContent = 'Ultimo saldo disponibile · connessione in attesa';
+        el('balance-status').textContent = balance.stale ? (balance.amount === null ? 'Balance unavailable · retrying shortly' : 'Last known balance · update pending') : 'USDC on Base · balance up to date';
+      } else el('balance-status').textContent = 'Last known balance · waiting for connection';
       balanceTimer = window.setTimeout(refreshBalance, 12000);
     });
   }
@@ -142,7 +142,7 @@
   function pair() {
     if (pairing || leaving) return;
     pairing = true; show('retry', false);
-    if (connected) {state('restoring', 'UN MOMENTO'); transition('Il posto è libero.', 'Prepariamo un nuovo QR per collegare il wallet.', 'BENVENUTO ALL’ARCADE');}
+    if (connected) {state('restoring', 'ONE MOMENT'); transition('The seat is open.', 'Preparing a new QR code to link your wallet.', 'WELCOME TO THE FLOOR');}
     request('/pair', {}, function (error, data) {
       pairing = false;
       if (error) { network(false); notice(error); timer = window.setTimeout(pair, 8000); return; }
@@ -176,10 +176,10 @@
   }
   function leave(reason) {
     if (leaving) return;
-    feedback = reason === 'expired' ? 'Sessione scaduta dopo 3 minuti di inattività.' : reason === 'ended' ? 'La sessione è stata chiusa. Il posto è libero.' : reason === 'refresh' ? '' : 'Sei uscito. Il wallet resta nel tuo account.';
+    feedback = reason === 'expired' ? 'Session expired after 3 minutes of inactivity.' : reason === 'ended' ? 'The session was closed. The seat is open.' : reason === 'refresh' ? '' : 'You logged out. The wallet stays in your account.';
     leaving = true; needsPair = true; generation += 1; polling = false; pairing = false;
     window.clearTimeout(timer); clearUser(); notice('');
-    state('ending', 'USCITA'); transition('Il posto si libera.', 'I dati del wallet sono stati rimossi da questo schermo.', 'A PRESTO, PLAYER');
+    state('ending', 'LEAVING'); transition('Freeing the seat.', 'Wallet data has been removed from this screen.', 'SEE YOU SOON, PLAYER');
     show('session-feedback', false);
     request('/tablet/logout', {}, function () { leaving = false; pair(); });
   }
@@ -238,7 +238,7 @@
   window.addEventListener('online', function () {poll();});
   document.addEventListener('visibilitychange', function () { if (!document.hidden) { checkDeadline(); if (!leaving) poll(); } });
   window.addEventListener('pageshow', function (event) {
-    if (event.persisted) { generation += 1; polling = false; pairing = false; leaving = false; clearUser(); state('restoring', 'VERIFICA'); transition('Ritroviamo il tuo posto.', 'Verifichiamo la sessione su questo iPad.'); poll(); }
+    if (event.persisted) { generation += 1; polling = false; pairing = false; leaving = false; clearUser(); state('restoring', 'CHECKING'); transition('Finding your seat.', 'Checking the session on this iPad.'); poll(); }
   });
   window.addEventListener('slot-expired', function () {leave('ended');});
   window.setInterval(checkDeadline, 500);

@@ -19,7 +19,7 @@ export function createWelcomeService(wallets: WalletService, slot: SlotEngine) {
       const launch = await slot.reader.client.getBlock({blockNumber: slot.reader.config.deploymentBlock});
       if (registration.createdAt < Number(launch.timestamp) * 1000) return {status: 'ineligible', amount: '2'};
       return slot.queueWelcome(wallet.address as Address);
-    })().catch((): WelcomeView => ({status: 'unavailable', amount: '2', error: 'Il bonus di benvenuto è in attesa. Riproviamo automaticamente.'}));
+    })().catch((): WelcomeView => ({status: 'unavailable', amount: '2', error: 'The welcome bonus is pending. We retry automatically.'}));
     pending.set(key, task);
     try {return await task;} finally {if (pending.get(key) === task) pending.delete(key);}
   }

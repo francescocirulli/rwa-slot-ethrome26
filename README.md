@@ -1,6 +1,8 @@
-# Lucky Signal — ETHRome 2026
+# Wall Street Slot — ETHRome 2026
 
-Monorepo for the iPad slot machine with Privy wallets and USDC on Base.
+Monorepo for Wall Street Slot, the retro iPad slot machine that pays real-world
+asset prizes, with Privy wallets and USDC on Base. Every spin is a Base
+transaction and every result is verifiable on BaseScan.
 
 **Live:** [iPad terminal](https://web-production-e2628.up.railway.app) ·
 [admin](https://web-production-e2628.up.railway.app/admin) ·

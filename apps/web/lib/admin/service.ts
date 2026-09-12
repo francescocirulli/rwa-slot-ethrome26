@@ -15,7 +15,7 @@ export interface AdminAccessService {
 }
 export function createAdminService(client:PrivyClient,ownerId:string|undefined,contract:()=>Address|null,externalId=ADMIN_WALLET_EXTERNAL_ID,collection:Address=BASE_PRIZE_COLLECTION) {
   let walletId:string|undefined,mutating=false;
-  function requireOwner(user:Identity) {if(!ownerId||user.userId!==ownerId)throw new SlotError('AdminOwner','Solo il proprietario può gestire il wallet condiviso.',403);}
+  function requireOwner(user:Identity) {if(!ownerId||user.userId!==ownerId)throw new SlotError('AdminOwner','Only the owner can manage the shared wallet.',403);}
   function singleUser(quorum:KeyQuorum):string|null {
     return quorum.authorization_threshold===1&&!quorum.authorization_keys.length&&!quorum.key_quorum_ids?.length&&quorum.user_ids?.length===1?quorum.user_ids[0]:null;
   }
@@ -23,18 +23,18 @@ export function createAdminService(client:PrivyClient,ownerId:string|undefined,c
     if(!ownerId)return null;
     if(!walletId){
       const page=await client.wallets().list({external_id:externalId,limit:2,include_archived:true});
-      if(page.data.length>1||page.next_cursor)throw new SlotError('AdminConfig','Più wallet admin trovati. Verifica la configurazione Privy.',503);
+      if(page.data.length>1||page.next_cursor)throw new SlotError('AdminConfig','Multiple admin wallets found. Check the Privy configuration.',503);
       if(!page.data.length)return null;
       walletId=page.data[0].id;
     }
     // Fresh provider state on every access: revocation must never rely on an allowlist cache.
     const value=await client.wallets().get(walletId);
-    if(value.external_id!==externalId||value.chain_type!=='ethereum'||value.archived_at||!value.owner_id)throw new SlotError('AdminConfig','Wallet condiviso non disponibile.',503);
-    if(singleUser(await client.keyQuorums().get(value.owner_id))!==ownerId)throw new SlotError('AdminOwnerChanged','La proprietà del wallet condiviso è cambiata. Verifica la configurazione.',403);
+    if(value.external_id!==externalId||value.chain_type!=='ethereum'||value.archived_at||!value.owner_id)throw new SlotError('AdminConfig','Shared wallet unavailable.',503);
+    if(singleUser(await client.keyQuorums().get(value.owner_id))!==ownerId)throw new SlotError('AdminOwnerChanged','The shared wallet ownership changed. Check the configuration.',403);
     return value;
   }
   async function members(value:PrivyWallet) {
-    if(value.additional_signers.length>8)throw new SlotError('AdminConfig','Configurazione collaboratori non supportata.',503);
+    if(value.additional_signers.length>8)throw new SlotError('AdminConfig','Collaborator configuration not supported.',503);
     return Promise.all(value.additional_signers.map(async signer=>{
       const userId=singleUser(await client.keyQuorums().get(signer.signer_id));
       const policy=signer.override_policy_ids?.length===1?await client.policies().get(signer.override_policy_ids[0]):null;
@@ -52,15 +52,15 @@ export function createAdminService(client:PrivyClient,ownerId:string|undefined,c
   }
   async function resolve(user:Identity):Promise<AdminAccess> {
     const value=await wallet();
-    if(!value)throw new SlotError('AdminNotReady','Il wallet condiviso non è ancora stato creato.',403);
+    if(!value)throw new SlotError('AdminNotReady','The shared wallet has not been created yet.',403);
     const selected={id:value.id,address:value.address};
     if(user.userId===ownerId)return {wallet:selected,role:'owner',operationsEnabled:true,swapEnabled:true,mintEnabled:true};
     const member=(await members(value)).find(item=>item.userId===user.userId&&item.recognized);
-    if(!member)throw new SlotError('AdminAccess','Il tuo account non è autorizzato al wallet condiviso.',403);
+    if(!member)throw new SlotError('AdminAccess','Your account is not authorized on the shared wallet.',403);
     return {wallet:selected,role:'operator',operationsEnabled:!!contract()&&member.contractEnabled,swapEnabled:member.swapEnabled,mintEnabled:!!contract()&&member.enabled};
   }
   async function exclusive<T>(work:()=>Promise<T>) {
-    if(mutating)throw new SlotError('AdminBusy','Una modifica agli accessi è già in corso. Aggiorna tra poco.');
+    if(mutating)throw new SlotError('AdminBusy','An access change is already in progress. Refresh shortly.');
     mutating=true;try{return await work();}finally{mutating=false;}
   }
   return {
@@ -92,19 +92,19 @@ export function createAdminService(client:PrivyClient,ownerId:string|undefined,c
     },
     async setMember(user:Identity,authorization:WalletAuthorization,memberId:string,remove=false) {
       requireOwner(user);
-      if(!/^did:privy:[a-zA-Z0-9_-]{5,100}$/.test(memberId)||memberId===ownerId)throw new SlotError('AdminMember','Inserisci il codice account Privy del collaboratore.',400);
+      if(!/^did:privy:[a-zA-Z0-9_-]{5,100}$/.test(memberId)||memberId===ownerId)throw new SlotError('AdminMember','Enter the collaborator Privy account code.',400);
       await exclusive(async()=>{
-        const value=await wallet();if(!value)throw new SlotError('AdminNotReady','Crea prima il wallet condiviso.');
+        const value=await wallet();if(!value)throw new SlotError('AdminNotReady','Create the shared wallet first.');
         const list=await members(value),matches=list.filter(item=>item.userId===memberId);
         if(remove){
           if(!matches.length)return;
           await client.wallets().update(value.id,{additional_signers:value.additional_signers.filter(signer=>!matches.some(item=>item.signer.signer_id===signer.signer_id)),request_expiry:Date.now()+90000,authorization_context:authorization});
           return;
         }
-        if(matches.length>1)throw new SlotError('AdminConfig','Rimuovi gli accessi duplicati prima di autorizzare nuovamente questo account.');
+        if(matches.length>1)throw new SlotError('AdminConfig','Remove duplicate access entries before authorizing this account again.');
         if(matches[0]?.enabled)return;
-        if(value.additional_signers.length>=4&&!matches.length)throw new SlotError('AdminMembers','Sono già presenti quattro collaboratori.');
-        const member=await client.users()._get(memberId);if(member.id!==memberId)throw new SlotError('AdminMember','Account non trovato in questa app.',400);
+        if(value.additional_signers.length>=4&&!matches.length)throw new SlotError('AdminMembers','There are already four collaborators.');
+        const member=await client.users()._get(memberId);if(member.id!==memberId)throw new SlotError('AdminMember','Account not found in this app.',400);
         const rules=operatorPolicy(value.address as Address,contract(),collection);
         const policy=await client.policies().create({name:'Lucky Signal admin operator',version:'1.0',chain_type:'ethereum',owner_id:value.owner_id!,rules});
         // A fresh policy is attached by the owner; collaborators never own their policy.
@@ -115,7 +115,7 @@ export function createAdminService(client:PrivyClient,ownerId:string|undefined,c
     async proof(user:Identity,authorization:WalletAuthorization) {
       const access=await resolve(user),message=adminProofMessage(access.wallet.address);
       const result=await client.wallets().ethereum().signMessage(access.wallet.id,{message,request_expiry:Date.now()+90000,authorization_context:authorization});
-      if(!await verifyMessage({address:access.wallet.address as Address,message,signature:result.signature as `0x${string}`}))throw new SlotError('AdminProof','Firma non valida.',503);
+      if(!await verifyMessage({address:access.wallet.address as Address,message,signature:result.signature as `0x${string}`}))throw new SlotError('AdminProof','Invalid signature.',503);
       await resolve(user);
       return {verified:true,address:access.wallet.address};
     },

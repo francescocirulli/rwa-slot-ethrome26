@@ -11,15 +11,15 @@ export async function runWalletRequest(path:string,init:RequestInit,options:Opti
   async function channel(body:object,closing=false) {
     if(!closing)check();
     const token=await options.getAccessToken();
-    if(!token)throw new Error('Accedi di nuovo per autorizzare il wallet.');
+    if(!token)throw new Error('Sign in again to authorize the wallet.');
     if(!closing)check();
     const result=await request('/api/wallet-authorization',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json','X-Slot-Request':'1'},
       body:JSON.stringify(body),cache:'no-store',signal:closing?AbortSignal.timeout(5000):controller.signal});
-    const value=await result.json();if(!result.ok)throw new Error(value.error||'Autorizzazione wallet non disponibile.');return value;
+    const value=await result.json();if(!result.ok)throw new Error(value.error||'Wallet authorization unavailable.');return value;
   }
   try {
     id=(await channel({action:'create',path})).id;
-    if(typeof id!=='string'||!/^[a-f0-9]{64}$/.test(id))throw new Error('Autorizzazione wallet non valida.');
+    if(typeof id!=='string'||!/^[a-f0-9]{64}$/.test(id))throw new Error('Invalid wallet authorization.');
     check();const headers=new Headers(init.headers);headers.set('X-Wallet-Authorization',id);
     const operation=request(path,{...init,headers,signal:controller.signal}).then(result=>{settled=true;response=result;return result;});
     const signing=(async()=>{
@@ -30,10 +30,10 @@ export async function runWalletRequest(path:string,init:RequestInit,options:Opti
         if(state.state==='done'||settled&&!state.claimed)return;
         if(state.state!=='sign')continue;
         const challenge=state.challenge;
-        if(!challenge||typeof challenge.payload!=='string'||challenge.payload.length>180000||typeof challenge.id!=='string')throw new Error('Richiesta di firma non valida.');
+        if(!challenge||typeof challenge.payload!=='string'||challenge.payload.length>180000||typeof challenge.id!=='string')throw new Error('Invalid signature request.');
         const bytes=Uint8Array.from(atob(challenge.payload),character=>character.charCodeAt(0));
         let signed:{signature:string};
-        try{signed=await options.sign(bytes);}catch{throw new Error('Autorizzazione Privy non completata. Accedi di nuovo e riprova.');}
+        try{signed=await options.sign(bytes);}catch{throw new Error('Privy authorization not completed. Sign in again and retry.');}
         check();await channel({action:'sign',id,challengeId:challenge.id,signature:signed.signature});
       }
     })();

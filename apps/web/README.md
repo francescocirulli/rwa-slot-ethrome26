@@ -1,7 +1,10 @@
-# Lucky Signal
+# Wall Street Slot
 
-Arcade slot machine for a shared iPad, with phone login, embedded Privy wallets
-and USDC on Base. Integrates `DigitalSlotMachine` from [`../../contracts`](../../contracts):
+Retro arcade slot machine for a shared iPad, with phone login, embedded Privy
+wallets and USDC on Base. The terminal, phone and admin copy is in English; the
+iPad skin uses system fonts only because the terminal CSP has no `font-src`.
+The **Full screen** button in the terminal header uses the Fullscreen API with
+the WebKit prefix and hides itself where the browser does not support it. Integrates `DigitalSlotMachine` from [`../../contracts`](../../contracts):
 paid spins, free spins, automatic reveal and an onchain admin console.
 The contract has not been deployed yet: without a configured address, wallets
 and pairing work while game operations remain disabled.
