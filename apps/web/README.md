@@ -307,3 +307,14 @@ Mint requires collection ownership and the updated collaborator policy. See
 The terminal blocks new paid/free spins when prize reserves cannot cover a round
 or reserve reads are unavailable. Confirmed wins display the actual award and a
 BaseScan reveal link. Gold uses jackpot artwork only on the reels.
+
+### Phone approval and funding
+
+During paired play setup, the phone shows one USDC approval form. Once play is
+enabled, the wallet limit controls remain available for changes and revocation.
+Paid play requires a verified USDC balance covering a spin before requesting
+approval; free spins remain available without funding. Approval and revocation
+check for USDC gas funds or ETH on Base (ETH only in ETH gas mode), including a
+fresh server check before review and submission. These checks do not quote fees;
+Privy determines the actual fee. Missing required balance reads block approval. The wallet
+receive section provides the Base address and QR code; refresh after funding.
