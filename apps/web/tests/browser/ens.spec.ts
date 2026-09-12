@@ -85,3 +85,28 @@ for(const failure of ['failed','uncertain'] as const)test(`ENS ${failure} submis
  }
  expect(counts().attempts).toBe(1);
 });
+
+test('ENS preserves a verified retry after a balance rejection and page reload',async({page})=>{
+ const counts=await recoveryFixture(page,'failed');let prepares=0,sends=0;
+ const retryToken='2.'+'R'.repeat(43);
+ await page.route('**/api/ens',async(route)=>{
+  const body=route.request().method()==='POST'?route.request().postDataJSON():{};
+  if(body.action==='prepare'){
+   prepares++;if(prepares===2)expect(body.retryToken).toBe(retryToken);
+   return route.fulfill({json:{id:'funded-review-'+prepares,claimId,name:'frank.wallstreetslot.eth',address,quantity:1,registrationPayer:'backend',gasMode:'usdc',expires:Date.now()+90000}});
+  }
+  if(body.action==='send'){
+   sends++;
+   return route.fulfill(sends===1?{status:503,json:{error:'Insufficient USDC balance.',stage:'failed',retryToken}}:{json:{stage:'submitted'}});
+  }
+  return route.fallback();
+ });
+ await page.getByRole('button',{name:'Continue',exact:true}).click();
+ await page.getByRole('button',{name:'Confirm redemption',exact:true}).click();
+ await expect(page.getByRole('alert').filter({hasText:'Insufficient USDC'})).toBeVisible();
+ await page.reload();await page.getByRole('button',{name:'Wallet',exact:true}).click();
+ await page.getByRole('button',{name:'Continue',exact:true}).click();
+ await page.getByRole('button',{name:'Confirm redemption',exact:true}).click();
+ await expect(page.getByText('Confirming your voucher.',{exact:false})).toBeVisible();
+ expect(prepares).toBe(2);expect(sends).toBe(2);expect(counts().attempts).toBe(0);
+});

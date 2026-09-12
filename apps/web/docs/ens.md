@@ -179,3 +179,23 @@ Sources: [ENSv2 deployments](https://docs.ens.domains/learn/deployments/),
 [resolver permissions](https://docs.ens.domains/ensv2/permissioned-resolver/),
 [ERC1155 transfer rules](https://eips.ethereum.org/EIPS/eip-1155),
 [Privy gas sponsorship](https://docs.privy.io/wallets/gas-and-asset-management/gas/overview).
+
+### Retrying a rejected Base fee request
+
+Privy caches both successful responses and terminal errors for an idempotency
+key. Adding USDC therefore does not make a previously rejected request execute
+again with the same key. ENS preserves the legacy key for the first attempt and
+advances to a deterministic retry key only after a definite HTTP 400/422
+transaction rejection with no submission reference. Within one explicit voucher
+confirmation, at most one fresh attempt is made; every attempt still uses exact
+browser authorization and rechecks the onchain claim. Timeouts, server errors,
+authentication failures and idempotency conflicts never advance the key.
+
+After a further definite rejection, the phone saves an opaque recovery cursor.
+The API authenticates it using the existing Privy app secret, bound to the user,
+wallet and claim. It survives service restarts without a database or a new secret.
+Clients cannot supply arbitrary attempt IDs; replaying an older cursor reuses its
+old provider key. A failed read or cancellation does not grant a new retry key.
+The USDC fee mode and backend-funded Sepolia registration remain unchanged.
+
+Provider behavior: [Privy transaction idempotency on errors](https://docs.privy.io/api-reference/wallets/ethereum/eth-send-transaction).
