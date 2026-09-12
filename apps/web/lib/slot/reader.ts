@@ -4,6 +4,7 @@ import {GAME_STATES, serializable, type SlotConfig} from './config';
 import {SlotError} from './errors';
 import {readFunding} from './funding';
 import {BASE_PRIZE_COLLECTION,prizeCollectionAbi} from '../prize-collection';
+import {shouldThrowRpcError} from '../rpc-fallback';
 const roleNames = ['GAME_MANAGER_ROLE', 'TREASURER_ROLE', 'PAUSER_ROLE'] as const;
 export function createSlotReader(config: SlotConfig) {
   // Capped RPCs reject wide eth_getLogs ranges; page at the configured size and start
@@ -15,7 +16,7 @@ export function createSlotReader(config: SlotConfig) {
   // A single endpoint can rate-limit or go down; fallback retries the next one in order.
   const rpcUrls = config.rpcUrls && config.rpcUrls.length ? config.rpcUrls : [config.rpcUrl];
   const transport: Transport = rpcUrls.length > 1
-    ? fallback(rpcUrls.map(url => http(url, {batch: true, timeout: 12000, retryCount: 1})))
+    ? fallback(rpcUrls.map(url => http(url, {batch: true, timeout: 12000, retryCount: 1})),{shouldThrow:shouldThrowRpcError})
     : http(rpcUrls[0], {batch: true, timeout: 12000, retryCount: 1});
   const client = createPublicClient({chain, transport});
   const contract = {address: config.address, abi: slotAbi};

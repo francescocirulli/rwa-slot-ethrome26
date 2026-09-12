@@ -1,4 +1,4 @@
-import {createWalletClient, http, encodeFunctionData, parseEventLogs, keccak256, toHex, type Address, type Hash, type Hex, type TransactionReceipt} from 'viem';
+import {createWalletClient, fallback, http, encodeFunctionData, parseEventLogs, keccak256, toHex, type Address, type Hash, type Hex, type TransactionReceipt} from 'viem';
 import {privateKeyToAccount} from 'viem/accounts';
 import type {SlotReader} from './reader';
 import {serializable} from './config';
@@ -9,12 +9,14 @@ import type {WelcomeView} from '../welcome';
 import {personalWrites, type WriteCoordinator} from '../admin/write-coordinator';
 import {createWelcomeHistory, welcomeGrantData, type WelcomeHistory} from './welcome-history';
 import {BASE_PRIZE_COLLECTION,prizeCollectionAbi} from '../prize-collection';
+import {shouldThrowRpcError} from '../rpc-fallback';
 export type SubmittedSpin = {hash?: Hash; transactionId?: string; userOperationHash?:Hash; gasToken?: GasToken};
 export type SpinOperation = {key: string; attempt: number; player: Address; afterGameId: string; stage: 'submitting' | 'confirming' | 'started' | 'failed' | 'uncertain'; hash?: Hash; gameId?: string; error?: string; gasToken?: GasToken; transactionId?: string};
 export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:WriteCoordinator=personalWrites()) {
   const {client, config, chain, contract} = reader;
   const backend = backendKey ? privateKeyToAccount(backendKey) : undefined;
-  const wallet = backend ? createWalletClient({account: backend, chain, transport: http(config.rpcUrl, {retryCount: 0, timeout: 12000})}) : undefined;
+  const backendRpcUrls=config.rpcUrls?.length?config.rpcUrls:[config.rpcUrl];
+  const wallet = backend ? createWalletClient({account: backend, chain, transport: fallback(backendRpcUrls.map(url=>http(url, {retryCount: 0, timeout: 12000})),{retryCount:0,shouldThrow:shouldThrowRpcError})}) : undefined;
   const operations = new Map<string, SpinOperation>(), locks = new Map<string, Promise<unknown>>();
   const welcome = new Map<string, {player: Address; hash?: Hash; nextAttempt: number; checking: boolean; error?: string}>();
   const welcomeHistory = createWelcomeHistory(reader);
