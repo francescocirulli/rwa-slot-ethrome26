@@ -303,6 +303,8 @@ wallet or directly into the slot. Both use reviewed Privy transactions. The defa
 collection is the deployed Base address; `SLOT_PRIZE1155_ADDRESS` is optional.
 Mint requires collection ownership and the updated collaborator policy. See
 [setup and ownership requirements](docs/assets-and-swaps.md#inventory-and-erc1155-minting).
+Admin Operations also supports two-step collection ownership transfers, including
+explicitly confirmed acceptance signed by the configured backend wallet with ETH gas.
 
 The terminal blocks new paid/free spins when prize reserves cannot cover a round
 or reserve reads are unavailable. Confirmed wins display the actual award and a

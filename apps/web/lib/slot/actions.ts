@@ -22,6 +22,8 @@ export const ADMIN_ACTIONS = [
   {name: 'fundERC1155', label: 'Deposit ERC1155 prizes', role: 'any', target: 'collection', fields: ['Configured prize token', 'Token ID', 'Quantity']},
   {name: 'mintERC1155', label: 'Mint ERC1155 prizes', role: 'any', target: 'collection', fields: ['Prize collection', 'Existing token ID', 'Quantity', 'Destination: wallet or slot']},
   {name: 'acceptPrizeOwnership', label: 'Accept ERC1155 collection ownership', role: 'any', target: 'collection', fields: ['Prize collection']},
+  {name: 'transferPrizeOwnership', label: 'Transfer ERC1155 collection ownership', role: 'any', target: 'collection', fields: ['Prize collection', 'New collection owner on Base']},
+  {name: 'acceptPrizeOwnershipBackend', label: 'Accept ERC1155 ownership with backend wallet', role: 'any', target: 'collection', fields: ['Prize collection']},
   {name: 'withdrawERC20', label: 'Withdraw ERC20 tokens', role: 'treasurer', target: 'slot', fields: ['Token address', 'Recipient wallet', 'Amount in token base units']},
   {name: 'withdrawERC1155', label: 'Withdraw ERC1155 prizes', role: 'treasurer', target: 'slot', fields: ['Token address', 'Token ID', 'Recipient wallet', 'Quantity']},
   {name: 'withdrawNative', label: 'Withdraw ETH', role: 'treasurer', target: 'slot', fields: ['Recipient wallet', 'Amount in wei']},
@@ -67,12 +69,17 @@ export function buildAction(reader: SlotReader, account: Address, action: string
   } else if (action === 'fundERC1155') {
     if (inputs.length !== 3) throw new SlotError('Input', 'Parametri incompleti.', 400);
     to = address(inputs[0]); data = encodeFunctionData({abi: nftAbi, functionName: 'safeTransferFrom', args: [account, reader.config.address, uint(inputs[1]), uint(inputs[2]), '0x']});
-  } else if (action === 'mintERC1155' || action === 'acceptPrizeOwnership') {
-    if (inputs.length !== (action === 'mintERC1155' ? 4 : 1)) throw new SlotError('Input', 'Parametri incompleti.', 400);
+  } else if (action === 'mintERC1155' || action === 'acceptPrizeOwnership' || action === 'transferPrizeOwnership') {
+    if (inputs.length !== (action === 'mintERC1155' ? 4 : action === 'transferPrizeOwnership' ? 2 : 1)) throw new SlotError('Input', 'Parametri incompleti.', 400);
     to = address(inputs[0]);
     const collection = reader.config.prizeCollection || BASE_PRIZE_COLLECTION;
     if (to.toLowerCase() !== collection.toLowerCase()) throw new SlotError('Asset', 'Prize collection not allowed.', 403);
     if (action === 'acceptPrizeOwnership') data = encodeFunctionData({abi:prizeCollectionAbi,functionName:'acceptOwnership'});
+    else if (action === 'transferPrizeOwnership') {
+      const nextOwner = address(inputs[1]);
+      if (nextOwner === zeroAddress || [account,to,reader.config.address].some(value=>value.toLowerCase()===nextOwner.toLowerCase())) throw new SlotError('Input', 'Enter a different wallet that can accept collection ownership on Base.', 400);
+      data = encodeFunctionData({abi:prizeCollectionAbi,functionName:'transferOwnership',args:[nextOwner]});
+    }
     else {
       if (!['wallet','slot'].includes(inputs[3]) || uint(inputs[2]) === 0n) throw new SlotError('Input', 'Invalid quantity or destination.', 400);
       data = encodeFunctionData({abi:prizeCollectionAbi,functionName:'mint',args:[inputs[3] === 'wallet' ? account : reader.config.address,uint(inputs[1]),uint(inputs[2])]});
@@ -94,9 +101,9 @@ export async function prepareAction(reader: SlotReader, account: Address, action
       catalog.some(prize => prize.kind === (action === 'fundERC20' ? 1 : 2) && prize.token.toLowerCase() === token.toLowerCase() && (action !== 'fundERC1155' || prize.tokenId === uint(inputs[1])));
     if (!allowed) throw new SlotError('Asset', 'Configure this token in the prize catalog first.');
   }
-  if (action === 'mintERC1155' || action === 'acceptPrizeOwnership') {
-    const owner = await reader.client.readContract({address:tx.to,abi:prizeCollectionAbi,functionName:action === 'mintERC1155' ? 'owner' : 'pendingOwner'});
-    if (owner.toLowerCase() !== account.toLowerCase()) throw new SlotError('PrizeOwner', action === 'mintERC1155' ? 'The shared wallet must own the ERC1155 collection to mint prizes.' : 'Start the collection transfer to the shared wallet first.', 403);
+  if (action === 'mintERC1155' || action === 'acceptPrizeOwnership' || action === 'transferPrizeOwnership') {
+    const owner = await reader.client.readContract({address:tx.to,abi:prizeCollectionAbi,functionName:action === 'acceptPrizeOwnership' ? 'pendingOwner' : 'owner'});
+    if (owner.toLowerCase() !== account.toLowerCase()) throw new SlotError('PrizeOwner', action === 'acceptPrizeOwnership' ? 'Start the collection transfer to the shared wallet first.' : action === 'transferPrizeOwnership' ? 'The shared wallet must own the ERC1155 collection to transfer its ownership.' : 'The shared wallet must own the ERC1155 collection to mint prizes.', 403);
     if (action === 'mintERC1155') {
       if (!(await reader.client.readContract({address:tx.to,abi:prizeCollectionAbi,functionName:'tokenExists',args:[uint(inputs[1])]}))) throw new SlotError('Asset','This token ID does not exist in the collection.');
       if (inputs[3] === 'slot' && !(await reader.catalog()).some(prize=>prize.kind===2 && prize.token.toLowerCase()===tx.to.toLowerCase() && prize.tokenId===uint(inputs[1]))) throw new SlotError('Asset','Configure this token ID in the catalog before minting prizes directly into the slot.');
@@ -118,7 +125,7 @@ export async function prepareAction(reader: SlotReader, account: Address, action
     const balance = await reader.client.readContract({address:tx.to,abi:prizeCollectionAbi,functionName:'balanceOf',args:[account,id]});
     if (balance < uint(inputs[3])) throw new SlotError('Balance', 'Insufficient NFT quantity.', 400);
   }
-  const abi = action === 'transferERC20' ? erc20Abi : action === 'transferERC1155' ? nftAbi : action === 'approveBudget' || action === 'fundERC20' ? erc20Abi : action === 'fundERC1155' ? nftAbi : action === 'mintERC1155' || action === 'acceptPrizeOwnership' ? prizeCollectionAbi : slotAbi;
+  const abi = action === 'transferERC20' ? erc20Abi : action === 'transferERC1155' ? nftAbi : action === 'approveBudget' || action === 'fundERC20' ? erc20Abi : action === 'fundERC1155' ? nftAbi : action === 'mintERC1155' || action === 'acceptPrizeOwnership' || action === 'transferPrizeOwnership' ? prizeCollectionAbi : slotAbi;
   const decoded = decodeFunctionData({abi: abi as Abi, data: tx.data});
   // ETH is not required for preflight: Privy quotes and collects USDC gas at send.
   const simulation = await reader.client.simulateContract({account, address: tx.to, abi: abi as Abi, functionName: decoded.functionName, args: decoded.args, value: 0n, gasPrice: 0n});

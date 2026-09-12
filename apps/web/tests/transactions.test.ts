@@ -5,24 +5,30 @@ import assert from 'node:assert/strict';
 import {createContractApi} from '../lib/slot/transactions';
 import type {SlotEngine} from '../lib/slot/engine';
 import type {WalletService} from '../lib/types';
+import {BASE_PRIZE_COLLECTION} from '../lib/prize-collection';
+import {decodeFunctionData} from 'viem';
+import {prizeCollectionAbi} from '../lib/prize-collection';
 import {SlotError} from '../lib/slot/errors';
 const origin='https://slot.example',address='0x0000000000000000000000000000000000000011',other='0x0000000000000000000000000000000000000022';
 const contract='0x0000000000000000000000000000000000000099',hash=('0x'+'a'.repeat(64)) as `0x${string}`;
 function fixture(sharedAdmin=false){
-  let now=1000,released:()=>void=()=>{},confirmed=false,fail:Error|undefined,role=true,reordered=false,revoked=false;
+  let now=1000,released:()=>void=()=>{},confirmed=false,fail:Error|undefined,role=true,reordered=false,revoked=false,backendOwner=true,backendConfigured=true,ownerActive=true;
+  const backendSends:unknown[]=[];
   const gate=new Promise<void>(resolve=>{released=resolve;}),sends:unknown[]=[];
   const service={authenticate:async(token:string)=>{if(!['user','other'].includes(token))throw new Error('Auth');const wallets=[{id:token,address:token==='user'?address:other}];if(reordered&&token==='user')wallets.unshift({id:'secondary-wallet',address:other});return {userId:token,wallets};},
     verifyIdentityToken:async(token:string,userId:string)=>{if(token!==userId+'-identity')throw new Error('Identity mismatch');},
     sendOwned:async(wallet:unknown,token:string,tx:unknown,key:string,mode:string,onGas:(gas:string)=>void)=>{sends.push({wallet,token,tx,key,mode});onGas('USDC');await gate;if(fail)throw fail;return {transactionId:'provider-id',gasToken:'USDC'};},
     resolveSpin:async()=>confirmed?hash:undefined} as unknown as WalletService;
   const slot={reader:{validate:async()=>{},config:{address:contract,paymentToken:other,chainId:8453,gasMode:'usdc',confirmations:2},
-    client:{simulateContract:async()=>{if(!role)throw new SlotError('Forbidden','Missing role',403);},getTransactionReceipt:async()=>({status:'success',blockNumber:10n}),getBlockNumber:async()=>11n}}} as unknown as SlotEngine;
-  const resolve=async(user:{userId:string})=>{if(revoked&&user.userId==='other')throw new SlotError('AdminAccess','Revoked',403);return {wallet:{id:'shared',address:'0x0000000000000000000000000000000000000033'},role:user.userId==='user'?'owner' as const:'operator' as const,operationsEnabled:true};};
-  const api=createContractApi({origin,walletService:service,getSlot:()=>slot,now:()=>now,admin:sharedAdmin?{resolve,assertAction:async(user,action)=>{const access=await resolve(user);if(access.role==='operator'&&action==='grantRole')throw new SlotError('AdminAction','Owner only',403);return access;}}:undefined});
+    client:{readContract:async()=>backendOwner?other:address,simulateContract:async()=>{if(!role)throw new SlotError('Forbidden','Missing role',403);},getTransactionReceipt:async()=>({status:'success',blockNumber:10n}),getBlockNumber:async()=>11n}}} as unknown as SlotEngine;
+  slot.health=()=>({configured:backendConfigured,address:backendConfigured?other:null}) as ReturnType<SlotEngine['health']>;
+  slot.sendBackend=async(fn,arg,onHash,assertAccess)=>{await gate;await assertAccess?.();if(!backendOwner)throw new SlotError('PrizeOwner','Pending owner changed',403);backendSends.push({fn,arg});onHash?.(hash);return hash;};
+  const resolve=async(user:{userId:string})=>{if(revoked&&user.userId==='other')throw new SlotError('AdminAccess','Revoked',403);return {wallet:{id:'shared',address:'0x0000000000000000000000000000000000000033'},role:user.userId==='user'&&ownerActive?'owner' as const:'operator' as const,operationsEnabled:true};};
+  const api=createContractApi({origin,walletService:service,getSlot:()=>slot,now:()=>now,admin:sharedAdmin?{resolve,assertAction:async(user,action)=>{const access=await resolve(user);if(access.role==='operator'&&['grantRole','acceptPrizeOwnershipBackend'].includes(action))throw new SlotError('AdminAction','Owner only',403);return access;}}:undefined});
   async function call(kind:'prepare'|'send'|'status'|'cancel',body?:unknown,token='user',requestOrigin=origin,scope:'personal'|'admin'='personal'){
     const r=await transactionTestRequest(new Request(origin+(scope==='admin'?'/api/admin/contract/':'/api/contract/')+kind+(kind==='status'?'?id='+body:''),{method:kind==='status'?'GET':'POST',headers:{Authorization:'Bearer '+token,Origin:requestOrigin,'Privy-Id-Token':token+'-identity','Content-Type':'application/json','X-Slot-Request':'1'},body:kind==='status'?undefined:JSON.stringify(body)}),token,request=>api.handle(request,kind,scope));return {status:r.status,body:await r.json()};
   }
-  return {call,sends,revoke:()=>{revoked=true;},reorder:()=>{reordered=true;},release:()=>released(),finish:()=>{confirmed=true;},fail:(e:Error)=>{fail=e;},noRole:()=>{role=false;},expire:()=>{now+=300001;}};
+  return {call,sends,backendSends,revokeOwner:()=>{ownerActive=false;},changePendingOwner:()=>{backendOwner=false;},disableBackend:()=>{backendConfigured=false;},revoke:()=>{revoked=true;},reorder:()=>{reordered=true;},release:()=>released(),finish:()=>{confirmed=true;},fail:(e:Error)=>{fail=e;},noRole:()=>{role=false;},expire:()=>{now+=300001;}};
 }
 const action={action:'setTicketPrice',args:['1500000']};
 test('prepare is read-only; explicit confirmation uses the verified owner and immutable reviewed calldata once',async()=>{
@@ -73,5 +79,26 @@ test.afterEach(()=>walletAuthorizations().dispose());
 
 test('player API cannot prepare collection mint or ownership operations',async()=>{
   const f=fixture();
-  for(const action of ['mintERC1155','acceptPrizeOwnership'])assert.equal((await f.call('prepare',{action,args:[]})).status,403);
+  for(const action of ['mintERC1155','acceptPrizeOwnership','transferPrizeOwnership','acceptPrizeOwnershipBackend'])assert.equal((await f.call('prepare',{action,args:[]})).status,403);
+});
+
+test('backend acceptance is explicitly confirmed, bound to its signer, and never sent through Privy',async()=>{
+  const f=fixture(true),call=(kind:'prepare'|'send'|'status'|'cancel',body:unknown,token='user')=>f.call(kind,body,token,origin,'admin');
+  const action={action:'acceptPrizeOwnershipBackend',args:[BASE_PRIZE_COLLECTION]};
+  assert.equal((await call('prepare',action,'other')).status,403);
+  const p=await call('prepare',action);assert.equal(p.status,200);assert.equal(p.body.signer,'backend');assert.equal(p.body.signerAddress,other);assert.equal(p.body.transaction.gasMode,'eth');
+  assert.equal(decodeFunctionData({abi:prizeCollectionAbi,data:p.body.transaction.data}).functionName,'acceptOwnership');
+  assert.equal((await call('send',{id:p.body.id})).status,400);assert.equal(f.backendSends.length,0);
+  await Promise.all([call('send',{id:p.body.id,confirm:true,transaction:{to:address},action:'withdrawNative'}),call('send',{id:p.body.id,confirm:true})]);
+  f.release();await new Promise(resolve=>setTimeout(resolve,0));
+  assert.deepEqual(f.backendSends,[{fn:'acceptPrizeOwnership',arg:BASE_PRIZE_COLLECTION}]);assert.equal(f.sends.length,0);
+  assert.equal((await call('status',p.body.id)).body.stage,'confirmed');
+});
+test('backend acceptance rechecks pending owner, configured signer and expiration while queued',async()=>{
+  for(const invalidate of ['changePendingOwner','disableBackend','expire','revokeOwner'] as const){
+    const f=fixture(true),call=(kind:'prepare'|'send'|'status',body:unknown)=>f.call(kind,body,'user',origin,'admin');
+    const p=await call('prepare',{action:'acceptPrizeOwnershipBackend',args:[BASE_PRIZE_COLLECTION]});assert.equal(p.status,200);
+    await call('send',{id:p.body.id,confirm:true});f[invalidate]();f.release();await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal((await call('status',p.body.id)).body.stage,'failed');assert.equal(f.backendSends.length,0);assert.equal(f.sends.length,0);
+  }
 });

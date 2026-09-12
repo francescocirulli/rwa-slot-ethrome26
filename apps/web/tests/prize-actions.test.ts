@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {decodeFunctionData} from 'viem';
+import {decodeFunctionData,zeroAddress} from 'viem';
 import {BASE_PRIZE_COLLECTION,prizeCollectionAbi} from '../lib/prize-collection';
 import {buildAction,prepareAction} from '../lib/slot/actions';
 import type {SlotReader} from '../lib/slot/reader';
@@ -23,6 +23,16 @@ test('mint restricts collection, existing ID, positive amount and recipient to t
   f.state.owner=slot;await assert.rejects(prepareAction(f.reader,account,'mintERC1155',[BASE_PRIZE_COLLECTION,'1','1','wallet']),/must own the ERC1155 collection/);
   f.state.owner=account;f.state.exists=false;await assert.rejects(prepareAction(f.reader,account,'mintERC1155',[BASE_PRIZE_COLLECTION,'1','1','wallet']),/does not exist/);
   assert.equal(f.state.simulations,2);
+});
+test('ownership nomination requires the current collection owner and an actionable recipient',async()=>{
+  const f=fixture(),recipient='0x0000000000000000000000000000000000000022';
+  const tx=await prepareAction(f.reader,account,'transferPrizeOwnership',[BASE_PRIZE_COLLECTION,recipient]);
+  assert.equal(tx.to,BASE_PRIZE_COLLECTION);
+  assert.deepEqual(decodeFunctionData({abi:prizeCollectionAbi,data:tx.data}),{functionName:'transferOwnership',args:[recipient]});
+  for(const next of [zeroAddress,account,slot,BASE_PRIZE_COLLECTION,'bad'])assert.throws(()=>buildAction(f.reader,account,'transferPrizeOwnership',[BASE_PRIZE_COLLECTION,next]));
+  assert.throws(()=>buildAction(f.reader,account,'transferPrizeOwnership',[recipient,account]));
+  f.state.owner=recipient;await assert.rejects(prepareAction(f.reader,account,'transferPrizeOwnership',[BASE_PRIZE_COLLECTION,recipient]),/must own the ERC1155 collection/);
+  assert.equal(f.state.simulations,1);
 });
 test('slot deposits and direct mint require the exact configured ERC1155 ID; ownership acceptance checks pendingOwner',async()=>{
   const f=fixture();

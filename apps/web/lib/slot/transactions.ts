@@ -13,7 +13,7 @@ import {withWalletAuthorization} from '../wallet-authorization';
 type Transaction = Awaited<ReturnType<typeof prepareAction>>;
 type Operation = {
   id:string; userId:string; walletId:string; address:string; action:string; args:string[]; scope:'personal'|'admin';
-  transaction:Transaction; expiresAt:number;
+  transaction:Transaction; expiresAt:number; signerAddress?:Address;
   stage:'prepared'|'submitting'|'confirming'|'confirmed'|'failed'|'uncertain'|'cancelled';
   submission?:SubmittedSpin; gasToken?:GasToken; error?:string;
 };
@@ -23,7 +23,11 @@ export function createContractApi({walletService, getSlot, origin, admin, coordi
   const operations=new Map<string,Operation>(), activeWallets=new Map<string,string>();
   const preparing=new Set<string>();
   const terminal=(op:Operation)=>['confirmed','failed','cancelled'].includes(op.stage);
-  function view(op:Operation) {return {id:op.id,address:op.address,action:op.action,args:op.args,transaction:op.transaction,
+  async function prepareBackendAcceptance(slot:SlotEngine,address:Address,args:string[]):Promise<Transaction> {
+    try {return {...await prepareAction(slot.reader,address,'acceptPrizeOwnership',args),gasMode:'eth'};}
+    catch(error){if(error instanceof SlotError&&error.code==='PrizeOwner')throw new SlotError('PrizeOwner','Nominate the backend admin wallet as the collection owner first.',403);throw error;}
+  }
+  function view(op:Operation) {return {id:op.id,address:op.address,signerAddress:op.signerAddress||op.address,signer:op.signerAddress?'backend':'privy',action:op.action,args:op.args,transaction:op.transaction,
     expiresAt:op.expiresAt,stage:op.stage,hash:op.submission?.hash||null,gasToken:op.gasToken||null,error:op.error||null};}
   function owned(id:unknown,user:Identity,scope:'personal'|'admin',readOnly=false) {
     if(typeof id!=='string'||!/^[a-f0-9]{64}$/.test(id))throw new SlotError('Input','Invalid request.',400);
@@ -75,7 +79,7 @@ export function createContractApi({walletService, getSlot, origin, admin, coordi
       if(kind==='prepare') {
         if(typeof input.action!=='string'||!Array.isArray(input.args)||input.args.length>8||!input.args.every((arg:unknown)=>typeof arg==='string'&&arg.length<=100))throw new SlotError('Input','Invalid parameters.',400);
         if(scope==='admin')await admin!.assertAction(user,input.action);
-        else if(['mintERC1155','acceptPrizeOwnership'].includes(input.action))throw new SlotError('AdminAction','Sign in to the shared admin wallet for this operation.',403);
+        else if(['mintERC1155','acceptPrizeOwnership','transferPrizeOwnership','acceptPrizeOwnershipBackend'].includes(input.action))throw new SlotError('AdminAction','Sign in to the shared admin wallet for this operation.',403);
         if(preparing.has(wallet.id))throw new SlotError('Busy','Preparation already in progress.');
         preparing.add(wallet.id);
         try {
@@ -84,10 +88,13 @@ export function createContractApi({walletService, getSlot, origin, admin, coordi
           if(previous){await reconcile(previous,slot);if(!terminal(previous))return reply({error:'This wallet already has an operation in progress. Wait or check its confirmation.',code:'Pending',pending:previous.stage==='prepared'?null:{id:previous.id,hash:previous.submission?.hash}},409);}
           const leaseId=randomBytes(32).toString('hex');
           await writes.acquire(lockKey,leaseId,async()=>{const saved=operations.get(leaseId);if(!saved)return false;if(saved.stage==='prepared'&&saved.expiresAt<=now())saved.stage='cancelled';await reconcile(saved,slot);return terminal(saved);});
-          let transaction:Transaction;try{if(scope==='personal'&&['approveBudget','transferERC20','transferERC1155'].includes(input.action)){const player=await slot.reader.walletState(wallet.address as Address);if(player.busy)throw new SlotError('GamePending','Wait for the spin to settle before changing the wallet.',409);}
-          transaction=await prepareAction(slot.reader,wallet.address as Address,input.action,input.args);}catch(error){writes.release(lockKey,leaseId);throw error;}
+          let transaction:Transaction,signerAddress:Address|undefined;try{if(scope==='personal'&&['approveBudget','transferERC20','transferERC1155'].includes(input.action)){const player=await slot.reader.walletState(wallet.address as Address);if(player.busy)throw new SlotError('GamePending','Wait for the spin to settle before changing the wallet.',409);}
+          if(input.action==='acceptPrizeOwnershipBackend'){
+            const backend=slot.health().address;if(!backend)throw new SlotError('KeeperMissing','The backend wallet is not configured.',503);
+            signerAddress=backend;transaction=await prepareBackendAcceptance(slot,backend,input.args);
+          }else transaction=await prepareAction(slot.reader,wallet.address as Address,input.action,input.args);}catch(error){writes.release(lockKey,leaseId);throw error;}
           const op:Operation={id:leaseId,userId:user.userId,walletId:wallet.id,address:wallet.address,
-            action:input.action,args:[...input.args],transaction,expiresAt:now()+300000,stage:'prepared',scope};
+            action:input.action,args:[...input.args],transaction,signerAddress,expiresAt:now()+300000,stage:'prepared',scope};
           operations.set(op.id,op);activeWallets.set(wallet.id,op.id);return reply(view(op));
         }finally{preparing.delete(wallet.id);}
       }
@@ -97,6 +104,25 @@ export function createContractApi({walletService, getSlot, origin, admin, coordi
       if(op.stage!=='prepared'){await reconcile(op,slot);return reply(view(op),202);}
       if(op.expiresAt<=now()){op.stage='cancelled';throw new SlotError('Expired','Confirmation expired. Prepare the operation again.');}
       if(input.confirm!==true)throw new SlotError('Consent','Confirm the operation and fees before sending.',400);
+      if(op.action==='acceptPrizeOwnershipBackend') {
+        // This operation signs with the backend EOA, never with a Privy wallet.
+        if(scope!=='admin'||!op.signerAddress)throw new SlotError('AdminAction','Shared admin authorization required.',403);
+        op.stage='submitting';
+        void (async()=>{
+          try {
+            const assertAccess=async()=>{
+              if(op.expiresAt<=now())throw new SlotError('Expired','Confirmation expired before sending.');
+              const access=await admin!.assertAction(user,op.action);
+              if(access.role!=='owner'||access.wallet.id!==op.walletId||access.wallet.address.toLowerCase()!==op.address.toLowerCase()||slot.health().address?.toLowerCase()!==op.signerAddress!.toLowerCase())throw new SlotError('AdminAction','Wallet ownership or backend configuration changed.',403);
+              const checked=await prepareBackendAcceptance(slot,op.signerAddress!,op.args);
+              if(checked.to!==op.transaction.to||checked.data!==op.transaction.data||checked.chainId!==op.transaction.chainId)throw new SlotError('Cancelled','Collection configuration changed. Prepare again.');
+            };
+            // The engine rechecks access inside the keeper's serialized nonce queue.
+            await slot.sendBackend('acceptPrizeOwnership',op.transaction.to,hash=>{op.submission={hash,gasToken:'ETH'};op.gasToken='ETH';op.stage='confirming';},assertAccess);
+          } catch(error){op.stage=op.submission?.hash?'uncertain':'failed';op.error=slotError(error).message;}
+        })();
+        return reply(view(op),202);
+      }
       if(!walletService.sendOwned)throw new SlotError('Config','Privy sending unavailable.',503);
       // Mark synchronously, before yielding, so concurrent confirmations share one send.
       op.stage='submitting';
