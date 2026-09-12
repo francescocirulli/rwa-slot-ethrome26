@@ -105,3 +105,10 @@ Details: [app and wallets](apps/web/README.md),
 [onchain integration](apps/web/docs/contracts.md),
 [shared admin wallet](apps/web/docs/shared-admin.md),
 [swaps and inventory](apps/web/docs/assets-and-swaps.md).
+
+## Arkiv seasonal leaderboard
+
+The optional Arkiv integration indexes confirmed Base spins and displays the same
+season on iPad and phone. Contributions expire together at the season boundary;
+spin history has independent retention. See [setup and bounty evidence](arkiv/README.md),
+[schema](arkiv/schema.md), and [feedback](friction.md).
