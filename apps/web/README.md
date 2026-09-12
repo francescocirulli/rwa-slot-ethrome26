@@ -445,9 +445,11 @@ retain the original transaction; a balance of zero never authorizes another bonu
 
 ## ENSv2 on the phone
 
-Optional ENS voucher redemption registers `*.wallstreetslot.eth` on Sepolia
-using the existing backend EOA. The player receives the ENS name and pays no
-Sepolia gas. Existing Base ENS vouchers are transferred to `0x000000000000000000000000000000000000dEaD`, not burned;
+We registered `wallstreetslot.eth` as the parent ENS name on Sepolia. A player who
+wins and redeems an ENS Registration voucher can choose an available subdomain,
+for example `elon.wallstreetslot.eth`, and receives ownership in their personal
+wallet without paying Sepolia gas. The existing backend EOA submits the Sepolia
+transactions. Existing Base ENS vouchers are transferred to `0x000000000000000000000000000000000000dEaD`, not burned;
 the player's Base transfer follows the app's existing USDC/ETH fee mode.
 The phone confirms the voucher once, then follows backend registration automatically.
 Subdomains ultimately use the official ENSv2

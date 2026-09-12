@@ -279,8 +279,11 @@ The existing ENS prize (ID 2) is transferred directly to
 contract is deployed. The transfer calldata binds the reservation and the
 backend verifies the finalized receipt and ERC1155 event before fulfilling it.
 This transfer does not burn the token or reduce its supply.
-The integration pins the official `ensdomains/contracts-v2` Sepolia deployment.
-Its `ETHRegistry` maps `wallstreetslot.eth` to the project's UserRegistry proxy.
+We registered `wallstreetslot.eth` as the parent ENS name on Sepolia through the
+official `ensdomains/contracts-v2` deployment. Winning and redeeming an ENS
+Registration voucher creates an available player-selected subdomain, for example
+`elon.wallstreetslot.eth`, owned by that player's wallet. The official `ETHRegistry`
+maps the parent to the project's UserRegistry proxy.
 `SlotENSRegistrar` uses a backend-attested Base transaction/log identifier only
 once, deploys a child resolver through the official ENSv2 factory, and calls the
 project UserRegistry to create the subname. The player owns the name and resolver;

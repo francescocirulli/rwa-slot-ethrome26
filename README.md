@@ -29,8 +29,11 @@ onchain as base64 data URIs. ENS Registration vouchers use collection ID 2. Thei
 Base transfer is verified by the backend before the Sepolia registrar creates a
 `*.wallstreetslot.eth` ENSv2 name owned by the player.
 
-The ENS integration uses the official `ensdomains/contracts-v2` Sepolia deployment.
-Its `ETHRegistry` delegates `wallstreetslot.eth` subnames to the project's
+We registered `wallstreetslot.eth` as the parent ENS name on Sepolia using the
+official `ensdomains/contracts-v2` deployment. A player who wins and redeems an
+ENS Registration voucher chooses an available label and receives the corresponding
+subdomain, for example `elon.wallstreetslot.eth`, in their own wallet. The official
+`ETHRegistry` delegates these `wallstreetslot.eth` subnames to the project's
 [`UserRegistry`](https://sepolia.etherscan.io/address/0x6D9E4b4a02D966D460D5fFBA87fDE09a7Ba34b21).
 The project-specific
 [`SlotENSRegistrar`](https://sepolia.etherscan.io/address/0x84f6ddfe529D5f38AF2a95e38B6a23f9b4CDAA69)
