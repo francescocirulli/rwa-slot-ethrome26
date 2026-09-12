@@ -36,6 +36,11 @@
   function toolState(id, on, label) {var button = el(id); button.classList.toggle('is-on', on); button.setAttribute('aria-label', label); button.title = label; var caption = button.querySelector('small'); if (caption && button.getAttribute('data-caption')) caption.textContent = on ? button.getAttribute('data-caption') : caption.getAttribute('data-default') || caption.textContent;}
   function audioLabel() {toolState('audio-enable', !!(audioEnabled && audio && audio.state === 'running'), audioEnabled && audio && audio.state === 'running' ? 'Sound on' : 'Sound off');}
   el('audio-enable').onclick = function () {if (audioEnabled && audio && audio.state === 'running') {audioEnabled = false; audio.suspend(); audioLabel();} else unlockAudio();};
+  // Browsers only start audio after a real touch, and the motion sensor is not one: the first touch anywhere
+  // on the page arms the sound for the session, and the Sound button still mutes it.
+  var armed = false;
+  function armAudio(event) {if (armed || event.isTrusted === false) return; armed = true; if (!audioEnabled) unlockAudio();}
+  document.addEventListener('touchstart', armAudio, {passive: true}); document.addEventListener('mousedown', armAudio);
   // Attract show: when the cabinet sees someone, the reels vibrate in place, the lights run, props rise
   // over the glass and a short tune plays (only after the Sound button unlocked audio). Display only.
   var attractTimer, tuneTimer, tuneRound = 0;
