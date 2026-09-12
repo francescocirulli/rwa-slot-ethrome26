@@ -11,8 +11,8 @@ button uses the Fullscreen API with the WebKit prefix and hides itself where the
 browser does not support it. Decorative dice, cards and chips live in
 `public/decor` and are never part of the layout. Integrates `DigitalSlotMachine` from [`../../contracts`](../../contracts):
 paid spins, free spins, automatic reveal and an onchain admin console.
-The contract has not been deployed yet: without a configured address, wallets
-and pairing work while game operations remain disabled.
+Without a configured contract address, wallet login, holdings and pairing remain
+available while game operations and reviewed wallet writes are disabled.
 
 Before contributing, read [../../CONTRIBUTING.md](../../CONTRIBUTING.md),
 [../../AGENTS.md](../../AGENTS.md) and the [web rules](AGENTS.md).
@@ -28,7 +28,8 @@ npm run dev
 ```
 
 - `/`: iPad terminal, HTML/CSS/ES5, without a React runtime or wallet SDK.
-- `/phone`: Privy login, pairing, balance, receiving USDC and budget consent.
+- `/phone`: standalone personal wallet, optional iPad pairing, USDC allowance,
+  token/NFT balances and reviewed transfers on Base.
 - `/admin`: personal Privy accounts, shared wallet, collaborators, catalog, reserves and controls.
 
 The phone and iPad must reach the same HTTPS origin. `APP_ORIGIN` is the exact
@@ -54,7 +55,8 @@ The shared session ends after **3 minutes of global inactivity** across iPad
 and phone. Polling, animations and reads do not reset the timer. The terminal
 hides data at expiry even offline and ignores late responses. Pairing the same
 account again closes its previous session. The user retains the wallet and
-funds; admin logout follows the personal Privy session instead.
+funds. Ending or expiring the iPad pairing keeps the phone wallet signed in.
+“Esci dal wallet” explicitly ends the personal Privy session.
 
 Player and shared admin wallets have separate selection paths. Each admin
 signs in with their own Privy account; all authorized users see the same wallet,
@@ -71,6 +73,39 @@ the existing default. To initialize a separate wallet after a trial with another
 account, follow [the recovery procedure](docs/shared-admin.md#changing-accounts-after-a-trial).
 The admin panel requires a modern browser; the terminal targets iPad Air in
 landscape, iOS 12.5.8 / Safari 12.1.2, matching the experimental reference repo.
+
+## Personal phone wallet
+
+Open `/phone` directly and sign in with email or passkey. A new account can create
+its embedded wallet without scanning a QR. The page shows USDC, ETH for gas, all
+supported equity tokens, GOLD/DGLD, and the known ERC1155 prize IDs with quantities.
+`GET /api/account` verifies the Privy JWT and reads only that account's default
+embedded wallet; address query parameters and pairing cookies do not select it.
+Portfolio reads share a five-second cache and report unavailable values on errors.
+
+The USDC limit is the current onchain allowance to the configured slot. A new
+approval replaces that limit rather than adding to it. Revocation approves zero.
+Both require explicit transaction review and wallet authorization, including gas.
+Stock tokens, GOLD, USDC and NFT quantities can be sent to an external Base address.
+Free spins cannot be transferred. Each transfer validates the supported asset,
+verified decimals, positive integer units, recipient and current balance on the
+server, then rechecks after review. ERC1155 transfers use `safeTransferFrom`;
+recipients must support that token standard. No redemption of physical prizes is
+performed by transferring their NFTs.
+
+Personal approvals/transfers and lever submissions share a wallet write coordinator.
+A prepared review holds a lease until cancellation or expiry; a submitted operation
+holds it until a definite outcome. Spins hold it through confirmed reveal or onchain
+invalidation, including after the phone disconnects. Unknown submissions cannot be
+retried as new transactions. Transaction IDs are retained in session storage for
+recovery; once a hash is known, receipt recovery survives a service restart. This
+uses the existing single-service, in-memory architecture and adds no database or
+replica. User-owned wallet requests still use exact Privy SDK request authorization,
+never the keeper or shared admin wallet.
+
+Scanning a QR while signed in asks only to confirm the matching iPad code. The
+phone distinguishes ending that pairing, revoking USDC allowance and logging out.
+Three-minute inactivity applies to the shared arcade session, not wallet access.
 
 ## Gameplay and wallet separation
 
@@ -97,7 +132,9 @@ attempt to delete the remote quorum. The policy does not expire independently:
 the backend enforces the timer and holds the only key capable of using that
 signer. Privy metadata may remain if remote cleanup fails.
 **Logout does not reset the remaining USDC allowance**: the phone offers an
-explicit action to reset it. To choose a new budget, disconnect and scan a new QR code.
+explicit onchain action to revoke it or replace it with another finite amount,
+including without iPad pairing. If a play signer is active, it can use the new
+allowance during that session. Approving USDC alone never authorizes an iPad.
 
 The reels spin from submission until the reveal has two confirmations. The
 backend waits for the block required by the contract and finishes the game even

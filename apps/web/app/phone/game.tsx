@@ -2,15 +2,14 @@
 import {useEffect, useState} from 'react';
 import {useSigners} from '@privy-io/react-auth';
 import {formatUnits, parseUnits} from 'viem';
-import {TransactionConfirmation} from '@/lib/slot/transaction-review';
-import {useContractTransaction} from '@/lib/slot/use-transaction';
+import type {PhoneTransaction} from './wallet';
 import type {SessionView} from '@/lib/types';
 import type {SlotSnapshot} from '@/lib/slot/reader';
 type GameState = SlotSnapshot & {keeper: {configured: boolean; canStartFreeSpin: boolean}};
-export function PhoneGame({session, api, onSession, onConfigured}: {session: SessionView; api: (path: string, data?: unknown, auth?: boolean) => Promise<any>; onSession: (session: SessionView) => void; onConfigured: (configured: boolean) => void}) {
+export function PhoneGame({session, api, onSession, onConfigured, transaction}: {transaction:PhoneTransaction; session: SessionView; api: (path: string, data?: unknown, auth?: boolean) => Promise<any>; onSession: (session: SessionView) => void; onConfigured: (configured: boolean) => void}) {
   const [state, setState] = useState<GameState | null>(null), [budget, setBudget] = useState('5'), [consent, setConsent] = useState(false);
   const [error, setError] = useState(''), [working, setWorking] = useState(false);
-  const {addSigners} = useSigners(), transaction = useContractTransaction(session.address!);
+  const {addSigners} = useSigners();
   useEffect(() => {
     let cancelled = false, timer: ReturnType<typeof setTimeout>;
     async function poll() {
@@ -22,9 +21,10 @@ export function PhoneGame({session, api, onSession, onConfigured}: {session: Ses
   }, [session.id, api, onConfigured]);
   if (!state) return null;
   const player = state.player, grant = session.playGrant, active = grant?.active;
+  const roundBusy=!!player?.game?.pending;
   const amount = grant ? formatUnits(BigInt(grant.budget), 6) : budget;
   async function authorize() {
-    if (working || !consent) return;
+    if (working || !consent || transaction.busy || transaction.pending || roundBusy) return;
     setWorking(true); setError('');
     try {
       if (!/^\d+(\.\d{1,6})?$/.test(amount) || parseUnits(amount, 6) <= 0n) throw new Error('Enter a valid USDC budget (up to 6 decimals).');
@@ -40,19 +40,18 @@ export function PhoneGame({session, api, onSession, onConfigured}: {session: Ses
   }
   return <section className="phone-card phone-play-card"><span className="eyebrow">THE SLOT IS LINKED · BASE</span><h2>{active ? 'Luck is up.' : 'Pick your budget.'}</h2>
     <div className="play-facts"><span>Current spin <b>{formatUnits(BigInt(state.settings.ticketPrice),6)} USDC</b></span><span>Free spins available <b>{player?.freeSpins || '0'}</b></span></div>
-    {player && BigInt(player.freeSpins) > 0n && !active && <div className="permission-note"><b>You can already play for free on the iPad.</b><p>You have {player.freeSpins} free spins. Pull the lever or press USE FREE SPIN: no USDC top-up or approval needed. Gas is included.</p></div>}
+    {player && BigInt(player.freeSpins) > 0n && !active && <div className="permission-note"><b>You can already play for free on the iPad.</b><p>You have {player.freeSpins} free spins. Pull the lever or press FREE SPIN: no USDC top-up or approval needed. Gas is included.</p></div>}
     {active ? <><div className="permission-note"><b>Spins enabled on the iPad.</b><p>Remaining USDC budget: {formatUnits(BigInt(player?.allowance || '0'),6)}. You can close your phone and use the lever or the button on the tablet.</p></div>{player?.game?.pending && <p className="small">Spin #{player.game.id} is waiting for the reveal. The keeper settles it even if you leave.</p>}</> : <>
       <p>Approve a maximum USDC amount for the slot. Each confirmed spin deducts the current price from this budget.</p>
       <label className="budget-label" htmlFor="play-budget">USDC budget</label><input id="play-budget" inputMode="decimal" value={amount} disabled={!!grant || working || transaction.busy} onChange={event => setBudget(event.target.value.replace(',', '.'))}/>
       <div className="permission-note"><b>Spins on this slot only.</b><p>The signer can start spins but cannot raise the budget approved for the slot. Fees are handled by Privy. The permission ends at logout or after 3 minutes of global inactivity.</p></div>
       <label className="check-row"><input type="checkbox" checked={consent} disabled={working} onChange={event => setConsent(event.target.checked)}/><span>I authorize spins within this budget, plus my wallet fees. With USDC gas I also authorize the ETH fallback if USDC is not enough.</span></label>
-      <button className="phone-primary" disabled={!consent || working || transaction.busy || transaction.pending} onClick={() => void authorize()}>{working ? 'Approving…' : grant ? 'Complete the approval' : 'Approve and play'} <span>↗</span></button>
+      <button className="phone-primary" disabled={!consent || working || transaction.busy || transaction.pending || roundBusy} onClick={() => void authorize()}>{working ? 'Approving…' : grant ? 'Complete the approval' : 'Approve and play'} <span>↗</span></button>
     </>}
     {transaction.pending && <div className="phone-progress" role="status">Request under verification. Waiting for a definite result.<button className="phone-text" disabled={transaction.busy} onClick={() => void transaction.check()}>Check transaction</button></div>}
     {(error || transaction.error) && <p className="phone-error" role="alert">{error || transaction.error}</p>}
     <p className="small">{state.gasMode === 'usdc' ? 'Extra fees in USDC. If they are not enough, we use ETH from your wallet on Base after a rejection before sending.' : 'Gas needs ETH in your wallet on Base.'} Free spins do not charge USDC.</p>
-    {active && <><button className="phone-text" disabled={transaction.busy || transaction.pending} onClick={() => void transaction.execute('approveBudget', ['0']).catch(() => {})}>Reset the remaining budget</button><p className="small">To choose a new budget, end the link to the iPad and scan the new QR code. At logout the signer is disabled; the remaining USDC approval stays on the contract until you reset it.</p></>}
+    {active && <p className="small">You can change or revoke the USDC approval in the “Your USDC limit” section below, even after ending the link.</p>}
     {transaction.gasToken && <p className="small">Fees for the last request: {transaction.gasToken}.</p>}
-    <TransactionConfirmation review={transaction.review} onDecision={transaction.decide}/>
   </section>;
 }

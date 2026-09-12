@@ -17,8 +17,8 @@ type Operation = {
   stage:'prepared'|'submitting'|'confirming'|'confirmed'|'failed'|'uncertain'|'cancelled';
   submission?:SubmittedSpin; gasToken?:GasToken; error?:string;
 };
-export function createContractApi({walletService, getSlot, origin, admin, coordinator=createWriteCoordinator(), now=Date.now}: {
-  walletService?:WalletService; getSlot:()=>SlotEngine|null; origin:string; admin?:AdminAccessService; coordinator?:WriteCoordinator; now?:()=>number;
+export function createContractApi({walletService, getSlot, origin, admin, coordinator=createWriteCoordinator(), personalCoordinator=createWriteCoordinator(), now=Date.now}: {
+  walletService?:WalletService; getSlot:()=>SlotEngine|null; origin:string; admin?:AdminAccessService; coordinator?:WriteCoordinator; personalCoordinator?:WriteCoordinator; now?:()=>number;
 }) {
   const operations=new Map<string,Operation>(), activeWallets=new Map<string,string>();
   const preparing=new Set<string>();
@@ -46,7 +46,7 @@ export function createContractApi({walletService, getSlot, origin, admin, coordi
   }
   function cleanup() {
     for(const op of operations.values())if(op.stage==='prepared'&&op.expiresAt<=now())op.stage='cancelled';
-    if(operations.size>=512)for(const [id,op]of operations){if(terminal(op)){if(op.scope==='admin')coordinator.release(op.walletId,id);operations.delete(id);if(activeWallets.get(op.walletId)===id)activeWallets.delete(op.walletId);break;}}
+    if(operations.size>=512)for(const [id,op]of operations){if(terminal(op)){(op.scope==='admin'?coordinator:personalCoordinator).release(op.scope==='admin'?op.walletId:op.address.toLowerCase(),id);operations.delete(id);if(activeWallets.get(op.walletId)===id)activeWallets.delete(op.walletId);break;}}
     if(operations.size>=512)throw new SlotError('Busy','Too many pending operations. Try again shortly.',503);
   }
   return {async handle(request:Request,kind:'prepare'|'send'|'status'|'cancel',scope:'personal'|'admin'='personal') {
@@ -55,7 +55,7 @@ export function createContractApi({walletService, getSlot, origin, admin, coordi
       if(request.method!==(kind==='status'?'GET':'POST'))throw new SlotError('Method','Method not allowed.',405);
       if(kind!=='status'&&(request.headers.get('origin')!==new URL(origin).origin||request.headers.get('x-slot-request')!=='1'))throw new SlotError('Origin','Invalid origin.',403);
       const token=request.headers.get('authorization')?.match(/^Bearer ([^ ]+)$/)?.[1];
-      if(!token||token.length>16000)throw new SlotError('Auth','Accedi con Privy.',401);
+      if(!token||token.length>16000)throw new SlotError('Auth','Sign in with Privy.',401);
       if(!walletService)throw new SlotError('Config','Privy not configured.',503);
       let user=await walletService.authenticate(token).catch(()=>{throw new SlotError('Auth','Access not verified.',401);});
       if(scope==='admin'){
@@ -63,11 +63,13 @@ export function createContractApi({walletService, getSlot, origin, admin, coordi
         const access=await admin.resolve(user);user={...user,wallets:[access.wallet]};
       }
       const wallet=user.wallets[0];if(!wallet)throw new SlotError('Wallet','Create the embedded wallet first.',409);
+      const writes=scope==='admin'?coordinator:personalCoordinator;
+      const lockKey=scope==='admin'?wallet.id:wallet.address.toLowerCase();
       const slot=getSlot();if(!slot)throw new SlotError('Config','Contract not configured.',503);
       if(kind==='status'){const op=owned(new URL(request.url).searchParams.get('id'),user,scope,true);await reconcile(op,slot);return reply({...view(op),canConfirm:op.userId===user.userId});}
       if(!request.headers.get('content-type')?.startsWith('application/json'))throw new SlotError('Input','Invalid format.',415);
       let body='',bytes=0;const stream=request.body?.getReader();
-      if(stream){const decoder=new TextDecoder();while(true){const chunk=await stream.read();if(chunk.done)break;bytes+=chunk.value.length;if(bytes>5000){await stream.cancel();throw new SlotError('Input','Richiesta troppo grande.',413);}body+=decoder.decode(chunk.value,{stream:true});}}
+      if(stream){const decoder=new TextDecoder();while(true){const chunk=await stream.read();if(chunk.done)break;bytes+=chunk.value.length;if(bytes>5000){await stream.cancel();throw new SlotError('Input','Request too large.',413);}body+=decoder.decode(chunk.value,{stream:true});}}
       let input;try{input=JSON.parse(body);}catch{throw new SlotError('Input','Invalid JSON.',400);}
       if(!input||typeof input!=='object')throw new SlotError('Input','Invalid parameters.',400);
       if(kind==='prepare') {
@@ -81,8 +83,9 @@ export function createContractApi({walletService, getSlot, origin, admin, coordi
           const previous=operations.get(activeWallets.get(wallet.id)||'');
           if(previous){await reconcile(previous,slot);if(!terminal(previous))return reply({error:'This wallet already has an operation in progress. Wait or check its confirmation.',code:'Pending',pending:previous.stage==='prepared'?null:{id:previous.id,hash:previous.submission?.hash}},409);}
           const leaseId=randomBytes(32).toString('hex');
-          if(scope==='admin')await coordinator.acquire(wallet.id,leaseId,async()=>{const saved=operations.get(leaseId);if(!saved)return false;if(saved.stage==='prepared'&&saved.expiresAt<=now())saved.stage='cancelled';await reconcile(saved,slot);return terminal(saved);});
-          let transaction:Transaction;try{transaction=await prepareAction(slot.reader,wallet.address as Address,input.action,input.args);}catch(error){if(scope==='admin')coordinator.release(wallet.id,leaseId);throw error;}
+          await writes.acquire(lockKey,leaseId,async()=>{const saved=operations.get(leaseId);if(!saved)return false;if(saved.stage==='prepared'&&saved.expiresAt<=now())saved.stage='cancelled';await reconcile(saved,slot);return terminal(saved);});
+          let transaction:Transaction;try{if(scope==='personal'&&['approveBudget','transferERC20','transferERC1155'].includes(input.action)){const player=await slot.reader.player(wallet.address as Address);if(!player.historyReady||player.game?.pending||player.game?.hasResult&&!player.game.confirmed)throw new SlotError('GamePending','Wait for the spin to settle and the history check before changing the wallet.',409);}
+          transaction=await prepareAction(slot.reader,wallet.address as Address,input.action,input.args);}catch(error){writes.release(lockKey,leaseId);throw error;}
           const op:Operation={id:leaseId,userId:user.userId,walletId:wallet.id,address:wallet.address,
             action:input.action,args:[...input.args],transaction,expiresAt:now()+300000,stage:'prepared',scope};
           operations.set(op.id,op);activeWallets.set(wallet.id,op.id);return reply(view(op));
@@ -102,7 +105,10 @@ export function createContractApi({walletService, getSlot, origin, admin, coordi
         try {
           const assertAccess=async()=>{
             if(op.expiresAt<=now())throw new SlotError('Cancelled','Confirmation expired before sending. Prepare the operation again.');
-            if(scope!=='admin')return;
+            if(scope!=='admin'){
+              if(['approveBudget','transferERC20','transferERC1155'].includes(op.action)){const player=await slot.reader.player(op.address as Address);if(!player.historyReady||player.game?.pending||player.game?.hasResult&&!player.game.confirmed)throw new SlotError('GamePending','Wait for the spin to settle.',409);}
+              return;
+            }
             const access=await admin!.assertAction(user,op.action);
             if(access.wallet.id!==op.walletId||access.wallet.address.toLowerCase()!==op.address.toLowerCase())throw new SlotError('Cancelled','The shared wallet changed.');
           };

@@ -10,6 +10,7 @@
   <title>Wall Street Slot — fully onchain</title>
   <link rel="icon" href="/symbols/jackpot.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/terminal/style.css">
+  <script src="/terminal/demo-model.js" defer></script>
   <script src="/terminal/demo.js" defer></script>
   <script src="/terminal/client.js" defer></script>
   <script src="/terminal/game.js" defer></script>
@@ -22,7 +23,7 @@
   <div class="app-shell">
     <header class="topbar">
       <div class="brand"><span class="brand-mark" aria-hidden="true">$</span><h1 class="wordmark">WALL STREET SLOT</h1></div>
-      <div class="kiosk-tools"><button id="info-open" type="button"><span aria-hidden="true">i</span>Info</button><button id="audio-enable" type="button">Sound off</button><button id="fullscreen-toggle" type="button" aria-label="Full screen" title="Full screen">⤢</button><button id="settings-open" type="button"><span aria-hidden="true">⚙</span>Settings</button><button id="panel-toggle" type="button" aria-expanded="true">Hide wallet</button></div>
+      <div class="kiosk-tools"><button id="info-open" type="button"><span aria-hidden="true">i</span>Info</button><button id="audio-enable" type="button">Sound off</button><button id="fullscreen-toggle" type="button" aria-label="Full screen" title="Full screen">⤢</button><button id="mode-switch" type="button">Demo</button><button id="settings-open" type="button"><span aria-hidden="true">⚙</span>Settings</button><button id="panel-toggle" type="button" aria-expanded="true">Hide wallet</button></div>
     </header>
     <main class="main-layout">
       <section class="cabinet" aria-label="Slot machine with 3 rows and 5 reels">
@@ -102,8 +103,8 @@
   </div></div>
   <div id="settings-dialog" class="overlay" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden><div class="dialog settings-dialog">
     <span class="overline">PLAYER SETTINGS</span><h2 id="settings-title">Your seat.</h2>
-    <p>Log in by scanning the QR code in the wallet panel. Logging out frees the seat and keeps your wallet and funds.</p>
-    <div class="settings-list"><button id="settings-logout" class="settings-button" type="button">Log out and free the seat <span>↗</span></button><button id="mode-switch" class="settings-button" type="button">LIVE · switch to demo</button><button id="hardware-open" class="settings-button" type="button">Link Arduino cabinet <span>↗</span></button></div>
+    <p>Log in by scanning the QR code in the wallet panel. Logging out frees the seat and keeps your wallet and funds. Use the Demo button in the header to switch between the demo and the live wallet.</p>
+    <div class="settings-list"><button id="settings-logout" class="settings-button" type="button">Log out and free the seat <span>↗</span></button><button id="hardware-open" class="settings-button" type="button">Link Arduino cabinet <span>↗</span></button></div>
     <button id="settings-close" class="primary-button" type="button">DONE <span>✓</span></button>
   </div></div>
   <noscript>Enable JavaScript in Safari to link your wallet.</noscript>

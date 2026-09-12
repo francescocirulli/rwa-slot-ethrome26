@@ -198,7 +198,6 @@ test('a paired wallet can enter demo when the contract is not configured', async
   const phone = await phoneContext(browser);
   await link(page, phone);
   await expect(page.locator('#free-spin-note')).toHaveText('The slot is not live yet.');
-  await page.locator('#settings-open').click();
   await page.locator('#mode-switch').click();
   await expect(page).toHaveURL(/demo=1/);
   await expect(page.locator('body')).toHaveAttribute('data-mode', 'demo');

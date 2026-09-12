@@ -120,7 +120,7 @@
   };
   document.addEventListener('fullscreenchange', fullscreenLabel); document.addEventListener('webkitfullscreenchange', fullscreenLabel);
   fullscreenLabel();
-  el('mode-switch').textContent = demo ? 'DEMO · back to live' : 'LIVE · switch to demo';
+  el('mode-switch').textContent = demo ? 'Back to live' : 'Demo';
   el('mode-switch').onclick = function () {if (window.slotCanSwitchMode && !window.slotCanSwitchMode()) return; window.location.href = demo ? '/' : '/?demo=1';};
   document.addEventListener('visibilitychange', function () {gate = ''; ready = false; if (document.hidden) {window.clearInterval(spinSound); spinSound = null;} else {audioLabel(); poll();}});
   window.setInterval(function () {drawAttract(); audioLabel();}, 500);

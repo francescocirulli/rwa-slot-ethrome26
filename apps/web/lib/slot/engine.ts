@@ -6,10 +6,11 @@ import {SlotError, slotError} from './errors';
 import {slotAbi} from './abi';
 import {definiteSendFailure, transactionError, type GasToken} from './gas';
 import type {WelcomeView} from '../welcome';
+import {personalWrites, type WriteCoordinator} from '../admin/write-coordinator';
 import {createWelcomeHistory, welcomeGrantData, type WelcomeHistory} from './welcome-history';
 export type SubmittedSpin = {hash?: Hash; transactionId?: string; userOperationHash?:Hash; gasToken?: GasToken};
 export type SpinOperation = {key: string; attempt: number; player: Address; afterGameId: string; stage: 'submitting' | 'confirming' | 'started' | 'failed' | 'uncertain'; hash?: Hash; gameId?: string; error?: string; gasToken?: GasToken; transactionId?: string};
-export function createSlotEngine(reader: SlotReader, backendKey?: Hex) {
+export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:WriteCoordinator=personalWrites()) {
   const {client, config, chain, contract} = reader;
   const backend = backendKey ? privateKeyToAccount(backendKey) : undefined;
   const wallet = backend ? createWalletClient({account: backend, chain, transport: http(config.rpcUrl, {retryCount: 0, timeout: 12000})}) : undefined;
@@ -98,65 +99,82 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex) {
       options.assertSession(); await reader.validate();
       const existing = operations.get(key);
       if (existing && existing.stage !== 'failed' && !(existing.stage === 'uncertain' && !existing.hash)) {await reconcile(existing); return {...existing};}
-      const state = await reader.player(player);
-      if (!state.historyReady) throw new SlotError('HistorySyncing', 'Recovering the onchain history. Wait before starting.');
-      if (afterGameId > state.latestGameId) throw new SlotError('StaleGame', 'Refresh the session before starting.');
-      if (state.game?.pending || state.latestGameId !== afterGameId) {
-        return {key, attempt: 0, player, afterGameId: afterGameId.toString(), stage: 'started' as const, gameId: state.latestGameId.toString()};
-      }
-      const settings = await reader.settings();
-      if (settings.paused) throw new SlotError('Paused', 'The machine is paused.');
-      if (settings.totalOutcomeWeight !== 1000 || settings.configuredPrizeCount < 3) throw new SlotError('Paytable', 'The prize table is not ready.');
-      if (!(await reader.funding()).ready) throw new SlotError('InsufficientPrizeInventory', 'The slot is restocking prizes. Wait before you spin: your balance and free spins stay available.');
-      if (!backend || !health.configured) throw new SlotError('KeeperMissing', 'The reveal service is not configured yet.', 503);
-      if (!health.lastTick || Date.now() - health.lastTick > 30000 || health.balanceWei === '0' || health.error) throw new SlotError('KeeperNotReady', 'The reveal service must be online and hold ETH for gas.', 503);
-      if (mode === 'free') {
-        if (!state.freeSpins) throw new SlotError('NoFreeSpins', 'No free spins available.');
-        const permissions = await reader.roles(backend.address);
-        if (!permissions.manager) throw new SlotError('KeeperRole', 'Grant GAME_MANAGER_ROLE to the keeper wallet to use free spins.', 503);
-      } else {
-        if (!options.sendPaid) throw new SlotError('ConsentRequired', 'Approve spins from your phone.');
-        if (options.maxPrice === undefined || settings.ticketPrice > options.maxPrice) throw new SlotError('BudgetExceeded', 'The approved budget is not enough for this spin.');
-        if (state.allowance < settings.ticketPrice) throw new SlotError('Allowance', 'Approve a USDC budget from your phone.');
-        if (state.balance < settings.ticketPrice) throw new SlotError('Balance', 'Insufficient USDC balance.');
-        await client.simulateContract({...contract, account: player, functionName: 'startSpin', gasPrice: 0n});
-      }
-      options.assertSession();
-      const operation: SpinOperation = {key, attempt: existing?.stage === 'failed' ? existing.attempt + 1 : existing?.attempt || 0, player, afterGameId: afterGameId.toString(), stage: 'submitting'};
-      if (operations.size >= 512) {
-        const old = [...operations.entries()].find(([, value]) => value.stage === 'started' || value.stage === 'failed');
-        if (!old) throw new SlotError('Busy', 'Too many requests awaiting confirmation. Try again shortly.', 503);
-        operations.delete(old[0]);
-      }
-      operations.set(key, operation);
-      // Keep HTTP short while wallet signing and mining continue. Polling is read-only.
-      void (async () => {
-        try {
-          options.assertSession();
-          if (mode === 'free') operation.hash = await sendBackend('startFreeSpin', player, hash => {operation.hash = hash; operation.stage = 'confirming';}, options.assertSession);
-          else {
-            const submission = await options.sendPaid!(`${key}:${operation.attempt}`);
-            operation.gasToken = submission.gasToken; operation.transactionId = submission.transactionId;
-            operation.hash = submission.hash;
-            if (!operation.hash && options.resolvePaid) {
-              for (let attempt = 0; attempt < 90 && !operation.hash; attempt++) {
-                operation.hash = await options.resolvePaid(submission);
-                if (!operation.hash) await new Promise(resolve => setTimeout(resolve, 2000));
-              }
-            }
-            if (!operation.hash) throw new SlotError('TransactionPending', 'Privy is still processing the transaction. Do not start a second request.');
-          }
-          operation.stage = 'confirming';
-          await client.waitForTransactionReceipt({hash: operation.hash, confirmations: 1, timeout: 180000});
-          await reconcile(operation);
-        } catch (error) {
-          // Errors after broadcast are never presented as permission to send another spin.
-          const rejected = operation.hash || operation.transactionId ? error instanceof SlotError && error.code === 'TransactionFailed' : definiteSendFailure(error);
-          operation.stage = !rejected && (operation.hash || mode === 'paid') ? 'uncertain' : 'failed';
-          operation.error = mode === 'paid' ? transactionError(error) : slotError(error).message;
+      const leaseId = 'spin:' + key;
+      // Retain the operation even if bounded history evicts its map entry.
+      let tracked:SpinOperation|undefined = existing;
+      await writes.acquire(player.toLowerCase(), leaseId, async () => {
+        const op = tracked;
+        if (!op) return false;
+        await reconcile(op);
+        if (op.stage === 'failed') return true;
+        if (op.stage !== 'started') return false;
+        if (!op.gameId) return false;
+        const game = await reader.game(BigInt(op.gameId));
+        return !game.pending && (game.confirmed || game.invalidated);
+      });
+      try {
+        const state = await reader.player(player);
+        if (!state.historyReady) throw new SlotError('HistorySyncing', 'Recovering the onchain history. Wait before starting.');
+        if (afterGameId > state.latestGameId) throw new SlotError('StaleGame', 'Refresh the session before starting.');
+        if (state.game?.pending || state.latestGameId !== afterGameId) {
+          writes.release(player.toLowerCase(), leaseId);
+          return {key, attempt: 0, player, afterGameId: afterGameId.toString(), stage: 'started' as const, gameId: state.latestGameId.toString()};
         }
-      })();
-      return {...operation};
+        const settings = await reader.settings();
+        if (settings.paused) throw new SlotError('Paused', 'The machine is paused.');
+        if (settings.totalOutcomeWeight !== 1000 || settings.configuredPrizeCount < 3) throw new SlotError('Paytable', 'The prize table is not ready.');
+        if (!(await reader.funding()).ready) throw new SlotError('InsufficientPrizeInventory', 'The slot is restocking prizes. Wait before you spin: your balance and free spins stay available.');
+        if (!backend || !health.configured) throw new SlotError('KeeperMissing', 'The reveal service is not configured yet.', 503);
+        if (!health.lastTick || Date.now() - health.lastTick > 30000 || health.balanceWei === '0' || health.error) throw new SlotError('KeeperNotReady', 'The reveal service must be online and hold ETH for gas.', 503);
+        if (mode === 'free') {
+          if (!state.freeSpins) throw new SlotError('NoFreeSpins', 'No free spins available.');
+          const permissions = await reader.roles(backend.address);
+          if (!permissions.manager) throw new SlotError('KeeperRole', 'Grant GAME_MANAGER_ROLE to the keeper wallet to use free spins.', 503);
+        } else {
+          if (!options.sendPaid) throw new SlotError('ConsentRequired', 'Approve spins from your phone.');
+          if (options.maxPrice === undefined || settings.ticketPrice > options.maxPrice) throw new SlotError('BudgetExceeded', 'The approved budget is not enough for this spin.');
+          if (state.allowance < settings.ticketPrice) throw new SlotError('Allowance', 'Approve a USDC budget from your phone.');
+          if (state.balance < settings.ticketPrice) throw new SlotError('Balance', 'Insufficient USDC balance.');
+          await client.simulateContract({...contract, account: player, functionName: 'startSpin', gasPrice: 0n});
+        }
+        options.assertSession();
+        const operation: SpinOperation = {key, attempt: existing?.stage === 'failed' ? existing.attempt + 1 : existing?.attempt || 0, player, afterGameId: afterGameId.toString(), stage: 'submitting'};
+        if (operations.size >= 512) {
+          const old = [...operations.entries()].find(([, value]) => value.stage === 'started' || value.stage === 'failed');
+          if (!old) throw new SlotError('Busy', 'Too many requests awaiting confirmation. Try again shortly.', 503);
+          operations.delete(old[0]);
+        }
+        tracked = operation;
+        operations.set(key, operation);
+        // Keep HTTP short while wallet signing and mining continue. Polling is read-only.
+        void (async () => {
+          try {
+            options.assertSession();
+            if (mode === 'free') operation.hash = await sendBackend('startFreeSpin', player, hash => {operation.hash = hash; operation.stage = 'confirming';}, options.assertSession);
+            else {
+              const submission = await options.sendPaid!(`${key}:${operation.attempt}`);
+              operation.gasToken = submission.gasToken; operation.transactionId = submission.transactionId;
+              operation.hash = submission.hash;
+              if (!operation.hash && options.resolvePaid) {
+                for (let attempt = 0; attempt < 90 && !operation.hash; attempt++) {
+                  operation.hash = await options.resolvePaid(submission);
+                  if (!operation.hash) await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+              }
+              if (!operation.hash) throw new SlotError('TransactionPending', 'Privy is still processing the transaction. Do not start a second request.');
+            }
+            operation.stage = 'confirming';
+            await client.waitForTransactionReceipt({hash: operation.hash, confirmations: 1, timeout: 180000});
+            await reconcile(operation);
+          } catch (error) {
+            // Errors after broadcast are never presented as permission to send another spin.
+            const rejected = operation.hash || operation.transactionId ? error instanceof SlotError && error.code === 'TransactionFailed' : definiteSendFailure(error);
+            operation.stage = !rejected && (operation.hash || mode === 'paid') ? 'uncertain' : 'failed';
+            operation.error = mode === 'paid' ? transactionError(error) : slotError(error).message;
+          }
+        })();
+        return {...operation};
+      } catch (error) {writes.release(player.toLowerCase(), leaseId);throw error;}
     });
   }
   async function playerView(player: Address) {

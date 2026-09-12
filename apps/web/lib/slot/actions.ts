@@ -2,7 +2,8 @@ import {encodeFunctionData, decodeFunctionData, erc20Abi, getAddress, isAddress,
 import {slotAbi} from './abi';
 import type {SlotReader} from './reader';
 import {SlotError} from './errors';
-import {BASE_PRIZE_COLLECTION,prizeCollectionAbi} from '../prize-collection';
+import {BASE_PRIZE_COLLECTION,BASE_PRIZE_IDS,prizeCollectionAbi} from '../prize-collection';
+import {assetByAddress} from '../assets';
 export const ADMIN_ACTIONS = [
   {name: 'pause', label: 'Pause', role: 'pauser', fields: []},
   {name: 'unpause', label: 'Resume the machine', role: 'pauser', fields: []},
@@ -46,6 +47,15 @@ export function buildAction(reader: SlotReader, account: Address, action: string
   if (action === 'approveBudget') {
     if (inputs.length !== 1 || inputs[0].length > 18) throw new SlotError('Input', 'Invalid budget.', 400);
     to = reader.config.paymentToken; data = encodeFunctionData({abi: erc20Abi, functionName: 'approve', args: [reader.config.address, uint(inputs[0])]});
+  } else if (action === 'transferERC20' || action === 'transferERC1155') {
+    const nft = action === 'transferERC1155';
+    if (inputs.length !== (nft ? 4 : 3)) throw new SlotError('Input', 'Parametri incompleti.', 400);
+    to = address(inputs[0]);
+    const recipient = address(inputs[nft ? 2 : 1]), amount = uint(inputs[nft ? 3 : 2]);
+    if (!amount || recipient === zeroAddress || recipient.toLowerCase() === account.toLowerCase() || recipient.toLowerCase() === reader.config.address.toLowerCase() || recipient.toLowerCase() === to.toLowerCase()) throw new SlotError('Input', 'Invalid amount or recipient.', 400);
+    if (!nft && !assetByAddress(to)) throw new SlotError('Asset', 'Unsupported token.', 400);
+    data = nft ? encodeFunctionData({abi: nftAbi, functionName: 'safeTransferFrom', args: [account, recipient, uint(inputs[1]), amount, '0x']})
+      : encodeFunctionData({abi: erc20Abi, functionName: 'transfer', args: [recipient, amount]});
   } else if (action === 'fundERC20') {
     if (inputs.length !== 2) throw new SlotError('Input', 'Parametri incompleti.', 400);
     to = address(inputs[0]); data = encodeFunctionData({abi: erc20Abi, functionName: 'transfer', args: [reader.config.address, uint(inputs[1])]});
@@ -87,9 +97,26 @@ export async function prepareAction(reader: SlotReader, account: Address, action
       if (inputs[3] === 'slot' && !(await reader.catalog()).some(prize=>prize.kind===2 && prize.token.toLowerCase()===tx.to.toLowerCase() && prize.tokenId===uint(inputs[1]))) throw new SlotError('Asset','Configure this token ID in the catalog before minting prizes directly into the slot.');
     }
   }
-  const abi = action === 'approveBudget' || action === 'fundERC20' ? erc20Abi : action === 'fundERC1155' ? nftAbi : action === 'mintERC1155' || action === 'acceptPrizeOwnership' ? prizeCollectionAbi : slotAbi;
+  if (action === 'transferERC20') {
+    const asset = assetByAddress(tx.to)!;
+    const [decimals, balance] = await Promise.all([
+      reader.client.readContract({address:tx.to,abi:erc20Abi,functionName:'decimals'}),
+      reader.client.readContract({address:tx.to,abi:erc20Abi,functionName:'balanceOf',args:[account]}),
+    ]);
+    if (decimals !== asset.decimals) throw new SlotError('Asset', 'Token decimals not verified.', 503);
+    if (balance < uint(inputs[2])) throw new SlotError('Balance', 'Saldo token insufficiente.', 400);
+  }
+  if (action === 'transferERC1155') {
+    const id = uint(inputs[1]);
+    const known = tx.to.toLowerCase() === BASE_PRIZE_COLLECTION.toLowerCase() && Object.values(BASE_PRIZE_IDS).includes(id.toString());
+    if (!known && !(await reader.catalog()).some(prize => prize.kind === 2 && prize.token.toLowerCase() === tx.to.toLowerCase() && prize.tokenId === id)) throw new SlotError('Asset', 'Unsupported NFT prize.', 400);
+    const balance = await reader.client.readContract({address:tx.to,abi:prizeCollectionAbi,functionName:'balanceOf',args:[account,id]});
+    if (balance < uint(inputs[3])) throw new SlotError('Balance', 'Insufficient NFT quantity.', 400);
+  }
+  const abi = action === 'transferERC20' ? erc20Abi : action === 'transferERC1155' ? nftAbi : action === 'approveBudget' || action === 'fundERC20' ? erc20Abi : action === 'fundERC1155' ? nftAbi : action === 'mintERC1155' || action === 'acceptPrizeOwnership' ? prizeCollectionAbi : slotAbi;
   const decoded = decodeFunctionData({abi: abi as Abi, data: tx.data});
   // ETH is not required for preflight: Privy quotes and collects USDC gas at send.
-  await reader.client.simulateContract({account, address: tx.to, abi: abi as Abi, functionName: decoded.functionName, args: decoded.args, value: 0n, gasPrice: 0n});
+  const simulation = await reader.client.simulateContract({account, address: tx.to, abi: abi as Abi, functionName: decoded.functionName, args: decoded.args, value: 0n, gasPrice: 0n});
+  if (action === 'transferERC20' && simulation?.result === false) throw new SlotError('TransferRejected', 'Il token ha rifiutato il trasferimento.', 409);
   return tx;
 }

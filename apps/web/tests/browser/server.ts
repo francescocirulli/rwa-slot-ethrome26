@@ -9,8 +9,12 @@ const relay = createRelay({origin: 'http://localhost:3101', walletService: walle
   readBalance: async () => ({amount: '128.50', updatedAt: Date.now(), stale: false})});
 const hardware = createHardware({origin: 'http://localhost:3101', token: 'browser-hardware-test-token-32-characters'});
 const bundle=buildSync({entryPoints:['tests/browser/inventory-fixture.tsx'],bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',define:{'process.env.NODE_ENV':'"test"'}});
+const phoneBundle=buildSync({entryPoints:['tests/browser/phone-fixture.tsx'],bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',outfile:'phone.js',alias:{'@privy-io/react-auth':'./tests/browser/phone-privy-fixture.tsx','@/lib/slot/use-transaction':'./tests/browser/phone-transaction-fixture.ts'},define:{'process.env.NODE_ENV':'"test"'}});
 const server = createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://localhost:3101');
+  if(url.pathname==='/phone-fixture'){res.setHeader('Content-Type','text/html; charset=utf-8');res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/phone-fixture.css"></head><body><div id="root"></div><script src="/phone-fixture.js"></script></body></html>');return;}
+  if(url.pathname==='/phone-fixture.js'){res.setHeader('Content-Type','text/javascript');res.end(phoneBundle.outputFiles.find(file=>file.path.endsWith('.js'))!.text);return;}
+  if(url.pathname==='/phone-fixture.css'){res.setHeader('Content-Type','text/css');res.end((await readFile(join(process.cwd(),'app/phone/style.css'),'utf8'))+'\n'+(await readFile(join(process.cwd(),'lib/slot/transaction-review.css'),'utf8')));return;}
   if(url.pathname==='/inventory-fixture'){res.setHeader('Content-Type','text/html');res.end('<html><head><link rel="stylesheet" href="/admin-fixture.css"></head><body><div id="root"></div><script src="/inventory-fixture.js"></script></body></html>');return;}
   if(url.pathname==='/inventory-fixture.js'){res.setHeader('Content-Type','text/javascript');res.end(bundle.outputFiles[0].text);return;}
   if(url.pathname==='/admin-fixture.css'){res.setHeader('Content-Type','text/css');res.end(await readFile(join(process.cwd(),'app/admin/style.css')));return;}
