@@ -8,6 +8,7 @@ import {definiteSendFailure, transactionError, type GasToken} from './gas';
 import type {WelcomeView} from '../welcome';
 import {personalWrites, type WriteCoordinator} from '../admin/write-coordinator';
 import {createWelcomeHistory, welcomeGrantData, type WelcomeHistory} from './welcome-history';
+import {BASE_PRIZE_COLLECTION,prizeCollectionAbi} from '../prize-collection';
 export type SubmittedSpin = {hash?: Hash; transactionId?: string; userOperationHash?:Hash; gasToken?: GasToken};
 export type SpinOperation = {key: string; attempt: number; player: Address; afterGameId: string; stage: 'submitting' | 'confirming' | 'started' | 'failed' | 'uncertain'; hash?: Hash; gameId?: string; error?: string; gasToken?: GasToken; transactionId?: string};
 export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:WriteCoordinator=personalWrites()) {
@@ -36,9 +37,12 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
     // Re-broadcast the identical signed transaction: never invent a second nonce after a lost response.
     await client.sendRawTransaction({serializedTransaction: sent.raw}).catch(() => {});
   }
-  async function sendBackend(functionName: 'revealRound' | 'expireRound' | 'startFreeSpin' | 'grantFreeSpins', arg: bigint | Address, onHash?: (hash: Hash) => void, assertSession?: () => void) {
+  async function sendBackend(functionName: 'revealRound' | 'expireRound' | 'startFreeSpin' | 'grantFreeSpins' | 'acceptPrizeOwnership', arg: bigint | Address, onHash?: (hash: Hash) => void, assertSession?: () => void | Promise<void>) {
     if (!wallet || !backend) throw new SlotError('KeeperMissing', 'The keeper wallet is not configured yet.', 503);
+    const accepting = functionName === 'acceptPrizeOwnership';
+    if (accepting && !assertSession) throw new SlotError('Consent', 'Backend ownership acceptance requires explicit admin authorization.', 403);
     const task = backendQueue.catch(() => {}).then(async () => {
+      if (accepting) await assertSession!();
       await flushBackend();
       const [pendingNonce, latestNonce] = await Promise.all([client.getTransactionCount({address: backend.address, blockTag: 'pending'}), client.getTransactionCount({address: backend.address, blockTag: 'latest'})]);
       if (pendingBackend || pendingNonce !== latestNonce) throw new SlotError('KeeperBusy', 'The keeper wallet is confirming another operation. Try again shortly.');
@@ -52,14 +56,19 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
           throw new SlotError('KeeperBusy', 'Checking the previous keeper wallet operation.');
         }
       }
-      const data = functionName === 'grantFreeSpins' ? welcomeGrantData(arg as Address) : functionName === 'startFreeSpin'
+      const to = accepting ? config.prizeCollection || BASE_PRIZE_COLLECTION : config.address;
+      if (accepting) {
+        const pending = await client.readContract({address:to,abi:prizeCollectionAbi,functionName:'pendingOwner'});
+        if (pending.toLowerCase() !== backend.address.toLowerCase()) throw new SlotError('PrizeOwner', 'The backend wallet must be the pending collection owner.', 403);
+      }
+      const data = functionName === 'acceptPrizeOwnership' ? encodeFunctionData({abi:prizeCollectionAbi,functionName:'acceptOwnership'}) : functionName === 'grantFreeSpins' ? welcomeGrantData(arg as Address) : functionName === 'startFreeSpin'
         ? encodeFunctionData({abi: slotAbi, functionName, args: [arg as Address]}) : encodeFunctionData({abi: slotAbi, functionName, args: [arg as bigint]});
-      await client.call({account: backend.address, to: config.address, data});
-      const prepared = await wallet.prepareTransactionRequest({account: backend, chain, to: config.address, data, value: 0n, nonce: pendingNonce});
+      await client.call({account: backend.address, to, data});
+      const prepared = await wallet.prepareTransactionRequest({account: backend, chain, to, data, value: 0n, nonce: pendingNonce});
       const balance = await client.getBalance({address: backend.address, blockTag: 'pending'});
       const fee = prepared.maxFeePerGas ?? prepared.gasPrice ?? 0n;
       if (balance < (prepared.gas || 0n) * fee) throw new SlotError('KeeperGas', 'The keeper wallet does not have enough ETH for this operation.', 503);
-      assertSession?.();
+      await assertSession?.();
       if (checked) {
         const [pending, latest, anchor] = await Promise.all([
           client.getTransactionCount({address: backend.address, blockTag: 'pending'}),

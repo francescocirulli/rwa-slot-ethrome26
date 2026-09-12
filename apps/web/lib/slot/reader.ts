@@ -3,6 +3,7 @@ import {slotAbi} from './abi';
 import {GAME_STATES, serializable, type SlotConfig} from './config';
 import {SlotError} from './errors';
 import {readFunding} from './funding';
+import {BASE_PRIZE_COLLECTION,prizeCollectionAbi} from '../prize-collection';
 const roleNames = ['GAME_MANAGER_ROLE', 'TREASURER_ROLE', 'PAUSER_ROLE'] as const;
 export function createSlotReader(config: SlotConfig) {
   // Capped RPCs reject wide eth_getLogs ranges; page at the configured size and start
@@ -174,12 +175,15 @@ export function createSlotReader(config: SlotConfig) {
         : await client.readContract({...contract, functionName: 'getERC1155Inventory', args: [prize.token, prize.tokenId], blockNumber: block});
       return {symbol: prize.symbol, token: prize.token, tokenId: prize.tokenId, kind: prize.kind, balance, reserved, available};
     })) : [];
-    const [pendingOwner, reserves] = await Promise.all([
+    const collectionAddress = config.prizeCollection || BASE_PRIZE_COLLECTION;
+    const [pendingOwner, reserves, collectionOwners] = await Promise.all([
       admin ? client.readContract({...contract, functionName: 'pendingDefaultAdmin', blockNumber: block}) : null,
       readFunding({client,contract},prizes,block).catch(()=>null),
+      admin ? Promise.all((['owner','pendingOwner'] as const).map(functionName=>client.readContract({address:collectionAddress,abi:prizeCollectionAbi,functionName,blockNumber:block}).catch(()=>null))) : null,
     ]);
     return serializable({configured: true as const, address: config.address, chainId: config.chainId, paymentToken: config.paymentToken,
       gasMode: config.gasMode, confirmations: config.confirmations, block, settings: values, catalog: prizes, permissions, player: state, inventory, funding:reserves,
+      collection: admin ? {address:collectionAddress,owner:collectionOwners?.[0]??null,pendingOwner:collectionOwners?.[1]??null} : null,
       pendingOwner: pendingOwner ? {address: pendingOwner[0], schedule: pendingOwner[1]} : null});
   }
   return {config, chain, client, contract, validate, settings, catalog, roles, lastGame, player, walletState, game, activeGames, history, snapshot, funding};

@@ -164,7 +164,7 @@ test('previous swap policies preserve access without gaining mint; owner updates
   await assert.rejects(f.service.assertAction(operator,'mintERC1155'));
   await f.service.setMember(owner,testAuthorization(owner.userId),operator.userId);
   assert.equal((await f.service.assertAction(operator,'mintERC1155')).mintEnabled,true);
-  await assert.rejects(f.service.assertAction(operator,'acceptPrizeOwnership'));
+  for(const action of ['acceptPrizeOwnership','transferPrizeOwnership','acceptPrizeOwnershipBackend']){await assert.rejects(f.service.assertAction(operator,action));assert.equal((await f.service.assertAction(owner,action)).role,'owner');}
   const mint=operatorPolicy(key.address,contract).find(rule=>rule.name==='Mint prizes to shared wallet or slot')!;
   assert.ok(mint.conditions.some(c=>c.field==='to'));
   assert.ok(mint.conditions.some(c=>c.field==='function_name'&&c.value==='mint'));

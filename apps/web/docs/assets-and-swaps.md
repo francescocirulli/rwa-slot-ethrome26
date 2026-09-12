@@ -111,11 +111,34 @@ catalog configuration. Other collections use the explicit catalog mapping.
   to the Privy wallet owner account when `pendingOwner()` is the shared address.
   The current onchain owner must first initiate the two-step ownership transfer.
 
-On 2026-09-12 the collection owner was the backend EOA
-`0x8e251547f0fD650e0573711EF733F13eBA1505aD`, not the shared Privy wallet.
-The app reads that state fresh and disables mint until the shared address owns the
-collection. It never substitutes the backend private key for admin authorization.
-No ownership transfer or live mint is performed as part of deploying this app.
+**Operations → Collezione ERC1155** also provides **Transfer ERC1155 collection
+ownership**. It pre-fills the configured collection and accepts a new owner address;
+**Transfer to backend admin wallet** fills the configured backend address. The current
+collection owner signs `transferOwnership(newOwner)` through Privy. This replaces any
+pending nomination, but ownership and minting powers remain with the current owner
+until the recipient signs `acceptOwnership()`.
+
+When the backend wallet is the pending owner, the app owner can choose **Accept with
+backend admin wallet**. Its review shows the actual backend signer and ETH gas payment.
+Explicit confirmation sends `acceptOwnership()` from that backend EOA, using the
+existing keeper nonce queue. It never asks Privy to sign as the backend wallet. The
+server checks app ownership, the configured collection, pending owner and signer
+again inside the queue; duplicates share the tracked transaction and hash. An unknown
+broadcast is reconciled by hash or identical signed bytes, never a new nonce. Only
+this collection acceptance is exposed through the backend signing action. Collaborators
+and player APIs cannot prepare or send it. No additional keeper process is started.
+
+Both ownership actions are app-owner-only. Collection owner/pending-owner reads use
+the admin snapshot block; unavailable reads disable ownership actions. After acceptance,
+the shared wallet loses collection minting powers. Slot ownership and roles are independent
+and are not transferred by these operations. Deployment itself sends no transactions.
+
+At the 2026-09-12 audit, both the slot and collection were owned by the shared wallet
+`0xC81f6728a10B20a8981d5C2601Aa185417229035`. The backend admin wallet
+`0x8e251547f0fD650e0573711EF733F13eBA1505aD` held the slot's `GAME_MANAGER_ROLE`.
+There were no explicit `TREASURER_ROLE` or `PAUSER_ROLE` holders; the slot owner can
+exercise both capabilities directly. Neither contract had a pending ownership transfer.
+Always use the current onchain state before a transfer.
 
 Mint and deposit share the existing reviewed Privy transaction flow, role/state
 simulation, wallet write lock and receipt tracking. The server rechecks collection,
@@ -125,7 +148,7 @@ the ERC1155 contract's `onlyOwner` restriction.
 New collaborator policies allow only the configured collection's `mint`, on Base,
 with zero ETH value and the shared wallet/slot as recipient. Previous exact policies
 retain their contract and swap capabilities but cannot mint until the owner explicitly
-updates permissions. Collection ownership acceptance remains owner-only in the app.
+updates permissions. Collection ownership changes remain owner-only in the app.
 
 ## LI.FI API and Privy setup
 
