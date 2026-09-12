@@ -30,7 +30,7 @@ test('demo loss, paid credits plus illustrative gas, and idle expiry',async({pag
 
 test('paired hardware motion wakes kiosk and one physical lever starts one demo round',async({page,request})=>{
   let seq=0;
-  const device=async(events:unknown[]=[])=>{const response=await request.post('/api/hardware/device',{headers:{Authorization:'Bearer browser-hardware-test-token-32-characters'},data:{bridgeId:'a'.repeat(32),seq:++seq,online:true,events}});return response.json();};
+  const device=async(events:unknown[]=[])=>{const response=await request.post('/api/hardware/device',{headers:{Authorization:'Bearer browser-hardware-test-token-32-characters'},data:{deviceId:'a'.repeat(32),seq:++seq,online:true,events}});return response.json();};
   await page.goto('/?demo=1');const initial=await device();
   await page.locator('#hardware-open').click();await page.locator('#hardware-code').fill(initial.code);await page.locator('#hardware-pair').click();
   await expect(page.locator('#hardware-status')).toHaveText('Arduino collegato.');await page.locator('#hardware-close').click();

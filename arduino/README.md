@@ -1,102 +1,117 @@
-# Physical arcade: UNO R4 WiFi
+# Physical arcade: direct Railway connection
 
-This component owns the firmware and local hardware bridge. The iPad owns game
-eligibility, animation and audio; the backend/contract still owns real games.
-No wallet credential, signer or transaction is present on the Arduino or bridge.
+The UNO R4 WiFi connects directly to the existing Railway backend over verified
+HTTPS. **No Mac, Node bridge, ngrok tunnel or local server is needed in production.**
+The iPad owns eligibility, visuals and audio; the backend/contract owns real games.
+Arduino holds only Wi-Fi credentials and a dedicated hardware token, never a wallet
+key, Privy token or transaction signer.
 
 ## Connection
 
 ```mermaid
 flowchart LR
-  A[UNO R4 WiFi] <-->|LAN WebSocket :81| B[Node bridge on Mac]
-  B <-->|HTTPS polling| C[Existing web backend]
-  I[iPad Safari] <-->|Same-origin HTTPS polling| C
-  P[Phone / Privy] <-->|Existing pairing and budget consent| C
-  C <-->|Start, reveal and confirmations| D[Base]
+  A[UNO R4 WiFi] <-->|Verified HTTPS /api/hardware/device| R[Railway web backend]
+  I[iPad Safari] <-->|Same-origin HTTPS| R
+  P[Phone / Privy] <-->|Pairing and budget consent| R
+  R <-->|Start, reveal and confirmations| B[Base]
 ```
 
-The Mac (or another always-on Node 22 host) must stay awake and reach both Arduino
-and the app. The iPad and Arduino may share Wi-Fi, but Safari cannot open insecure
-`ws://` from an HTTPS app. The bridge keeps that connection local and makes only
-outbound HTTPS requests. No port forwarding, mixed-content override, extra keeper,
-or additional database is required. The existing **single always-on app replica**
-is still mandatory. This version deliberately requires the bridge; Arduino does
-not yet connect directly to a public WSS endpoint.
+Arduino and iPad need internet access; they do not need the same LAN. Arduino
+uses `WiFiSSLClient`, the radio firmware's trusted CA bundle and the public DNS
+hostname on port 443. TLS errors fail closed: there is no insecure HTTP fallback,
+certificate bypass, redirect following or inbound listener. Keep the radio firmware
+and its CA bundle current through Arduino's official firmware updater.
+The existing **one always-on Railway replica** remains mandatory because hardware
+binding, player sessions and event gates are in memory. No extra keeper is created.
 
-## Wiring retained from the bench
+## Wiring
 
-| Component | Connection / behavior |
+| Component | Existing connection |
 | --- | --- |
-| Joystick | X A0, Y A1, center 512 on explicit 10-bit ADC; >300 deflection, center <120 rearms, 400 ms debounce |
-| HC-SR501 PIR | OUT A3; on >620, off <200; 40 s warmup, 3 s rearm |
+| Joystick | X A0, Y A1; explicit 10-bit ADC, center 512, deflection >300, center <120 rearms, 400 ms debounce |
+| HC-SR501 PIR | OUT A3; on >620, off <200; 40 s warmup and 3 s rearm |
 | LCD | I2C 0x27, 16×2, SDA/SCL; reconnect probing every second |
 | WS2812 strip | 8 LEDs, D9 through existing 330 Ω resistor, GRB / 800 kHz, brightness 140 |
-| Audio | iPad only; **no speaker on D9**, which drives the LEDs |
+| Audio | iPad only; no speaker on D9 |
 
-Keep existing power and common-ground wiring. The PIR detects **motion**, not
-range or continuous presence. A person standing still may not trigger it again.
-Do not infer wins from symbol artwork: URBE effects are only sent for a confirmed
-winning URBE payout, not any occurrence of its symbol.
+Keep the existing power and common ground. The PIR detects motion, not distance
+or continuous presence. Power Arduino from a suitable USB power adapter when the
+Mac is off. URBE effects require a confirmed winning URBE payout, not an arbitrary
+appearance of the symbol on a reel.
 
-## Firmware
+## Configure and upload
 
-Install Arduino CLI, then the tested versions (the installed core used here is
-1.5.1). This repository does not patch vendored library sources. The `compat/WiFi.h`
-shim and compiler define select WiFiS3 in mWebSockets.
+The tested core is `arduino:renesas_uno@1.5.1`. mWebSockets and the local bridge
+are no longer needed.
 
 ```sh
 arduino-cli core install arduino:renesas_uno@1.5.1
-arduino-cli lib install 'mWebSockets@1.6.0' 'ArduinoJson@7.4.2' \
-  'Adafruit NeoPixel@1.15.1' 'LiquidCrystal I2C@1.1.2'
-# Save SECRET_SSID / SECRET_PASS privately in arduino/.env.wifi, then:
-node --env-file=arduino/.env.wifi arduino/configure-wifi.mjs
+arduino-cli lib install 'ArduinoJson@7.4.2' 'Adafruit NeoPixel@1.15.1' \
+  'LiquidCrystal I2C@1.1.2'
+# Save SECRET_SSID / SECRET_PASS privately in arduino/.env.wifi.
+cp arduino/.env.backend.example arduino/.env.backend
+# Set the same strong SLOT_HARDWARE_TOKEN privately here and on Railway.
+node --env-file=arduino/.env.wifi --env-file=arduino/.env.backend arduino/configure-wifi.mjs
 node arduino/build.mjs
 arduino-cli board list
 node arduino/build.mjs --upload /dev/cu.usbmodemYOUR_BOARD
 arduino-cli monitor -p /dev/cu.usbmodemYOUR_BOARD -c baudrate=115200
 ```
 
-`ARDUINO_CONFIG_FILE` optionally selects a separate CLI configuration/library
-folder. Firmware and compiled binaries contain the Wi-Fi credentials: keep the
-generated header and `artifacts/` private. No fallback AP is created, because
-switching to it would lose backend connectivity. The LCD/serial show the LAN IP;
-reserve that address in the router or update `ARDUINO_WS_URL` when DHCP changes.
-Serial `l` simulates a lever, `m` motion, `s` prints non-secret status.
+`SLOT_BACKEND_HOST` defaults to `web-production-e2628.up.railway.app`: hostname
+only, without scheme, port or path. `SLOT_HARDWARE_TOKEN` must contain 32–128
+letters, digits, underscores or hyphens, generated with a cryptographic random
+source. `ARDUINO_CONFIG_FILE` optionally selects a separate Arduino CLI config.
+The generator writes an ignored `arduino_secrets.h`. That header and the compiled
+firmware contain credentials: do not publish them or the `artifacts/` directory.
 
-Wi-Fi association is bounded to 2.5 seconds, retried every 20 seconds; the watchdog
-recovers a stalled loop. Motion never replaces spin/result text. The app renews
-commands while a round is pending, so there is no fixed 2400 ms spin timeout.
-After five seconds without application commands the firmware returns to idle,
-without manufacturing a result. A reconnect restores current app state. Only one
-WebSocket controller is accepted. Use a trusted cabinet LAN: the local WebSocket
-itself is unencrypted and unauthenticated; do not expose port 81 to the internet.
+In Railway project `rwa-slot-ethrome26`, environment `production`, service `web`,
+set the matching server-only `SLOT_HARDWARE_TOKEN`. The IaC config preserves it.
+Keep `APP_ORIGIN` set to the public Railway origin. Deploy the hardware API through
+the repository's work branch → `dev` → `main` PR flow. Changing the token on either
+side requires updating the other; the device refuses unauthenticated responses.
+No contract, gas setting or player-wallet permission changes are required.
 
-## Bridge and iPad pairing
+## Pair the iPad
 
-1. Generate a random secret of at least 32 characters and securely set the same
-   `SLOT_HARDWARE_TOKEN` in the app environment and `arduino/bridge/.env`. It is
-   server-only. Setting production variables/deploying requires separate approval.
-2. Copy `arduino/bridge/.env.example` to `.env` in that folder. Set `APP_ORIGIN`
-   to the same app origin the iPad uses and `ARDUINO_WS_URL` to the board LAN IP.
-3. Run `npm ci --prefix arduino/bridge`, then `cd arduino/bridge && npm start`.
-4. On the iPad, select **Hardware** and enter the bridge's eight-digit code
-   (valid five minutes). Pairing is single-use and replaces the prior kiosk.
-5. Tap **Attiva audio** or **Tocca per iniziare** on the iPad once. Safari requires
-   a real touch to unlock audio; the PIR cannot supply browser user activation.
+1. Power Arduino and wait for Wi-Fi and HTTPS. The LCD shows **Collega iPad:**
+   followed by an eight-digit code; serial also prints that code.
+2. Open the [Railway app](https://web-production-e2628.up.railway.app) on the iPad.
+3. Select **Hardware**, enter the LCD code and close the panel. The code lasts
+   five minutes and is single-use. Pairing replaces the prior kiosk binding.
+4. Tap **Attiva audio** or **Tocca per iniziare** once to unlock Safari audio.
+5. Motion reveals the phone QR; once the player is eligible, the lever starts play.
 
-Only the bound browser receives input and controls the cabinet. Binding uses an
-HttpOnly, SameSite cookie independent from the player session, so it survives
-player changes and demo reloads. A backend restart requires pairing again. Hardware
-requests never extend the three-minute player inactivity timer. Accepted spins
-still use the existing relay's activity and transaction deduplication.
+The hardware HttpOnly, SameSite cookie is independent of player login and demo.
+A backend restart requires a new hardware pairing. If the tablet stops its
+heartbeat, the board displays the current pairing code and clears eligibility.
+Hardware polling never extends player inactivity. Serial `l` simulates a lever,
+`m` motion and `s` prints IP, connection state, PIR, light mode and HTTP status.
+Neither serial status nor LCD shows the hardware token or Wi-Fi password.
 
-The bridge polls every 200 ms and the visible tablet every 300 ms, plus network
-latency; this is suitable for cabinet input, not sample-accurate audio sync. Events
-are bounded, expire rapidly, and are never retried after an uncertain upload. Each
-eligible turn has a gate consumed once. Busy, stale, disconnected, hidden-tab and
-previous-turn pulls are dropped, not queued. No extra spin is sent on reconnect.
-The bridge refuses a second live bridge process; backend polling loss clears the
-gate, and missing tablet heartbeats return idle lighting.
+## Transport and recovery
+
+The board sends an HTTP/1.1 POST approximately 200 ms after each completed reply,
+reusing TLS connections when possible. The iPad polls every 300 ms. End-to-end
+latency includes internet RTT and radio overhead; this is not sample-accurate
+light/audio synchronization. Response parsing is incremental and bounded so the
+joystick, PIR and LEDs continue running while response bytes arrive. TLS connection
+attempts are bounded to 2.5 seconds; inputs during connection setup are discarded.
+Responses support content length, chunked framing and connection-close framing;
+malformed, compressed, oversized, redirected or late responses are rejected.
+
+Every accepted lever consumes a readiness gate locally and on the server. An old
+reply cannot rearm the same gate. Events older than 750 ms before submission are
+dropped, and an uncertain request is never retried with its old events. An HTTP
+request gets an 1800 ms response window. Failure clears all pending input and
+reconnects with 1–10 second backoff. No readiness survives an offline period.
+A new boot ID resets backend sequence tracking after the previous device expires;
+concurrent controllers are rejected. Firmware and server watchdogs return the
+cabinet to idle on missing heartbeats without inventing a spin result.
+
+The 16×2 LCD displays connection/pairing status when unbound and application text
+when bound. Spin commands are renewed for the entire onchain wait, rather than
+ending at a fixed 2400 ms. Motion never replaces spin or result messages.
 
 ## Real and demo behavior
 
@@ -135,24 +150,26 @@ suspend audio: tap **Attiva audio** again if needed.
 ## Validation
 
 ```sh
+node arduino/test.mjs
+node arduino/build.mjs
 npm --prefix apps/web test
 npm --prefix apps/web run test:browser
 npm --prefix apps/web run build
-node arduino/build.mjs
 ```
 
-Browser tests cover demo isolation, duplicate pulls, losses/wins, paid test credits,
-expiry, 1024×768/650 layouts, and real hardware relay pairing/motion/lever with a
-simulated device. Unit tests cover authentication, origin checks, one-use binding,
-replayed/stale/busy inputs and heartbeat expiry. Final physical acceptance requires
-the actual iPad audio unlock, PIR warmup, joystick centering, LCD and RGB strip.
+Native C++ tests run the actual HTTP framing and input-gate code with address and
+undefined-behavior sanitizers. They cover fragmentation, chunked bodies/trailers,
+truncation, overflow, conflicting lengths, malformed replies, consumed gates,
+reconnects, stale input and `millis()` wraparound. Backend/browser tests cover
+pairing, origin/authentication, demo isolation, eligibility, confirmed results,
+expiry and iPad layouts. Physical acceptance still includes iPad audio activation,
+PIR warmup, joystick centering, LCD and LED observations.
 
-Protocol: board → `{ "evt": "motion" | "lever" | "hello" | "pong" }`;
-bridge → `{ "cmd": "idle" | "attract" | "ready" | "blocked" | "spin" | "result",
-"l1": "...", "l2": "...", "tier": 0, "hub": false }`. `ping` is heartbeat only.
-The bridge never sends wallet addresses, balances, transaction hashes or secrets
-to the board.
+Protocol: board POST body is `{deviceId, seq, online: true, events: [{evt, gate?}]}`.
+The authenticated response contains `{code, bound, gate, command}`. Commands are
+`idle`, `attract`, `ready`, `blocked`, `spin` and `result`, with optional `l1`, `l2`,
+`tier` and `hub`. Result effects originate only from confirmed app state.
 
-References: [MDN WebSocket security](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_client_applications),
-[WebKit iOS media activation](https://webkit.org/blog/6784/new-video-policies-for-ios/),
-[design report](https://www.lazyweb.com/report/lazyweb/11e6b944-df59-4d1a-82a3-5580737e1681/?source=create).
+References: [Arduino SSL client](https://github.com/arduino/ArduinoCore-renesas/tree/main/libraries/WiFiS3/examples/WiFiWebClientSSL),
+[Railway public networking](https://docs.railway.com/networking/public-networking),
+[WebKit audio activation](https://webkit.org/blog/6784/new-video-policies-for-ios/).

@@ -8,6 +8,6 @@ if(upload>=0&&(!port||!port.startsWith('/dev/')))throw new Error('Usage: node ar
 const config=process.env.ARDUINO_CONFIG_FILE;
 const common=config?['--config-file',config]:[];
 const build=resolve(here,'../artifacts/arduino-build');
-const result=spawnSync('arduino-cli',[...common,'compile','--fqbn','arduino:renesas_uno:unor4wifi','--build-path',build,'--build-property',`compiler.cpp.extra_flags=-DNETWORK_CONTROLLER=3 -I${resolve(here,'compat')}`,resolve(here,'slot_controller')],{stdio:'inherit'});
+const result=spawnSync('arduino-cli',[...common,'compile','--fqbn','arduino:renesas_uno:unor4wifi','--build-path',build,resolve(here,'slot_controller')],{stdio:'inherit'});
 if(result.status!==0)process.exit(result.status||1);
 if(port){const result=spawnSync('arduino-cli',[...common,'upload','--fqbn','arduino:renesas_uno:unor4wifi','--port',port,'--input-dir',build,resolve(here,'slot_controller')],{stdio:'inherit'});process.exit(result.status||0);}

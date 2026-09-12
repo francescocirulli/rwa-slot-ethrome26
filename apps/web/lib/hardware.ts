@@ -13,7 +13,7 @@ export function createHardware({origin, token, now = Date.now}: {origin: string;
   let deviceSeen = 0, deviceOnline = false, tabletSeen = 0, gate = '', consumedGate = '';
   let command: Command = idle, commandUntil = 0;
   let events: (InputEvent & {at: number})[] = [];
-  let bridgeId = '', sequence = 0;
+  let deviceId = '', sequence = 0;
   const response = (data: unknown, status = 200, cookie?: string) => new Response(JSON.stringify(data), {status, headers: {
     'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...(cookie ? {'Set-Cookie': cookie} : {})}});
   return {async handle(req: Request): Promise<Response> {
@@ -33,11 +33,11 @@ export function createHardware({origin, token, now = Date.now}: {origin: string;
     } catch {return response({error: 'Richiesta non valida.'}, 400);}
     const t = now();
     if (device) {
-      if (typeof input.bridgeId !== 'string' || !/^[a-f0-9]{32}$/.test(input.bridgeId) || !Number.isSafeInteger(input.seq) || Number(input.seq) < 1 || typeof input.online !== 'boolean') return response({error: 'Stato non valido.'}, 400);
-      // Reconnect clears all eligibility. A new bridge process must reacquire it.
-      if (bridgeId !== input.bridgeId) {
-        if (bridgeId && t - deviceSeen < 5000) return response({error: 'Un bridge è già attivo.'}, 409);
-        bridgeId = input.bridgeId; sequence = 0; gate = ''; consumedGate = ''; events = [];
+      if (typeof input.deviceId !== 'string' || !/^[a-f0-9]{32}$/.test(input.deviceId) || !Number.isSafeInteger(input.seq) || Number(input.seq) < 1 || typeof input.online !== 'boolean') return response({error: 'Stato non valido.'}, 400);
+      // Reconnect clears all eligibility. A new device boot must reacquire it.
+      if (deviceId !== input.deviceId) {
+        if (deviceId && t - deviceSeen < 5000) return response({error: 'Un dispositivo è già attivo.'}, 409);
+        deviceId = input.deviceId; sequence = 0; gate = ''; consumedGate = ''; events = [];
       }
       deviceSeen = t; deviceOnline = input.online;
       if (!deviceOnline) {gate = ''; events = [];}
@@ -60,13 +60,13 @@ export function createHardware({origin, token, now = Date.now}: {origin: string;
     if (path === '/api/hardware/pair') {
       if (t >= attemptUntil) {attempts = 0; attemptUntil = t + 60000;}
       if (++attempts > 10) return response({error: 'Troppi tentativi. Attendi un minuto.'}, 429);
-      if (!code || t >= codeUntil || !safe(String(input.code || ''), code) || t - deviceSeen >= 5000) return response({error: 'Codice scaduto o bridge offline.'}, 403);
+      if (!code || t >= codeUntil || !safe(String(input.code || ''), code) || t - deviceSeen >= 5000) return response({error: 'Codice scaduto o dispositivo offline.'}, 403);
       binding = randomBytes(32).toString('hex'); code = ''; gate = ''; consumedGate = ''; events = []; command = idle; tabletSeen = 0;
       return response({ok: true}, 200, `slot_hardware=${binding}; Path=/api/hardware; HttpOnly; SameSite=Strict${origin.startsWith('https:') ? '; Secure' : ''}`);
     }
     if (path !== '/api/hardware/tablet') return response({error: 'Risorsa non trovata.'}, 404);
     const cookie = (req.headers.get('cookie') || '').split(';').map(s => s.trim()).find(s => s.startsWith('slot_hardware='))?.slice(14) || '';
-    if (!binding || !safe(cookie, binding)) return response({error: 'Collega Arduino con il codice del bridge.'}, 401);
+    if (!binding || !safe(cookie, binding)) return response({error: 'Collega Arduino con il codice sul display Arduino.'}, 401);
     if (typeof input.gate !== 'string' || input.gate.length > 80) return response({error: 'Stato non valido.'}, 400);
     const c = input.command as Record<string, unknown> | undefined;
     if (!c || !['idle','attract','ready','blocked','spin','result'].includes(String(c.cmd))) return response({error: 'Comando non valido.'}, 400);

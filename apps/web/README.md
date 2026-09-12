@@ -162,7 +162,8 @@ Monorepo deployment procedures and variables:
 The contract has not been deployed yet. `SLOT_BACKEND_PRIVATE_KEY=REPLACE_ME`
 keeps the keeper disabled until a real key is supplied.
 Arduino input now reaches `window.slotPullLever()` through the authenticated
-hardware relay and a local WebSocket bridge. The real mode remains default;
+hardware API, called directly over HTTPS by the board. No local bridge or Mac is
+required. The real mode remains default;
 the terminal can switch to an isolated demo without wallet or onchain requests.
 Motion reveals the QR from an idle screensaver; iPad audio requires one initial
 touch. See [cabinet wiring, firmware, pairing and demo setup](../../arduino/README.md).

@@ -10,7 +10,7 @@
     var req = new XMLHttpRequest(); req.open('POST', '/api/hardware/' + path, true); req.timeout = 1800;
     req.setRequestHeader('Content-Type', 'application/json'); req.setRequestHeader('X-Slot-Request', '1');
     req.onload = function () {var data; try {data = JSON.parse(req.responseText);} catch (ignore) {data = {}; } callback(req.status >= 200 && req.status < 300 ? null : data.error || 'Hardware non disponibile.', data, req.status);};
-    req.onerror = req.ontimeout = function () {callback('Bridge non raggiungibile.', null, 0);};
+    req.onerror = req.ontimeout = function () {callback('Backend hardware non raggiungibile.', null, 0);};
     req.send(JSON.stringify(body));
   }
   function tone(frequency, offset, duration, volume) {
@@ -75,7 +75,7 @@
       polling = false; bound = !error; hardwareOnline = !!data && !!data.online;
       el('hardware-open').textContent = hardwareOnline && bound ? 'Arduino ON' : 'Hardware';
       if (error) {el('hardware-status').textContent = error; if (code === 401 || code === 503) {window.clearInterval(hardwareTimer); hardwareTimer = window.setInterval(poll, 4000);} return;}
-      el('hardware-status').textContent = hardwareOnline ? 'Arduino collegato.' : 'Bridge collegato. Arduino offline.';
+      el('hardware-status').textContent = hardwareOnline ? 'Arduino collegato.' : 'Arduino offline. Controlla alimentazione e Wi-Fi.';
       for (var i = 0; i < data.events.length; i++) {
         var event = data.events[i];
         if (event.evt === 'motion') wake();

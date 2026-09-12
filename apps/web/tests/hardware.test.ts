@@ -9,7 +9,7 @@ function fixture() {
     const res = await hardware.handle(new Request(origin + '/api/hardware/' + path, {method:'POST', headers:{'Content-Type':'application/json',Origin:origin,'X-Slot-Request':'1', Cookie:cookie,...headers},body:JSON.stringify(body)}));
     return {status:res.status, body:await res.json(), cookie:res.headers.get('set-cookie')};
   }
-  const device = (events: unknown[] = [], override = {}) => call('device', {bridgeId:'a'.repeat(32),seq:++seq,online:true,events,...override},{Authorization:'Bearer '+token});
+  const device = (events: unknown[] = [], override = {}) => call('device', {deviceId:'a'.repeat(32),seq:++seq,online:true,events,...override},{Authorization:'Bearer '+token});
   const tablet = (gate = '', cmd = 'ready') => call('tablet',{gate,command:{cmd}});
   return {call,device,tablet,advance:(ms:number)=>now+=ms, pair:async()=>{const d=await device(); const p=await call('pair',{code:d.body.code});cookie=p.cookie!.split(';')[0];assert.match(p.cookie!, /HttpOnly; SameSite=Strict; Secure/);}};
 }
@@ -36,10 +36,10 @@ test('hidden/disconnected tablet cannot accumulate pulls or leave spin lights ac
   assert.deepEqual((await f.tablet('turn-2')).body.events,[]);
   f.advance(3100);assert.equal((await f.tablet()).body.online,false);
 });
-test('replayed bridge sequence, concurrent bridge, malformed payload and guessing are rejected',async()=>{
+test('replayed device sequence, concurrent device, malformed payload and guessing are rejected',async()=>{
   const f=fixture();await f.pair();await f.tablet('turn-1');
   await f.device([],{seq:99});await f.device([{evt:'lever',gate:'turn-1'}],{seq:98});assert.deepEqual((await f.tablet('turn-1')).body.events,[]);
-  assert.equal((await f.device([],{bridgeId:'b'.repeat(32)})).status,409);
+  assert.equal((await f.device([],{deviceId:'b'.repeat(32)})).status,409);
   assert.equal((await f.call('tablet',{gate:'x',command:{cmd:'result',tier:9,hub:false}})).status,400);
   assert.equal((await f.call('tablet',{gate:'x',command:{cmd:'lcd',l1:'bad'}})).status,400);
   for(let i=0;i<10;i++)await f.call('pair',{code:'00000000'});

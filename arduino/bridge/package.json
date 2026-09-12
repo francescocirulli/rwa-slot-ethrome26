@@ -1,8 +1,0 @@
-{
-  "name": "lucky-signal-hardware-bridge",
-  "private": true,
-  "type": "module",
-  "engines": {"node": ">=22 <23"},
-  "scripts": {"start": "node --env-file=.env bridge.mjs", "test": "node --test"},
-  "dependencies": {"ws": "8.21.3"}
-}
