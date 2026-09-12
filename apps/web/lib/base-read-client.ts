@@ -1,14 +1,13 @@
-import {createPublicClient, fallback, http} from 'viem';
+import {createPublicClient} from 'viem';
 import {base} from 'viem/chains';
-import {shouldThrowRpcError} from './rpc-fallback';
+import {rpcTransport} from './rpc-transport';
 
 // Share one batched read client across admin inventory, swaps and balances.
 // Fail over once per endpoint instead of retrying a throttled primary first.
 export function createBaseReadClient(url=process.env.BASE_RPC_URL||'https://base-rpc.publicnode.com') {
   const urls=[url,...(process.env.BASE_RPC_FALLBACK_URLS||'').split(',')]
     .map(value=>value.trim()).filter((value,index,all)=>value&&all.indexOf(value)===index);
-  return createPublicClient({chain:base,batch:{multicall:{wait:10}},transport:fallback(
-    urls.map(endpoint=>http(endpoint,{batch:{wait:10},timeout:4000,retryCount:0})),{retryCount:0,shouldThrow:shouldThrowRpcError})});
+  return createPublicClient({chain:base,batch:{multicall:{wait:10}},transport:rpcTransport(urls)});
 }
 
 export function baseChainCheck(client:Pick<ReturnType<typeof createBaseReadClient>,'getChainId'>) {

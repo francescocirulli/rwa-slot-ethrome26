@@ -1,10 +1,10 @@
-import {createPublicClient, fallback, formatUnits, defineChain, http, erc20Abi, keccak256, toHex, zeroAddress, parseEventLogs, type Address, type Hash, type Transport} from 'viem';
+import {createPublicClient, formatUnits, defineChain, erc20Abi, keccak256, toHex, zeroAddress, parseEventLogs, type Address, type Hash} from 'viem';
 import {slotAbi} from './abi';
 import {GAME_STATES, serializable, type SlotConfig} from './config';
 import {SlotError} from './errors';
 import {readFunding} from './funding';
 import {BASE_PRIZE_COLLECTION,prizeCollectionAbi} from '../prize-collection';
-import {shouldThrowRpcError} from '../rpc-fallback';
+import {rpcTransport} from '../rpc-transport';
 const roleNames = ['GAME_MANAGER_ROLE', 'TREASURER_ROLE', 'PAUSER_ROLE'] as const;
 export function createSlotReader(config: SlotConfig) {
   // Capped RPCs reject wide eth_getLogs ranges; page at the configured size and start
@@ -13,12 +13,8 @@ export function createSlotReader(config: SlotConfig) {
   const historyFloor = config.historyFromBlock && config.historyFromBlock >= config.deploymentBlock ? config.historyFromBlock : config.deploymentBlock;
   const chain = defineChain({id: config.chainId, name: config.chainId === 8453 ? 'Base' : 'Local test',
     nativeCurrency: {name: 'Ether', symbol: 'ETH', decimals: 18}, rpcUrls: {default: {http: config.rpcUrls && config.rpcUrls.length ? config.rpcUrls : [config.rpcUrl]}}});
-  // A single endpoint can rate-limit or go down; fallback retries the next one in order.
   const rpcUrls = config.rpcUrls && config.rpcUrls.length ? config.rpcUrls : [config.rpcUrl];
-  const transport: Transport = rpcUrls.length > 1
-    ? fallback(rpcUrls.map(url => http(url, {batch: true, timeout: 4000, retryCount: 0})),{retryCount:0,shouldThrow:shouldThrowRpcError})
-    : http(rpcUrls[0], {batch: true, timeout: 4000, retryCount: 0});
-  const client = createPublicClient({chain, transport});
+  const client = createPublicClient({chain, transport: rpcTransport(rpcUrls)});
   const contract = {address: config.address, abi: slotAbi};
   let checkedAt = 0;
   let validation:Promise<void>|undefined;
