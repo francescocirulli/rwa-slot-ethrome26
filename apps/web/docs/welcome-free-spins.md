@@ -1,7 +1,8 @@
 # Welcome free spins
 
 A player's first embedded Ethereum wallet receives **two free-spin credits**
-automatically after it is created and paired through the phone flow. The backend
+automatically after Privy exposes it in the authenticated phone flow, without
+requiring an iPad pairing or a working balance RPC. The backend
 EOA pays the Base ETH gas. The player does not need ETH, USDC, a budget approval
 or a transaction signature to receive or use these credits.
 
@@ -12,15 +13,16 @@ or a transaction signature to receive or use these credits.
   creation flags cannot select the recipient or change the award.
 - Only the account's embedded Ethereum wallet at `wallet_index == 0` qualifies.
   Its address and creation timestamp are checked against Privy's wallet API;
-  imported, archived, ambiguous or unverifiable wallets are excluded.
+  imported or archived wallets cannot receive the bonus. Missing or temporarily
+  unavailable metadata stays retryable rather than permanently rejecting a new wallet.
 - The contract's configured deployment block supplies a durable launch cutoff.
   The wallet must have been created at or after that block's timestamp. Existing
   wallets created before deployment do not receive an automatic welcome bonus;
   an admin can still grant them promotional credits through `grantFreeSpins`.
-- Successful pairing automatically requests the bonus. The phone retries
-  `POST /api/relay/phone/welcome` while verification or crediting is pending.
-  The endpoint requires the phone session, its authenticated owner and the
-  normal origin/header checks. It does not renew the three-minute idle timer.
+- The phone retries authenticated, same-origin `POST /api/account/welcome`
+  every five seconds until crediting is confirmed. It accepts no payee or amount
+  and works without a tablet session. Pairing retains its existing recovery
+  endpoint too. Neither flow renews the three-minute idle timer.
 - Signing in to the admin panel does not trigger a player welcome grant.
 
 ## Existing contract and keeper
@@ -39,20 +41,29 @@ and emits its existing `FreeSpinsGranted(player, amount, newCount)` event.
 Compatibility is tested against the exact deployed creation bytecode on Anvil.
 The marker is never added to normal admin `grantFreeSpins` calls.
 
-Before crediting, the app scans that player's grant events from the configured
-deployment block. Only a successful transaction to this slot with zero ETH value,
+Before crediting, the app scans that player's grant events from five minutes
+before the server-verified key-creation timestamp, clamped to slot deployment.
+A binary search resolves this block without scanning unrelated history. This
+bound is only for verified generated, non-imported first wallets; internal calls
+without that proof scan from deployment. The player-history floor is never used
+for bonus deduplication. Only a successful transaction to this slot with zero ETH value,
 the exact marked calldata, a two-credit event and matching transaction/receipt
 block hashes establishes a welcome bonus. Manual credits, won credits and the
 current free-spin balance cannot establish or reset that record. The history
 also recognizes the native welcome function if used on a future contract, but
 the app does not require or call that function.
 
-Scans use 2,000-block pages with at most 12 pages per request. A partial scan
+Scans honor `SLOT_LOG_PAGE_BLOCKS` (2,000 by default; five on the current
+production RPC), with at most 12 pages per request. A partial scan
 leaves the bonus checking; it never authorizes a write. Progress stays in memory,
 with block-hash checks to invalidate caches after a reorg. RPC, transaction or
 receipt lookup failures do not advance a negative scan. Completed grants remain
 recoverable from chain history after logout, spending, resetting the balance,
 restarting the service or rotating the keeper key.
+
+Claims are enqueued before RPC checks, so a failed initial request does not
+lose the work. Pending claims rotate fairly, and incomplete scans are retried
+without the old ten-second backoff.
 
 The keeper repeats the history check inside its serialized nonce queue, after
 pending reveals. A negative scan must cover the same keeper nonce used for the
@@ -82,7 +93,8 @@ from USDC. Available credits highlight the free-spin button, and the lever uses
 free credits before paid spins. The pending welcome message does not increase
 the displayed balance: only the contract read does. The counter follows spending
 and rewards, shows an unavailable balance while offline, and clears on logout
-or a change of player. The phone explains that available free spins need no
+or a change of player. The phone shows pending/credited welcome status and
+refreshes the wallet after confirmation, without fabricating a balance. It explains that available free spins need no
 USDC approval.
 
 ## Configuration and validation
@@ -98,4 +110,6 @@ manual-versus-welcome history, bounded scans, lookup failures and reorgs. Anvil
 tests use the deployed bytecode to verify additive crediting, zero player charge,
 restart recovery, spent/reset balances, lost responses, pending nonces, stale
 RPC snapshots and keeper rotation. Browser tests cover the counter states at
-iPad sizes. These tests use disposable local accounts and do not send Base transactions.
+iPad sizes and standalone phone recovery with failed balance reads and reloads. These tests use disposable local accounts and do not send Base transactions.
+
+Privy documents wallet `created_at` in milliseconds in its [wallet API](https://docs.privy.io/api-reference/wallets/get). The app does not use a browser-supplied timestamp.

@@ -21,7 +21,7 @@ export function createAccountHandler(walletService: WalletService | undefined, r
     let user;
     try {user = await walletService.authenticate(token);}
     catch {return reply({error: 'Access not verified. Sign in again.'}, 401);}
-    const wallet = user.wallets[0];
+    const wallet = user.wallets.find(item=>item.index===0)||user.wallets[0];
     if (!wallet) return reply({userId: user.userId, wallet: null} satisfies AccountView);
     try {
       const [balance, depositQr, portfolio] = await Promise.all([
