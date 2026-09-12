@@ -76,6 +76,9 @@ landscape, iOS 12.5.8 / Safari 12.1.2, matching the experimental reference repo.
 
 ## Personal phone wallet
 
+The wallet card always shows the full Base wallet address and a **Copy address**
+button, without opening the receive/QR section.
+
 Open `/phone` directly and sign in with email or passkey. A new account can create
 its embedded wallet without scanning a QR. The page shows USDC, ETH for gas, all
 supported equity tokens, GOLD/DGLD, and the known ERC1155 prize IDs with quantities.
