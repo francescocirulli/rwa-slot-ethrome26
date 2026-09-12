@@ -4,7 +4,11 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {PrivyProvider, useCreateWallet, useLoginWithEmail, useLoginWithPasskey, usePrivy, useSigners, useSignupWithPasskey, useWallets, useLinkWithPasskey} from '@privy-io/react-auth';
 import {base} from 'viem/chains';
 import {PhoneGame} from './game';
-import type {Balance, SessionView} from '@/lib/types';
+import {PhoneWallet} from './wallet';
+import type {AccountView} from '@/lib/account';
+import {useContractTransaction} from '@/lib/slot/use-transaction';
+import {TransactionConfirmation} from '@/lib/slot/transaction-review';
+import type {SessionView} from '@/lib/types';
 
 function Shell({children}: {children: React.ReactNode}) {
   return <div className="phone-shell"><header className="phone-header"><span className="phone-mark">✳</span><span>LUCKY<br/>SIGNAL<span className="registered">®</span></span><span className="phone-network">● BASE</span></header><main>{children}</main><footer>IL TUO WALLET. LA TUA SESSIONE. <span>✦</span></footer></div>;
@@ -45,7 +49,9 @@ function Phone() {
   const [recovering, setRecovering] = useState(true);
   const [info, setInfo] = useState<{code: string; origin: string; expiresAt: number} | null>(null);
   const [session, setSession] = useState<SessionView | null>(null);
-  const [balance, setBalance] = useState<Balance | null>(null);
+  const [account,setAccount]=useState<AccountView|null>(null),[accountLoading,setAccountLoading]=useState(false),[accountError,setAccountError]=useState(''),[refresh,setRefresh]=useState(0);
+  const transaction=useContractTransaction(account?.wallet?.address||'');
+  const reloadAccount=useCallback(()=>setRefresh(value=>value+1),[]);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [confirmed, setConfirmed] = useState(false);
@@ -55,15 +61,16 @@ function Phone() {
   const [emailSent, setEmailSent] = useState(false);
   const [remaining, setRemaining] = useState(180);
   const [ended, setEnded] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [slotConfigured, setSlotConfigured] = useState(false);
+  const [slotConfigured, setSlotConfigured] = useState<boolean|null>(null);
   const latest = useRef({user, addSigners, wallets, session});
   latest.current = {user, addSigners, wallets, session};
   const generation = useRef(0), deadline = useRef(0), serverTime = useRef(0), lastActivity = useRef(0);
 
   const clearSession = useCallback(() => {
+    const hadSession=!!latest.current.session;
     generation.current++; latest.current.session = null; deadline.current = 0; serverTime.current = 0;
-    setSession(null); setBalance(null); setConsented(false); setEnded(true); setBusy(''); setRecovering(false);
+    try {sessionStorage.removeItem('slot-pair');} catch {}
+    setSession(null); setConsented(false); setSecret(''); setInfo(null); setConfirmed(false); setSlotConfigured(null); setEnded(previous=>previous||hadSession); setBusy(''); setRecovering(false);
   }, []);
   const apply = useCallback((value: SessionView) => {
     if (value.serverTime >= serverTime.current) {
@@ -91,7 +98,7 @@ function Phone() {
     if (!secret) return;
     let cancelled = false;
     api('/lookup', {secret}, false).then((value) => {if (!cancelled) {setInfo(value); setEnded(false);}})
-      .catch((cause) => {if (!cancelled) setError(message(cause));});
+      .catch((cause) => {if (!cancelled) {setError(message(cause));if(cause instanceof PhoneError&&[400,404,410].includes(cause.status)){setSecret('');setInfo(null);try{sessionStorage.removeItem('slot-pair');}catch{}}}});
     return () => {cancelled = true;};
   }, [secret, api]);
   useEffect(() => {
@@ -137,19 +144,23 @@ function Phone() {
     void recoverWelcome();
     return () => {cancelled = true; clearTimeout(timer);};
   }, [sessionId, authenticated, welcomeDone, api, apply]);
+  useEffect(()=>{setAccount(null);},[user?.id]);
   useEffect(() => {
-    if (!sessionId) return;
-    let cancelled = false, timer: ReturnType<typeof setTimeout>;
-    const current = generation.current;
-    async function pollBalance() {
+    if (!ready || !authenticated) {setAccount(null);setAccountError('');return;}
+    let cancelled=false,timer:ReturnType<typeof setTimeout>;
+    async function pollAccount() {
+      setAccountLoading(true);
       try {
-        const value = await api('/phone/balance');
-        if (!cancelled && current === generation.current && value.sessionId === sessionId) setBalance(value.balance);
-      } catch { /* Session poll handles authentication and connection errors. */ }
-      if (!cancelled) timer = setTimeout(pollBalance, 12000);
+        const token=await getAccessToken();
+        if (!token) throw new Error('Accedi di nuovo per vedere il wallet.');
+        const response=await fetch('/api/account',{headers:{Authorization:'Bearer '+token},cache:'no-store',signal:AbortSignal.timeout(25000)});
+        const value=await response.json();if(!response.ok)throw new Error(value.error||'Wallet non disponibile.');
+        if(!cancelled){setAccount(value);setAccountError('');}
+      }catch(cause){if(!cancelled){setAccountError(cause instanceof Error?cause.message:'Wallet non disponibile.');setAccount(previous=>previous?.wallet?{...previous,wallet:{...previous.wallet,portfolio:null,balance:{...previous.wallet.balance,stale:true}}}:previous);}}
+      finally {if(!cancelled){setAccountLoading(false);timer=setTimeout(pollAccount,10000);}}
     }
-    void pollBalance(); return () => {cancelled = true; clearTimeout(timer);};
-  }, [sessionId, api]);
+    void pollAccount();return()=>{cancelled=true;clearTimeout(timer);};
+  },[ready,authenticated,user?.id,getAccessToken,refresh,transaction.confirmed]);
   const activity = useCallback(async () => {
     const currentSession = latest.current.session;
     if (!currentSession || Date.now() - lastActivity.current < 800) return;
@@ -210,24 +221,33 @@ function Phone() {
     clearSession();
     try {await task;} catch {setError('Collegamento interrotto: il server chiuderà la sessione alla scadenza.');}
   }
-  const canAct = ready && !busy;
+  const canAct = ready && !busy && !transaction.busy;
   const connectedSession = authenticated && session;
   const checking = !ready || !loaded || recovering;
   return <Shell>
-    <div className="intro"><span className="eyebrow">IL TUO PASS PER L’ARCADE</span><h1>{connectedSession ? <>Bel colpo.<br/>Sei dentro<span>.</span></> : <>Un telefono.<br/>Un po’ di fortuna<span>.</span></>}</h1><p>{connectedSession ? session.state === 'approved' ? 'L’iPad sta completando il collegamento.' : 'Il tuo wallet è collegato all’iPad.' : 'Accedi qui. Il tuo posto si apre sull’iPad.'}</p></div>
+    <div className="intro"><span className="eyebrow">IL TUO WALLET, SEMPRE CON TE</span><h1>{connectedSession ? <>Bel colpo.<br/>Sei dentro<span>.</span></> : authenticated ? <>Il tuo wallet.<br/>Le tue vincite<span>.</span></> : <>Un telefono.<br/>Un po’ di fortuna<span>.</span></>}</h1><p>{connectedSession ? session.state === 'approved' ? 'L’iPad sta completando il collegamento.' : 'Il tuo wallet è collegato all’iPad.' : authenticated ? 'Gestisci i tuoi token e premi. Scansiona un QR quando vuoi giocare sull’iPad.' : 'Accedi al tuo wallet per vedere token e premi, anche senza iPad.'}</p></div>
     {checking && <div className="phone-progress" role="status">Verifichiamo il tuo accesso e il collegamento all’iPad…</div>}
     {ready && authenticated && <div className="phone-account-state"><span>● ACCOUNT CONNESSO</span><b>{user?.email?.address || 'Accesso con passkey'}</b><small>{connectedSession ? 'Wallet associato a questo iPad' : 'Nessun iPad collegato a questa pagina'}</small></div>}
     {error && <div className="phone-error" role="alert">{error}</div>}
     {busy && <div className="phone-progress" role="status">{busy}…</div>}
-    {!checking && !authenticated && !ended && <section className="phone-card"><span className="eyebrow">01 / FATTI RICONOSCERE</span><h2>Il tuo ingresso.</h2><button className="phone-primary" disabled={!canAct} onClick={() => run('Accesso', async () => {await loginWithPasskey();})}>Accedi con passkey <span>↗</span></button><button className="phone-secondary" disabled={!canAct} onClick={() => run('Creazione passkey', async () => {await signupWithPasskey();})}>Prima volta? Crea una passkey</button><div className="divider">OPPURE CON EMAIL</div><form onSubmit={(event) => {event.preventDefault(); void run(emailSent ? 'Verifica codice' : 'Invio codice', async () => {if (emailSent) await loginWithCode({code}); else {await sendCode({email}); setEmailSent(true);}});}}><label htmlFor="email">La tua email</label><input id="email" type="email" autoComplete="email" value={email} disabled={emailSent || !!busy} onChange={(event) => setEmail(event.target.value)} required placeholder="tu@esempio.it"/>{emailSent && <><label htmlFor="code">Codice ricevuto via email</label><input id="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} required placeholder="000000"/><p className="small">Controlla anche la cartella spam.</p></>}<button className="phone-primary" disabled={!canAct} type="submit">{emailSent ? 'Conferma codice' : 'Ricevi il codice'} <span>↗</span></button>{emailSent && <button className="phone-text" type="button" disabled={!canAct} onClick={() => {setEmailSent(false); setCode('');}}>Cambia email o richiedi un nuovo codice</button>}</form></section>}
+    {!checking && !authenticated && <section className="phone-card"><span className="eyebrow">01 / FATTI RICONOSCERE</span><h2>Il tuo ingresso.</h2><button className="phone-primary" disabled={!canAct} onClick={() => run('Accesso', async () => {await loginWithPasskey();})}>Accedi con passkey <span>↗</span></button><button className="phone-secondary" disabled={!canAct} onClick={() => run('Creazione passkey', async () => {await signupWithPasskey();})}>Prima volta? Crea una passkey</button><div className="divider">OPPURE CON EMAIL</div><form onSubmit={(event) => {event.preventDefault(); void run(emailSent ? 'Verifica codice' : 'Invio codice', async () => {if (emailSent) await loginWithCode({code}); else {await sendCode({email}); setEmailSent(true);}});}}><label htmlFor="email">La tua email</label><input id="email" type="email" autoComplete="email" value={email} disabled={emailSent || !!busy} onChange={(event) => setEmail(event.target.value)} required placeholder="tu@esempio.it"/>{emailSent && <><label htmlFor="code">Codice ricevuto via email</label><input id="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} required placeholder="000000"/><p className="small">Controlla anche la cartella spam.</p></>}<button className="phone-primary" disabled={!canAct} type="submit">{emailSent ? 'Conferma codice' : 'Ricevi il codice'} <span>↗</span></button>{emailSent && <button className="phone-text" type="button" disabled={!canAct} onClick={() => {setEmailSent(false); setCode('');}}>Cambia email o richiedi un nuovo codice</button>}</form></section>}
     {info && secret && <section className="phone-card pairing-card"><span className="eyebrow">02 / È IL TUO IPAD?</span><div className="comparison-code">{info.code.slice(0, 3)} {info.code.slice(3)}</div><p>Questo codice deve coincidere con quello sullo schermo davanti a te.</p><small className="origin-label">{info.origin}</small>{authenticated && <><p className="account-label">{user?.email?.address || 'Accesso con passkey'} <button className="phone-text" disabled={!canAct} onClick={() => run('Cambio account', async () => {await logout(); setConfirmed(false);})}>Cambia account</button></p><label className="check-row"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)}/><span>Il codice coincide. Voglio collegare il mio wallet a questo iPad.</span></label><button className="phone-primary" disabled={!canAct || !confirmed || !walletsReady} onClick={() => run('Collegamento del wallet', connect)}>Collega il wallet <span>↗</span></button></>}</section>}
     {connectedSession && session && <>
-      {session.state === 'active' && <PhoneGame session={session} api={api} onConfigured={setSlotConfigured} onSession={value => {if (latest.current.session?.id === value.id && deadline.current > Date.now()) apply(value);}}/>}
-      {!slotConfigured && (!session.grant?.active ? <section className="phone-card"><span className="eyebrow">03 / L’ULTIMO SÌ</span><h2>Ora tocca all’iPad.</h2><p>Autorizza una firma di prova dal tablet. Funzionerà anche dopo aver chiuso questa pagina.</p><div className="permission-note"><b>Solo un messaggio di prova.</b><p>Nessun trasferimento, acquisto o puntata. Il permesso termina dopo 3 minuti senza interazioni sul telefono o sull’iPad.</p></div><label className="check-row"><input type="checkbox" checked={consented} onChange={(event) => setConsented(event.target.checked)}/><span>Autorizzo la firma del messaggio di prova durante questa sessione.</span></label><button className="phone-primary" disabled={!canAct || !consented || session.state !== 'active'} onClick={() => run('Autorizzazione della firma', authorize)}>{session.state === 'approved' ? 'Attendi l’iPad…' : 'Autorizza e prendi posto'} <span>↗</span></button></section> : <div className="ready-card"><span>✓</span><div><b>{session.proof?.status === 'verified' ? 'Collegamento verificato.' : 'Il telefono può riposare.'}</b><p>{session.proof?.status === 'verified' ? 'La firma è riuscita. Nessun fondo è stato spostato.' : 'Premi “Prova il collegamento” sull’iPad.'}</p></div></div>)}
-      <section className="phone-card"><div className="wallet-heading"><span className="eyebrow">IL TUO WALLET</span><span className="base-badge">● BASE</span></div><div className="phone-balance">{balance?.amount !== null && balance?.amount !== undefined ? balance.amount : '—'} <span>USDC</span></div><p className="small">{balance?.stale ? 'Aggiornamento saldo in attesa.' : 'Ricevi USDC sulla rete Base.'}</p><div className="receive-box">{session.depositQr && <img src={session.depositQr} width="180" height="180" alt="Indirizzo wallet per ricevere USDC su Base"/>}<code>{session.address}</code><button className="phone-secondary" onClick={() => run('Copia indirizzo', async () => {await navigator.clipboard.writeText(session.address!); setCopied(true); setTimeout(() => setCopied(false), 2000);})}>{copied ? 'Indirizzo copiato ✓' : 'Copia indirizzo ↗'}</button></div><p className="small">Il wallet e i fondi restano tuoi anche dopo l’uscita dall’iPad.</p>{user?.email && !user.linkedAccounts.some((account) => account.type === 'passkey') && <button className="phone-text" disabled={!canAct} onClick={() => run('Aggiunta passkey', async () => {await linkWithPasskey();})}>Aggiungi una passkey a questo account ↗</button>}<button className="phone-exit" onClick={() => void disconnect()}>Disconnetti l’iPad <span>↗</span></button></section>
+      {session.state === 'active' && account?.wallet?.address.toLowerCase()===session.address?.toLowerCase() && <PhoneGame session={session} api={api} transaction={transaction} onConfigured={setSlotConfigured} onSession={value => {if (latest.current.session?.id === value.id && deadline.current > Date.now()) apply(value);}}/>}
+      {slotConfigured === false && (!session.grant?.active ? <section className="phone-card"><span className="eyebrow">03 / L’ULTIMO SÌ</span><h2>Ora tocca all’iPad.</h2><p>Autorizza una firma di prova dal tablet. Funzionerà anche dopo aver chiuso questa pagina.</p><div className="permission-note"><b>Solo un messaggio di prova.</b><p>Nessun trasferimento, acquisto o puntata. Il permesso termina dopo 3 minuti senza interazioni sul telefono o sull’iPad.</p></div><label className="check-row"><input type="checkbox" checked={consented} onChange={(event) => setConsented(event.target.checked)}/><span>Autorizzo la firma del messaggio di prova durante questa sessione.</span></label><button className="phone-primary" disabled={!canAct || !consented || session.state !== 'active'} onClick={() => run('Autorizzazione della firma', authorize)}>{session.state === 'approved' ? 'Attendi l’iPad…' : 'Autorizza e prendi posto'} <span>↗</span></button></section> : <div className="ready-card"><span>✓</span><div><b>{session.proof?.status === 'verified' ? 'Collegamento verificato.' : 'Il telefono può riposare.'}</b><p>{session.proof?.status === 'verified' ? 'La firma è riuscita. Nessun fondo è stato spostato.' : 'Premi “Prova il collegamento” sull’iPad.'}</p></div></div>)}
+      <button className="phone-account-exit" disabled={!!busy} onClick={() => void disconnect()}>Termina collegamento all’iPad ↗</button>
+      <p className="small">Il wallet resta aperto sul telefono. Il permesso dell’iPad termina dopo 3 minuti senza interazioni.</p>
       {remaining <= 30 && <div className="phone-idle" role="alert"><p>Il posto si libera tra <b>{remaining}s</b>.</p><button className="phone-primary" onClick={() => void activity()}>Sono ancora qui ↗</button></div>}
     </>}
-    {!checking && loaded && !secret && !connectedSession && !busy && <section className="phone-card"><span className="eyebrow">{ended ? 'A PRESTO, PLAYER' : 'IL PRIMO PASSO È SULL’IPAD'}</span><h2>{ended ? 'Il posto è libero.' : 'Scansiona il QR.'}</h2><p>{ended ? 'La sessione sull’iPad è terminata. Il tuo wallet resta nel tuo account: scansiona un nuovo QR per tornare.' : 'Apri il QR mostrato sull’iPad per collegare il tuo wallet a quel terminale.'}</p></section>}
-    {ready && authenticated && !connectedSession && !secret && !recovering && <button className="phone-account-exit" disabled={!canAct} onClick={() => run('Uscita dall’account', async () => {clearSession(); await logout();})}>Esci anche dall’account Privy ↗</button>}
+    {ready && authenticated && <>
+      {accountError&&<div className="phone-error" role="alert">{accountError}<button className="phone-text" onClick={reloadAccount}>Riprova</button></div>}
+      {accountLoading&&!account&&<p className="phone-progress" role="status">Caricamento del wallet…</p>}
+      {account?.wallet&&<PhoneWallet key={account.wallet.address} wallet={account.wallet} transaction={transaction} paired={!!connectedSession} reload={reloadAccount} loading={accountLoading}/>}
+      {account&&!account.wallet&&<section className="phone-card"><h2>Crea il tuo wallet.</h2><p>Ricevi token e premi su Base. Il wallet resta accessibile dal tuo account anche senza iPad.</p><button className="phone-primary" disabled={!canAct||!walletsReady} onClick={()=>void run('Creazione wallet',async()=>{if(!latest.current.wallets.some(wallet=>wallet.walletClientType==='privy'))await createWallet();reloadAccount();})}>Crea wallet ↗</button></section>}
+      {user?.email&&!user.linkedAccounts.some(account=>account.type==='passkey')&&<button className="phone-account-exit" disabled={!canAct} onClick={()=>run('Aggiunta passkey',async()=>{await linkWithPasskey();})}>Aggiungi una passkey ↗</button>}
+    </>}
+    <TransactionConfirmation review={transaction.review} onDecision={transaction.decide}/>
+    {!checking && loaded && !secret && !connectedSession && !busy && <section className="phone-card"><span className="eyebrow">{ended ? 'A PRESTO, PLAYER' : 'VUOI GIOCARE?' }</span><h2>{ended ? 'Il posto è libero.' : 'Scansiona il QR.'}</h2><p>{ended ? 'La sessione sull’iPad è terminata. Il tuo wallet resta nel tuo account: scansiona un nuovo QR per tornare.' : 'Apri il QR mostrato sull’iPad per collegare il tuo wallet a quel terminale.'}</p></section>}
+    {ready && authenticated && !connectedSession && !secret && !recovering && <button className="phone-account-exit" disabled={!canAct} onClick={() => run('Uscita dall’account', async () => {clearSession(); await logout();})}>Esci dal wallet ↗</button>}
   </Shell>;
 }
