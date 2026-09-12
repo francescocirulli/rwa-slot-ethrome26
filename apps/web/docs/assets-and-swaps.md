@@ -54,9 +54,38 @@ an amount to buy and an amount to deposit:
   never accepts a minimum below the reviewed amount.
 - Deposit into the slot with the existing reviewed `fundERC20` action.
 
-Swaps and deposits remain separate Privy confirmations executed in sequence. Each quick-fund approval or swap first shows the USDC input and minimum token output for explicit confirmation. Pending swap identifiers are saved before submission for recovery; unavailable reserve or balance reads stop the sequence. A
-failure stops the sequence and the table shows the last status for each prize.
-ERC1155 prizes are not covered and stay manual.
+Start the sequence once and review each Privy signature in order. The app advances
+from exact approval to purchase to deposit, showing progress for each prize. The
+price probe is scaled down as well as up to fit the required output; the approved
+input is reused for the next quote to avoid repeated approval loops. Expired
+reviews refresh automatically and require confirmation of the new quote.
+
+Funding requirements and reserves come from the inventory's current block, not a
+stale page snapshot. One sequence owns polling; read failures and delayed balances
+are retried with bounded backoff. Each confirmed purchase/deposit refreshes inventory
+before the next dependent operation, and already stocked prizes are skipped. A
+rejected signature or persistent read failure stops the sequence. Starting again
+recalculates the shortfalls without repeating confirmed deposits. An ambiguous send
+stays blocked and is only checked, never automatically resubmitted. Reloading the
+page recovers the pending operation; it does not silently authorize more writes.
+ERC1155 prizes are not covered and stay manual in Inventory.
+
+### Admin RPC reads
+
+Admin inventory, swap verification and wallet balances share a Base read client
+with Multicall aggregation, HTTP batching and `BASE_RPC_FALLBACK_URLS`. A throttled
+endpoint falls through immediately without a retry storm; each endpoint has a
+four-second timeout. Concurrent inventory reads for the same wallet/contract/scope
+share one in-flight request, without caching balances after it completes. Chain ID
+validation is coalesced and cached for one minute; failed validation is not cached.
+
+`GET /api/admin/assets/inventory?scope=funding` keeps ERC20 balances, verified
+decimals, the prize catalog and reserves at a single block, and omits NFT ownership,
+NFT balances and the free-spin counter. The full Inventory tab keeps those reads.
+The response includes ERC20 `funding` requirements or null when they cannot be
+verified. Unavailable balances remain null. User-operation recovery honors
+`SLOT_LOG_PAGE_BLOCKS` and advances bounded history pages without repeatedly scanning
+the same old blocks. No database, extra service replica or signer changes are needed.
 
 ## Inventory and ERC1155 minting
 

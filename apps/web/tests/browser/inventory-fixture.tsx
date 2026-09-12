@@ -8,7 +8,7 @@ const address='0x0000000000000000000000000000000000000011',contract='0x000000000
 const reserve={balance:'10',reserved:'8',available:'2'};
 function Fixture(){
   const [locked,setLocked]=useState(false),[last,setLast]=useState('');
-  const inventory:AdminInventoryData={address,contract,block:'100',updatedAt:Date.now(),eth:'0.1',contractEth:'0.02',catalogAvailable:true,freeSpins:'0',mintEnabled:!locked,swapEnabled:true,canManageOwnership:true,
+  const inventory:AdminInventoryData={funding:null,scope:'full',address,contract,block:'100',updatedAt:Date.now(),eth:'0.1',contractEth:'0.02',catalogAvailable:true,freeSpins:'0',mintEnabled:!locked,swapEnabled:true,canManageOwnership:true,
     collection:{address:BASE_PRIZE_COLLECTION,owner:locked?contract:address,pendingOwner:address,canMint:!locked,canAcceptOwnership:locked},
     assets:[PAYMENT_ASSET,...RWA_ASSETS].map(a=>({...a,balance:'100000000',formatted:'100',verified:true,canDeposit:true,reserve:{balance:'50000000',reserved:'20000000',available:'30000000'}})),
     nfts:NFT_PRIZES.map(n=>({...n,token:BASE_PRIZE_COLLECTION,tokenId:BASE_PRIZE_IDS[n.symbol],balance:'7',reserve,canDeposit:true,canMint:!locked})),
