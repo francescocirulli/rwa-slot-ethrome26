@@ -47,3 +47,15 @@ test('ETH-only requests omit token sponsorship and config defaults to the author
   assert.equal(loadSlotConfig(env)?.gasMode,'usdc');assert.equal(loadSlotConfig({...env,PRIVY_GAS_MODE:'eth'})?.gasMode,'eth');
   assert.throws(()=>loadSlotConfig({...env,PRIVY_GAS_MODE:'wrong'}));
 });
+test('RPC fallback URLs are parsed in order, trimmed and de-duplicated',()=>{
+  const env={NODE_ENV:'test' as const,SLOT_CONTRACT_ADDRESS:'0x0000000000000000000000000000000000000099',SLOT_DEPLOYMENT_BLOCK:'10',BASE_RPC_URL:'https://primary.example',BASE_RPC_FALLBACK_URLS:' https://a.example , https://primary.example,https://b.example '};
+  assert.deepEqual(loadSlotConfig(env)?.rpcUrls,['https://primary.example','https://a.example','https://b.example']);
+  assert.deepEqual(loadSlotConfig({...env,BASE_RPC_FALLBACK_URLS:''})?.rpcUrls,['https://primary.example']);
+});
+test('log page size and history floor are validated against the deployment',()=>{
+  const env={NODE_ENV:'test' as const,SLOT_CONTRACT_ADDRESS:'0x0000000000000000000000000000000000000099',SLOT_DEPLOYMENT_BLOCK:'100'};
+  assert.equal(loadSlotConfig(env)?.logPageBlocks,2000n);assert.equal(loadSlotConfig(env)?.historyFromBlock,100n);
+  assert.equal(loadSlotConfig({...env,SLOT_LOG_PAGE_BLOCKS:'5',SLOT_HISTORY_FROM_BLOCK:'120'})?.logPageBlocks,5n);
+  assert.throws(()=>loadSlotConfig({...env,SLOT_LOG_PAGE_BLOCKS:'0'}));
+  assert.throws(()=>loadSlotConfig({...env,SLOT_HISTORY_FROM_BLOCK:'99'}));
+});

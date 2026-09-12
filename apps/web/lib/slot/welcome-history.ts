@@ -12,27 +12,29 @@ export function welcomeGrantData(player: Address): Hex {
 }
 type Scan = {through: bigint; hash: Hash; transactionHash?: Hash};
 export type WelcomeHistory = {granted: boolean; complete: boolean; blockNumber: bigint; blockHash: Hash; transactionHash?: Hash};
-const PAGE_BLOCKS = 2000n, MAX_PAGES = 12;
+const MAX_PAGES = 12;
 
 export function createWelcomeHistory(reader: SlotReader) {
   const {client, contract, config} = reader;
+  const pageBlocks = config.logPageBlocks && config.logPageBlocks > 0n ? config.logPageBlocks : 2000n;
+  const historyFloor = config.historyFromBlock && config.historyFromBlock >= config.deploymentBlock ? config.historyFromBlock : config.deploymentBlock;
   const scans = new Map<string, Scan>(), locks = new Map<string, Promise<unknown>>();
   async function scan(player: Address): Promise<WelcomeHistory> {
     const key = player.toLowerCase();
     const head = await client.getBlock({blockTag: 'latest'});
-    if (head.number < config.deploymentBlock) throw new SlotError('WrongDeployment', 'The contract history is unavailable.', 503);
+    if (head.number < historyFloor) throw new SlotError('WrongDeployment', 'The contract history is unavailable.', 503);
     let cached = scans.get(key);
     if (cached && (cached.through > head.number || (await client.getBlock({blockNumber: cached.through})).hash !== cached.hash)) {
       scans.delete(key); cached = undefined;
     }
     if (cached?.transactionHash) return {granted: true, complete: true, blockNumber: head.number, blockHash: head.hash, transactionHash: cached.transactionHash};
-    let cursor = cached ? cached.through + 1n : config.deploymentBlock;
+    let cursor = cached ? cached.through + 1n : historyFloor;
     let through = cursor - 1n, transactionHash: Hash | undefined;
     const data = welcomeGrantData(player).toLowerCase();
     // Also recognize a native once-only grant on a future contract, without requiring that interface.
     const nativeData = encodeFunctionData({abi: slotAbi, functionName: 'grantWelcomeFreeSpins', args: [player]}).toLowerCase();
     for (let page = 0; page < MAX_PAGES && cursor <= head.number; page++) {
-      const end = cursor + PAGE_BLOCKS - 1n < head.number ? cursor + PAGE_BLOCKS - 1n : head.number;
+      const end = cursor + pageBlocks - 1n < head.number ? cursor + pageBlocks - 1n : head.number;
       const events = await client.getContractEvents({...contract, eventName: 'FreeSpinsGranted', args: {player}, fromBlock: cursor, toBlock: end, strict: true});
       for (const event of events) {
         if (event.removed || event.blockNumber < cursor || event.blockNumber > end || event.args.amount !== WELCOME_AMOUNT || event.args.player.toLowerCase() !== key) continue;
