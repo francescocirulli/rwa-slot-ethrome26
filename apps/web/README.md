@@ -400,3 +400,19 @@ transactions remain the deduplication source even after credits are spent, a
 restart or keeper rotation. Claims share the keeper nonce queue, check history
 again before signing and rotate fairly between pending wallets. Uncertain sends
 retain the original transaction; a balance of zero never authorizes another bonus.
+
+### Game Explorer and personal statistics
+
+The iPad **Explore** tool and phone **Explorer** navigation open a shared, responsive
+ES5 workspace. Search confirmed Arkiv records with combined time, wallet, result,
+match, winning-symbol and prize filters; open a spin to inspect its original 15-symbol
+grid and Base receipt. **My summary** shows the connected player's spins, wins,
+points and result distributions. Current-season totals use the same expiring
+contributions as the leaderboard; 24-hour, 7-day and 30-day windows use retained
+history. These are explicit-refresh snapshots, not financial return calculations.
+
+`GET /api/explorer` is a public read-only endpoint. It validates typed filter inputs,
+walks all pages at one block before calculating totals, and exposes 25-row pages.
+The 5,000-record ceiling returns an error asking for narrower filters. No new secrets,
+contract deployments or database migrations are needed. Tests live in
+`tests/explorer.test.ts` and `tests/browser/explorer.spec.ts`.

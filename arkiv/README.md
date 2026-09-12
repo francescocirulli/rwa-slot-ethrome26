@@ -87,3 +87,28 @@ Keep the brief's team conversation deadline (Saturday 20:00) and submission
 checkpoint (Sunday 10:00) until the organizers explicitly confirm otherwise.
 The live page and the supplied brief disagree about judging weights and prize
 currency; ask the team to resolve that discrepancy before submitting.
+
+## Explorer and My summary
+
+Open **Explore** in the iPad toolbar, or **Explorer** in the phone navigation.
+The workspace offers **Game Explorer** and **My summary** tabs. The iPad uses the
+paired player's wallet; the phone uses the authenticated account wallet. Without a
+wallet, public exploration remains available and the personal tab explains how to
+connect. A wallet-address filter also allows inspecting another public game record.
+
+Combine time, player, result, match count, winning symbol and prize type filters.
+Open a spin for its full 3×5 grid and Base receipt. My summary shows recorded spins,
+wins, points and combination/symbol distributions for the season or a recent window.
+Use Refresh for new data: these views are labeled snapshots, while Ranks remains live.
+The archive covers retained indexed results only; it is not a lifetime or ROI report.
+
+For example (public, read-only):
+
+```sh
+curl 'https://web-production-e2628.up.railway.app/api/explorer?period=week&won=true&matches=5&symbol=2'
+curl 'https://web-production-e2628.up.railway.app/api/explorer?mode=summary&period=season&player=0xbb2fee9fda8a023220d34cdd9cb2843acc23a0b6'
+```
+
+These routes become available when the Explorer PR is deployed. No additional env
+variables, Privy permissions, signing keys or contract changes are required. See
+[schema/query limits](schema.md#game-explorer-and-personal-summaries).
