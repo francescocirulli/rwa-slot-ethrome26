@@ -4,8 +4,9 @@ Observed on 2026-09-12. SDK **@arkiv-network/sdk 0.8.1**, Node 22.21.1,
 viem from the web package lockfile. Target: Tiramisu, chain 7738577.
 This report separates observed behavior from remaining tests. Initial diagnostics
 used anonymous RPC access. Credentials were subsequently entered through a secure
-local form for setup; they are never included here. No funded writes or production
-configuration changes have been performed.
+local form for setup; they are never included here. Production was subsequently
+configured and funded writes verified after correcting the attribute-name failure
+described below.
 
 ## 1. Leaderboard ordering requires complete pagination
 
@@ -65,7 +66,8 @@ minimum lifetime. Subscribe to new heads to detect that boundary and query again
 The visible countdown estimates remaining time; it waits for network confirmation.
 A failed query retains the previous ranking visibly stale. History lives separately.
 Local tests cover the exact boundary, late submissions, disconnection and failure
-at rollover. Live funded publication/expiry evidence is still outstanding.
+at rollover. Live funded publication is now verified; populated expiry evidence
+is still outstanding for a separate short demo season.
 Suggestion: add a shared-deadline season recipe and explain how UI caches detect
 expiry without an expiration event.
 
@@ -79,9 +81,8 @@ with a dated change log and explicit controlling source, would remove uncertaint
 
 ## Remaining live validation
 
-- Actual write fees and publishing latency. The selected writer balance was verified
-  at 10 GLM on Tiramisu through authenticated read-only RPC.
-- Atomic history/contribution writes on the selected public endpoint.
+- Write-fee and publishing-latency measurements under sustained load. The writer
+  started with 10 GLM; three atomic history/contribution batches are now verified.
 - Same populated query before and empty query after an actual season expiry.
 - Two-player gameplay recording and application-level reconnect recording.
 - Rate limits under event load and any quota changes with an access key.
@@ -112,3 +113,17 @@ migration because every attempted production create had failed before broadcast.
 The Base replay cursor remains at the original activation block, allowing recovery.
 Read-only connectivity checks should be complemented by create gas estimation;
 SDK charset validation and revert explanations should match the live node.
+
+## Production recovery verified
+
+After release PR #49 (commit `db6e788`), a direct Arkiv query at block `370524`
+returned six entities: history and season contributions for Base rounds 17, 18
+and 19. Their scores are 100, 30 and 30. The three contributions share expiry
+block `1666002`; their independent history records expire at blocks `1666504`,
+`1666508` and `1666513`. The public leaderboard returned 160 points, three spins
+and three wins with ingestion caught up.
+
+The production iPhone viewport check found the Leaderboard shortcut above the
+wallet and successfully navigated to standings with a day/hour countdown. This
+validates recovery of real confirmed gameplay and atomic publication, not the
+still-outstanding two-player recording or populated before/after expiry demo.
