@@ -32,6 +32,7 @@ export default defineRailway(() => {
       ADMIN_WALLET_EXTERNAL_ID: preserve(),
       PRIVY_GAS_MODE: preserve(),
       BASE_RPC_URL: preserve(),
+      BASE_RPC_FALLBACK_URLS: preserve(),
       SLOT_CONTRACT_ADDRESS: preserve(),
       SLOT_DEPLOYMENT_BLOCK: preserve(),
       SLOT_LOG_PAGE_BLOCKS: preserve(),

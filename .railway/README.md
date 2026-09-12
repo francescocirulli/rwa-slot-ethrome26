@@ -48,6 +48,9 @@ Use Railway service variables. The full list, with explanations, is in
   [admin configuration recovery](../apps/web/docs/shared-admin.md#changing-accounts-after-a-trial).
 - `PRIVY_GAS_MODE=usdc`: USDC gas with ETH fallback for Privy wallets.
 - `BASE_RPC_URL`: Base mainnet endpoint; prefer a dedicated RPC in production.
+- `BASE_RPC_FALLBACK_URLS`: optional comma-separated public RPC URLs tried in
+  order when `BASE_RPC_URL` fails, rate-limits or rejects a bounded log request.
+  Reads fall back automatically; the keeper still signs on the primary.
 - `SLOT_CONTRACT_ADDRESS` and `SLOT_DEPLOYMENT_BLOCK`: leave empty until the
   contract is deployed. Login, wallets and swaps work without the contract.
 - `SLOT_LOG_PAGE_BLOCKS`: maximum blocks per `eth_getLogs` call; set it to the

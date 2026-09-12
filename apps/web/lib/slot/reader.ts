@@ -1,4 +1,4 @@
-import {createPublicClient, formatUnits, defineChain, http, erc20Abi, keccak256, toHex, zeroAddress, type Address, type Hash} from 'viem';
+import {createPublicClient, fallback, formatUnits, defineChain, http, erc20Abi, keccak256, toHex, zeroAddress, type Address, type Hash, type Transport} from 'viem';
 import {slotAbi} from './abi';
 import {GAME_STATES, serializable, type SlotConfig} from './config';
 import {SlotError} from './errors';
@@ -10,8 +10,13 @@ export function createSlotReader(config: SlotConfig) {
   const pageBlocks = config.logPageBlocks && config.logPageBlocks > 0n ? config.logPageBlocks : 2000n;
   const historyFloor = config.historyFromBlock && config.historyFromBlock >= config.deploymentBlock ? config.historyFromBlock : config.deploymentBlock;
   const chain = defineChain({id: config.chainId, name: config.chainId === 8453 ? 'Base' : 'Local test',
-    nativeCurrency: {name: 'Ether', symbol: 'ETH', decimals: 18}, rpcUrls: {default: {http: [config.rpcUrl]}}});
-  const client = createPublicClient({chain, transport: http(config.rpcUrl, {batch: true, timeout: 12000, retryCount: 1})});
+    nativeCurrency: {name: 'Ether', symbol: 'ETH', decimals: 18}, rpcUrls: {default: {http: config.rpcUrls && config.rpcUrls.length ? config.rpcUrls : [config.rpcUrl]}}});
+  // A single endpoint can rate-limit or go down; fallback retries the next one in order.
+  const rpcUrls = config.rpcUrls && config.rpcUrls.length ? config.rpcUrls : [config.rpcUrl];
+  const transport: Transport = rpcUrls.length > 1
+    ? fallback(rpcUrls.map(url => http(url, {batch: true, timeout: 12000, retryCount: 1})))
+    : http(rpcUrls[0], {batch: true, timeout: 12000, retryCount: 1});
+  const client = createPublicClient({chain, transport});
   const contract = {address: config.address, abi: slotAbi};
   let checkedAt = 0;
   const tokenInfo = new Map<string, {symbol: string; decimals: number}>();

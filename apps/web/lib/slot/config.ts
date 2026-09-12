@@ -2,7 +2,7 @@ import {getAddress, isAddress, type Address} from 'viem';
 import {USDC} from '../types';
 import type {GasMode} from './gas';
 import {prizeCollectionAddress} from '../prize-collection';
-export type SlotConfig = {address: Address; deploymentBlock: bigint; historyFromBlock?: bigint; logPageBlocks?: bigint; chainId: number; rpcUrl: string; paymentToken: Address; gasMode: GasMode; confirmations: number; prizeCollection?:Address};
+export type SlotConfig = {address: Address; deploymentBlock: bigint; historyFromBlock?: bigint; logPageBlocks?: bigint; chainId: number; rpcUrl: string; rpcUrls?: string[]; paymentToken: Address; gasMode: GasMode; confirmations: number; prizeCollection?:Address};
 function positiveBlocks(value: string | undefined, fallback: bigint, name: string) {
   if (value === undefined || value === '') return fallback;
   if (!/^[1-9]\d*$/.test(value)) throw new Error(`${name} must be a positive integer block number`);
@@ -18,8 +18,12 @@ export function loadSlotConfig(env = process.env): SlotConfig | null {
   const logPageBlocks = positiveBlocks(env.SLOT_LOG_PAGE_BLOCKS, 2000n, 'SLOT_LOG_PAGE_BLOCKS');
   const historyFromBlock = positiveBlocks(env.SLOT_HISTORY_FROM_BLOCK, deploymentBlock, 'SLOT_HISTORY_FROM_BLOCK');
   if (historyFromBlock < deploymentBlock) throw new Error('SLOT_HISTORY_FROM_BLOCK must not precede SLOT_DEPLOYMENT_BLOCK');
+  const rpcUrl = env.BASE_RPC_URL || 'https://mainnet.base.org';
+  // Reads fall back to public nodes only when the dedicated endpoint fails or rate-limits.
+  const rpcUrls = [rpcUrl, ...(env.BASE_RPC_FALLBACK_URLS || '').split(',').map(value => value.trim()).filter(Boolean)]
+    .filter((value, index, all) => all.indexOf(value) === index);
   return {address: getAddress(env.SLOT_CONTRACT_ADDRESS), deploymentBlock, historyFromBlock, logPageBlocks,
-    chainId: 8453, rpcUrl: env.BASE_RPC_URL || 'https://mainnet.base.org', paymentToken: USDC,
+    chainId: 8453, rpcUrl, rpcUrls, paymentToken: USDC,
     gasMode: env.PRIVY_GAS_MODE === 'eth' ? 'eth' : 'usdc', confirmations: 2, prizeCollection:prizeCollectionAddress(env.SLOT_PRIZE1155_ADDRESS)};
 }
 export const GAME_STATES = ['waiting', 'revealable', 'expired', 'won', 'lost', 'invalidated'] as const;
