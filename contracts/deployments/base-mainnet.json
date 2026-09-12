@@ -33,7 +33,76 @@
       "gameManager": "0x8e251547f0fD650e0573711EF733F13eBA1505aD",
       "paymentToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       "ticketPrice": 50000,
-      "ticketPriceUSDC": "0.05"
+      "ticketPriceUSDC": "0.05",
+      "paytableConfiguration": {
+        "startBlock": 51216125,
+        "endBlock": 51216136,
+        "catalogVersion": 12,
+        "noWinWeight": 101,
+        "totalOutcomeWeight": 1000,
+        "entries": [
+          {
+            "symbolId": 0,
+            "label": "MAGNET",
+            "transactionHash": "0xb44b782e7348640b36d453eda55373b8af111f2a58359594fe0dcf4725c37e14"
+          },
+          {
+            "symbolId": 1,
+            "label": "FREE_SPIN",
+            "transactionHash": "0xe09a3a1ce728a5a4f3907de11042b76c6f19987d3c80ab3df3a270d82822ace7"
+          },
+          {
+            "symbolId": 2,
+            "label": "STOCK1_NVIDIA",
+            "transactionHash": "0x0bfbcf1aefcce0ea58f493ab9a53826bf7168ce2f68790afdc8d735597dacc69"
+          },
+          {
+            "symbolId": 3,
+            "label": "GADGET",
+            "transactionHash": "0x73c550715e344db02991e9642e27057391cc7c3d7197247810de69e44620db62"
+          },
+          {
+            "symbolId": 4,
+            "label": "STOCK2_SPACEX",
+            "transactionHash": "0x76b327d382055e9481ae2791b67b77cf2225af426a86ba0adef0105789a52aba"
+          },
+          {
+            "symbolId": 5,
+            "label": "STOCK3_APPLE",
+            "transactionHash": "0x744116528302ab149cdc0c8ba1eb1daf0f95384d3a3708fb12180ee62a236e31"
+          },
+          {
+            "symbolId": 6,
+            "label": "STOCK4_ALPHABET",
+            "transactionHash": "0xb3b709ab0c6a71ae3b3fdbca737944c1e46c87f54819ee3d59b6b4371db16676"
+          },
+          {
+            "symbolId": 7,
+            "label": "STOCK5_AMAZON",
+            "transactionHash": "0x2e677d6c43a15f100ead956e08fcf4d727bc3b84f505ada3e1b9ea92020fb0a6"
+          },
+          {
+            "symbolId": 8,
+            "label": "ENS_REGISTRATION",
+            "transactionHash": "0x7faf1ce13ddb72d93845ce9bd82d2587db56cf404fd47b461c5ccd30556801a2"
+          },
+          {
+            "symbolId": 9,
+            "label": "URBE_HUB_DAY_PASS",
+            "transactionHash": "0xc2fbe8e46082f50abd6fae35602a570468cdb751ccdfdd15ba410e561d1c0275"
+          },
+          {
+            "symbolId": 10,
+            "label": "SHIRT",
+            "transactionHash": "0xa90617ee965976ea56e06c1b08d35375cfcff7441b68cf38a317e0263a16028b"
+          },
+          {
+            "symbolId": 11,
+            "label": "GOLD",
+            "transactionHash": "0x76dde4fc7f001065a023c149211ddd256049fec7fcbf9c17ed03afa2a064c1cc"
+          }
+        ]
+      }
     }
   }
 }
