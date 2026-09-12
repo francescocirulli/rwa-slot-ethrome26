@@ -63,6 +63,26 @@ Totals:
 Names such as `STOCK1` and `STOCK2`, artwork, and descriptions are frontend metadata. The contract stores stable
 numeric IDs, token addresses, token IDs, amounts, and probabilities.
 
+The Base mainnet deployment maps the stable labels to these assets:
+
+| Stable label | Base mainnet asset | Token ID | 5/5 amount | 3/5 amount |
+|---|---|---:|---:|---:|
+| MAGNET | `LSPRIZE` (`0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`) | 5 | 1 | 1 |
+| FREE_SPIN | onchain counter | — | 1 | 1 |
+| STOCK1 | `NVDAc` (`0xb20000000000000000000078ee7ce2fE4908108C`) | — | 0.001 | 0.0005 |
+| GADGET | `LSPRIZE` (`0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`) | 1 | 1 | 1 |
+| STOCK2 | `SPCXc` (`0xb2000000000000000000007b9fcbd005511aCBd5`) | — | 0.001 | 0.0005 |
+| STOCK3 | `AAPLc` (`0xb200000000000000000000C2e324d24d7eEcd1fb`) | — | 0.001 | 0.0005 |
+| STOCK4 | `GOOGLc` (`0xb2000000000000000000002D0BA3164cc74f58B7`) | — | 0.001 | 0.0005 |
+| STOCK5 | `AMZNc` (`0xb200000000000000000000d9192b6B456483C2E8`) | — | 0.001 | 0.0005 |
+| ENS_REGISTRATION | `LSPRIZE` (`0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`) | 2 | 1 | — |
+| URBE_HUB_DAY_PASS | `LSPRIZE` (`0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`) | 3 | 1 | — |
+| SHIRT | `LSPRIZE` (`0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`) | 4 | 1 | — |
+| GOLD | `DGLD` (`0xe908475f8Beb7A138B0dc6eb5A05cb27068ffB9A`) | — | 0.001 | — |
+
+This catalog was configured on Base mainnet at blocks `51,216,125` through `51,216,136`. Its onchain state is
+`configuredPrizeCount == 12`, `catalogVersion == 12`, and `totalOutcomeWeight == 1,000`.
+
 ## Prize configuration
 
 The owner or `GAME_MANAGER_ROLE` configures a symbol with:
