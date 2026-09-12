@@ -102,8 +102,8 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
             const s = path.startsWith('/tablet') ? tablet(req) : (await phone(req)).s;
             if (!slot) return json({configured: false});
             if (!s.wallet || s.state !== 'active') throw new ApiError(409, 'Link the wallet first.');
-            const [config, player] = await Promise.all([slot.reader.snapshot(), slot.playerView(s.wallet.address as Address)]);
-            valid(s); return json({sessionId: s.id, ...config, player, keeper: slot.health()});
+            const game = await slot.playView(s.wallet.address as Address);
+            valid(s); return json({sessionId: s.id, ...game});
           }
           if (path === '/tablet/balance' || path === '/phone/balance') {
             const s = path.startsWith('/tablet') ? tablet(req) : (await phone(req)).s;
@@ -238,7 +238,7 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
               grant.gasMode = slot.reader.config.gasMode; s.playGrant = grant;
             } else {
               if (!s.playGrant) throw new ApiError(409, 'Prepare the budget first.');
-              const player = await slot.reader.player(s.wallet.address as Address); valid(s);
+              const player = await slot.reader.walletState(s.wallet.address as Address); valid(s);
               if (player.allowance !== BigInt(s.playGrant.budget)) throw new ApiError(409, 'Confirm the USDC approval for the exact budget on your phone.');
               await walletService.activate(s.playGrant); valid(s);
             }
