@@ -411,10 +411,21 @@ fresh server check before review and submission. These checks do not quote fees;
 Privy determines the actual fee. Missing required balance reads block approval. The wallet
 receive section provides the Base address and QR code; refresh after funding.
 
-RPC reads and backend transaction preparation use the configured fallback endpoints
-when QuickNode reports its daily request quota through JSON-RPC error `-32003`.
-Genuine transaction rejections and contract reverts keep their existing behavior;
-ambiguous backend submissions retain the same signed transaction and nonce.
+RPC reads and backend transaction preparation share provider health across the
+slot, balances and inventory. HTTP failures, timeouts and quota errors temporarily
+remove the failing endpoint from rotation: the cooldown starts at 30 seconds and
+increases to five minutes after repeated failures. Requests try configured healthy
+fallbacks immediately; normal traffic retries an endpoint after its cooldown,
+without background health pings. Configure `BASE_RPC_FALLBACK_URLS` with independent
+providers and give the primary enough quota for an always-on keeper.
+
+Identical simultaneous reads share one request; completed results are not cached
+by the transport. JSON-RPC batches contain at most 20 calls and each endpoint has
+a four-second timeout, including keeper transaction preparation. If every provider
+is unavailable, reads fail and new spins remain blocked until recovery. No balance
+or result is invented. Genuine transaction rejections and contract reverts remain
+terminal. Wallet signing/sending requests are never retried by the transport;
+backend raw broadcasts retain the exact same signed bytes and nonce.
 
 ## Arkiv seasons
 
