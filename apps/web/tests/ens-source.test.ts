@@ -73,3 +73,22 @@ test('a sponsored successful UserOperation yields the same final source-proof gu
  f.receipt.logs.push({address:entryPoint07Address,logIndex:4,data:encodeAbiParameters([{type:'uint256'},{type:'bool'},{type:'uint256'},{type:'uint256'}],[1n,true,1n,1n]),topics:encodeEventTopics({abi:operationEvents,eventName:'UserOperationEvent',args:{userOpHash:zeroHash,sender:owner,paymaster:other}})});
  assert.equal((await f.create().find(id,owner,labelHash))?.finalized,true);
 });
+
+
+test('concurrent claim refreshes share one lookup but later authorization rechecks the proof',async()=>{
+ const f=fixture();f.finalize();const source=f.create();await source.indexFinalized();
+ let reads=0;const read=f.client.getLogs;f.client.getLogs=(async(args:any)=>{reads++;return read(args);}) as typeof read;
+ const results=await Promise.all([source.find(id,owner,labelHash),source.find(id,owner,labelHash),source.find(id,owner,labelHash)]);
+ assert.equal(reads,1);assert.ok(results.every(result=>result?.finalized));
+ await source.find(id,owner,labelHash);assert.equal(reads,2);
+});
+
+test('worker consumes the verified finalized index without fetching the same log pages twice',async()=>{
+ const f=fixture();f.finalize();const source=f.create();
+ assert.throws(()=>source.finalizedEvents(8n,10n),/catching up/);
+ await source.indexFinalized();
+ f.client.getLogs=(async()=>{throw Error('Unexpected duplicate scan');}) as typeof f.client.getLogs;
+ assert.equal(source.finalizedEvents(8n,10n)[0].id,id);
+ assert.deepEqual(source.finalizedEvents(8n,9n),[]);
+ assert.throws(()=>source.finalizedEvents(11n,12n),/catching up/);
+});

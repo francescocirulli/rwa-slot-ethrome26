@@ -1,5 +1,6 @@
 import {getAddress, isAddress, type Address} from 'viem';
 import upstream from './upstream.json';
+import {SlotError} from '../slot/errors';
 export const ENS_PARENT = 'wallstreetslot.eth';
 export const ENS_CHAIN_ID = 11155111;
 export const ENS_RPC = 'https://ethereum-sepolia-rpc.publicnode.com';
@@ -18,8 +19,8 @@ export const ensContracts=Object.fromEntries(Object.entries(upstream.contracts).
   [K in keyof typeof upstream.contracts]:{address:Address;abi:typeof upstream.contracts[K]['abi']}
 };
 export function normalizeLabel(input:unknown):string {
-  if(typeof input!=='string')throw new Error('Enter a name.');
+  if(typeof input!=='string')throw new SlotError('EnsLabel','Enter a name.',400);
   const label=input.trim().toLowerCase();
-  if(!/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/.test(label))throw new Error('Use 3–32 letters, numbers or hyphens, with a letter or number at each end.');
+  if(!/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/.test(label))throw new SlotError('EnsLabel','Use 3–32 letters, numbers or hyphens, with a letter or number at each end.',400);
   return label;
 }

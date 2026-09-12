@@ -74,6 +74,16 @@ export function createEnsService(config:EnsConfig,key?:Hex){
     return result;
   }
   function signer(){if(!sender)throw new SlotError('EnsDisabled','ENS registration is not configured yet.',503);return sender;}
+  async function prepareReview(owner:Address,id:Hex){
+    await check();
+    const [parent,expiry]=await Promise.all([
+      client.readContract({address:ensContracts.ETHRegistry.address,abi:ensRegistryAbi,functionName:'getState',args:[BigInt(keccak256(toHex('wallstreetslot')))]}),
+      client.readContract({...registrar,functionName:'expiry'})]);
+    if(parent.status!==2||parent.latestOwner.toLowerCase()!==ENS_BACKEND.toLowerCase()||expiry>parent.expiry||expiry<BigInt(Math.floor(Date.now()/1000)+3600))throw new SlotError('EnsExpiry','ENS registration needs operator renewal before this voucher can be consumed.',503);
+    const c=await getClaim(id,owner);if(c.stage!=='voucher')throw new SlotError('EnsConsumed','Voucher already consumed. Continue registration.',409);
+    signer();
+    return {claim:c,transaction:voucherTransaction(config.registrar,owner,id,keccak256(toHex(c.label)))};
+  }
   const service={config,check,claims,names,getClaim,
     async available(input:unknown){const label=normalizeLabel(input);const [id,state]=await Promise.all([
       client.readContract({...registrar,functionName:'labelClaim',args:[keccak256(toHex(label))]}),
@@ -87,16 +97,8 @@ export function createEnsService(config:EnsConfig,key?:Hex){
       const id=keccak256(encodeAbiParameters([{type:'address'},{type:'address'},{type:'string'}],[config.registrar,owner,label]));
       await s.send(config.registrar,encodeFunctionData({abi:ensRegistrarAbi,functionName:'reserve',args:[id,owner,label]}));return getClaim(id,owner);
     });},
-    async prepareVoucher(owner:Address,id:Hex){
-      await check();
-      const [parent,expiry]=await Promise.all([
-        client.readContract({address:ensContracts.ETHRegistry.address,abi:ensRegistryAbi,functionName:'getState',args:[BigInt(keccak256(toHex('wallstreetslot')))]}),
-        client.readContract({...registrar,functionName:'expiry'})]);
-      if(parent.status!==2||parent.latestOwner.toLowerCase()!==ENS_BACKEND.toLowerCase()||expiry>parent.expiry||expiry<BigInt(Math.floor(Date.now()/1000)+3600))throw new SlotError('EnsExpiry','ENS registration needs operator renewal before this voucher can be consumed.',503);
-      const c=await getClaim(id,owner);if(c.stage!=='voucher')throw new SlotError('EnsConsumed','Voucher already consumed. Continue registration.',409);
-      signer();
-      return voucherTransaction(config.registrar,owner,id,keccak256(toHex(c.label)));
-    },
+    prepareReview,
+    async prepareVoucher(owner:Address,id:Hex){return (await prepareReview(owner,id)).transaction;},
     async fulfill(owner:Address,id:Hex){return exclusive(owner,async()=>{
       await check();const c=await getClaim(id,owner);if(c.completed)return c;
       if(c.stage!=='ready')throw new SlotError('EnsPending',c.stage==='voucher'?'Consume your voucher first.':'Waiting for Base finality. Your voucher is recorded; do not send another.',409);
@@ -110,7 +112,7 @@ export function createEnsService(config:EnsConfig,key?:Hex){
     head:async()=>(await source.indexFinalized()).finalizedNumber,
     events:async(fromBlock,toBlock)=>{
       const result=[];
-      for(const proof of await source.events(fromBlock,toBlock)){
+      for(const proof of source.finalizedEvents(fromBlock,toBlock)){
         const claim=await client.readContract({...registrar,functionName:'claim',args:[proof.id]});
         if(!claim.completed&&claim.owner.toLowerCase()===proof.owner.toLowerCase()&&keccak256(toHex(claim.label))===proof.labelHash)result.push({id:proof.id,owner:proof.owner});
       }

@@ -2,18 +2,27 @@ import {randomBytes} from 'node:crypto';
 import {isHex,type Address,type Hex} from 'viem';
 import type {WalletService,Wallet} from '../types';
 import {SlotError} from '../slot/errors';
-import {definiteSendFailure,type GasMode} from '../slot/gas';
+import {definiteSendFailure,transactionError,type GasMode} from '../slot/gas';
 import type {SubmittedSpin} from '../slot/engine';
 import {personalWrites,type WriteCoordinator} from '../admin/write-coordinator';
 import {withWalletAuthorization} from '../wallet-authorization';
 import type {EnsService} from './service';
 import {ENS_PARENT} from './config';
 
-type Review={id:string;claimId:Hex;userId:string;wallet:Wallet;expires:number;transaction:{to:Address;data:Hex;chainId:number};stage:'prepared'|'sending'|'submitted'|'uncertain'|'failed';submission?:SubmittedSpin};
+type Review={id:string;claimId:Hex;userId:string;wallet:Wallet;expires:number;transaction:{to:Address;data:Hex;chainId:number};stage:'preparing'|'prepared'|'sending'|'submitted'|'uncertain'|'failed';submission?:SubmittedSpin};
 export function createEnsApi({service,walletService,origin,gasMode='usdc',writes=personalWrites()}:{service:EnsService|null;walletService?:WalletService;origin:string;gasMode?:GasMode;writes?:WriteCoordinator}){
-  const reviews=new Map<string,Review>();
+  const reviews=new Map<string,Review>(),preparing=new Set<string>();
+  const view=(r:Review,name:string)=>({id:r.id,claimId:r.claimId,name,address:r.wallet.address,quantity:1,registrationPayer:'backend',gasMode,expires:r.expires});
+  async function hold(r:Review){
+    await writes.acquire(r.wallet.address.toLowerCase(),r.id,async()=>{
+      if(r.stage==='preparing')return false;
+      if(r.stage==='failed'||r.stage==='prepared'&&r.expires<Date.now())return true;
+      return (await service!.getClaim(r.claimId,r.wallet.address as Address)).stage!=='voucher';
+    });
+  }
   const reply=(body:unknown,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store','Vary':'Authorization','Referrer-Policy':'no-referrer'}});
   return async(request:Request)=>{
+    let phase='read';
     try{
       if(!['GET','POST'].includes(request.method))throw new SlotError('Method','Method not allowed.',405);
       if(request.method==='POST'&&(request.headers.get('origin')!==new URL(origin).origin||request.headers.get('x-slot-request')!=='1'))throw new SlotError('Origin','Invalid origin.',403);
@@ -34,6 +43,7 @@ export function createEnsApi({service,walletService,origin,gasMode='usdc',writes
       if(reader)while(true){const c=await reader.read();if(c.done)break;bytes+=c.value.length;if(bytes>2048){await reader.cancel();throw new SlotError('Input','Request too large.',413);}chunks.push(c.value);}
       let body;try{body=JSON.parse(Buffer.concat(chunks).toString());}catch{throw new SlotError('Input','Invalid JSON.',400);}
       const action=body?.action;
+      if(['reserve','prepare','send','status','cancel','complete'].includes(action))phase=action;
       if(action==='reserve'){
         if(body.confirm!==true)throw new SlotError('Consent','Confirm the requested name.',400);
         return reply(await service.reserve(owner,body.label));
@@ -44,24 +54,31 @@ export function createEnsApi({service,walletService,origin,gasMode='usdc',writes
       }
       if(action==='prepare'){
         if(!isHex(body.claimId)||body.claimId.length!==66)throw new SlotError('Input','Invalid claim.',400);
-        for(const [id,r] of reviews)if(r.stage==='prepared'&&r.expires<Date.now()){reviews.delete(id);writes.release(r.wallet.address.toLowerCase(),id);}
-        if([...reviews.values()].some(r=>r.wallet.id===wallet.id&&r.claimId===body.claimId&&['sending','submitted','uncertain'].includes(r.stage)))throw new SlotError('EnsPending','Your redemption is already being confirmed.',409);
-        if(reviews.size>=256)throw new SlotError('EnsBusy','Too many pending ENS requests.',503);
-        const claim=await service.getClaim(body.claimId,owner),id=randomBytes(32).toString('hex');
-        await writes.acquire(owner.toLowerCase(),id,async()=>{
-          const saved=reviews.get(id);
-          if(!saved)return true;
-          if(saved.stage==='failed'||saved.stage==='prepared'&&saved.expires<Date.now())return true;
-          return (await service.getClaim(saved.claimId,owner)).stage!=='voucher';
-        });
+        if(preparing.has(wallet.id))throw new SlotError('EnsBusy','Your voucher review is being prepared. Wait a moment, then continue.',409);
+        preparing.add(wallet.id);
         try{
-          const transaction=await service.prepareVoucher(owner,body.claimId);
-          const r:Review={id,claimId:body.claimId,userId:user.userId,wallet,transaction,expires:Date.now()+90000,stage:'prepared'};
-          reviews.set(id,r);
-          // Expired, unsubmitted reviews must not lock spins/transfers indefinitely.
-          const timer=setTimeout(()=>{if(r.stage==='prepared'){reviews.delete(id);writes.release(owner.toLowerCase(),id);}},91000);timer.unref();
-          return reply({id,claimId:r.claimId,name:claim.name,address:owner,quantity:1,registrationPayer:'backend',gasMode,expires:r.expires});
-        }catch(error){writes.release(owner.toLowerCase(),id);throw error;}
+          for(const [id,r] of reviews)if(r.stage==='prepared'&&r.expires<Date.now()){reviews.delete(id);writes.release(r.wallet.address.toLowerCase(),id);}
+          const previous=[...reviews.values()].find(r=>r.userId===user.userId&&r.wallet.id===wallet.id&&r.claimId===body.claimId&&r.stage!=='failed');
+          if(previous&&['sending','submitted','uncertain'].includes(previous.stage))throw new SlotError('EnsPending','Your redemption is already being confirmed.',409);
+          // Recover a review whose response was lost, without replacing its lease
+          // or creating another transfer. Sending still rechecks the exact bytes.
+          if(previous?.stage==='prepared'){
+            const claim=await service.getClaim(body.claimId,owner);
+            if(claim.stage!=='voucher')throw new SlotError('EnsConsumed','Your voucher is already recorded. Refresh to follow registration.',409);
+            await hold(previous);return reply(view(previous,claim.name));
+          }
+          if(reviews.size>=256)throw new SlotError('EnsBusy','Too many pending ENS requests.',503);
+          const id=randomBytes(32).toString('hex');
+          const r:Review={id,claimId:body.claimId,userId:user.userId,wallet,transaction:{to:owner,data:'0x',chainId:8453},expires:Date.now()+90000,stage:'preparing'};
+          await hold(r);
+          try{
+            const {claim,transaction}=await service.prepareReview(owner,body.claimId);
+            r.transaction=transaction;
+            r.expires=Date.now()+90000;r.stage='prepared';reviews.set(id,r);
+            const timer=setTimeout(()=>{if(r.stage==='prepared'){reviews.delete(id);writes.release(owner.toLowerCase(),id);}},91000);timer.unref();
+            return reply(view(r,claim.name));
+          }catch(error){writes.release(owner.toLowerCase(),id);throw error;}
+        }finally{preparing.delete(wallet.id);}
       }
       const r=typeof body.id==='string'?reviews.get(body.id):undefined;
       if(!r||r.userId!==user.userId||r.wallet.id!==wallet.id)throw new SlotError('EnsReview','Review unavailable. Check your onchain claim before preparing another.',404);
@@ -70,6 +87,8 @@ export function createEnsApi({service,walletService,origin,gasMode='usdc',writes
         reviews.delete(r.id);writes.release(owner.toLowerCase(),r.id);return reply({cancelled:true});
       }
       if(action==='status'){
+        if(r.stage==='failed')return reply({stage:r.stage});
+        if(r.stage==='prepared'&&r.expires<Date.now()){r.stage='failed';writes.release(owner.toLowerCase(),r.id);return reply({stage:r.stage});}
         const claim=await service.getClaim(r.claimId,owner);
         if(claim.stage!=='voucher')writes.release(owner.toLowerCase(),r.id);
         if(claim.stage==='ready'||claim.stage==='registered')reviews.delete(r.id);
@@ -78,7 +97,7 @@ export function createEnsApi({service,walletService,origin,gasMode='usdc',writes
       }
       if(action!=='send'||body.confirm!==true)throw new SlotError('Input','Invalid ENS operation.',400);
       if(r.stage!=='prepared')return reply({stage:r.stage,submission:r.submission});
-      if(r.expires<Date.now())throw new SlotError('EnsReview','Review expired. Prepare again.',409);
+      if(r.expires<Date.now()){r.stage='failed';writes.release(owner.toLowerCase(),r.id);return reply({error:'Review expired. Continue to prepare a new review.',code:'EnsReview',stage:'failed'},409);}
       if(!walletService.sendOwned)throw new SlotError('Config','Wallet signing unavailable.',503);
       r.stage='sending';let attempted=false;
       try{
@@ -90,10 +109,16 @@ export function createEnsApi({service,walletService,origin,gasMode='usdc',writes
         attempted=true;
         r.submission=await withWalletAuthorization(request,user,authorization=>walletService.sendOwned!(wallet,authorization,r.transaction,'ens-voucher:'+r.claimId,gasMode,()=>{},assertValid));
         r.stage='submitted';return reply({stage:r.stage,submission:r.submission});
-      }catch(error){r.stage=!attempted||definiteSendFailure(error)?'failed':'uncertain';if(r.stage==='failed')writes.release(owner.toLowerCase(),r.id);throw error;}
+      }catch(error){
+        r.stage=!attempted||definiteSendFailure(error)?'failed':'uncertain';if(r.stage==='failed')writes.release(owner.toLowerCase(),r.id);
+        const errorMessage=error instanceof SlotError?error.message:!attempted?'Voucher checks are temporarily unavailable. This request did not submit a transfer. Continue to try again.':transactionError(error);
+        return reply({error:errorMessage,code:error instanceof SlotError?error.code:'EnsSendUnavailable',stage:r.stage},error instanceof SlotError?error.status:503);
+      }
     }catch(error){
       if(error instanceof SlotError)return reply({error:error.message,code:error.code},error.status);
       // Provider errors can contain auth payloads, RPC endpoints and signatures.
+      if(phase==='prepare')return reply({error:'Voucher checks are temporarily unavailable. This request did not submit a transfer. Refresh ENS, then Continue.',code:'EnsPrepareUnavailable'},503);
+      if(phase==='read')return reply({error:'ENS chain data is temporarily unavailable. Refresh to retry.',code:'EnsReadUnavailable'},503);
       return reply({error:'ENS operation unavailable or under verification. Refresh your claim before trying again.',code:'EnsUnavailable'},503);
     }
   };
