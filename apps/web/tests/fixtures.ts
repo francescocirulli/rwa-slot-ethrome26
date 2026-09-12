@@ -23,7 +23,7 @@ export function walletFixture() {
     async prepare(wallet, userId, sessionId) {
       calls.prepare++; await prepareGate;
       return {id: sessionId, signerId: `signer-${sessionId}`, policyId: `policy-${sessionId}`, walletId: wallet.id,
-        address: wallet.address, active: false, message: `Lucky Signal — prova di collegamento ${sessionId}. Nessun trasferimento.`};
+        address: wallet.address, active: false, message: `Wall Street Slot — link proof ${sessionId}. No transfer.`};
     },
     async activate(grant) {grant.active = true;},
     async sign(grant) {calls.sign++; await signGate; return testAccount.signMessage({message: grant.message});},

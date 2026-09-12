@@ -76,7 +76,7 @@ export function createWalletService(appId: string, appSecret: string, excludeSha
         display_name: `Lucky Signal ${code}`, authorization_threshold: 1,
         public_keys: [signerPublicKey.export({type: 'spki', format: 'der'}).toString('base64')],
       });
-      const message = `Lucky Signal — prova di collegamento.\nWallet: ${wallet.address}\nSessione: ${sessionId}\nNonce: ${randomBytes(16).toString('hex')}\nQuesta firma dimostra il funzionamento del signer. Non autorizza accessi, acquisti, puntate o trasferimenti.`;
+      const message = `Wall Street Slot — link proof.\nWallet: ${wallet.address}\nSession: ${sessionId}\nNonce: ${randomBytes(16).toString('hex')}\nQuesta firma dimostra il funzionamento del signer. Non autorizza accessi, acquisti, puntate o trasferimenti.`;
       try {
         const policy = await client.policies().create({
           name: `Lucky Signal proof ${code}`, version: '1.0', chain_type: 'ethereum',
@@ -105,7 +105,7 @@ export function createWalletService(appId: string, appSecret: string, excludeSha
     },
     async sign(grant) {
       const key = keys.get(grant.id);
-      if (!key || !grant.active) throw new SlotError('SessionClosed', 'Il permesso della sessione è terminato.');
+      if (!key || !grant.active) throw new SlotError('SessionClosed', 'The session permission has ended.');
       const result = await client.wallets().ethereum().signMessage(grant.walletId, {
         message: grant.message, idempotency_key: `${grant.id}-proof`,
         authorization_context: {authorization_private_keys: [key]},
@@ -136,8 +136,8 @@ export function createWalletService(appId: string, appSecret: string, excludeSha
     },
     async sendSpin(grant, idempotencyKey, mode, assertValid) {
       const key = keys.get(grant.id);
-      if (!key || !grant.active) throw new SlotError('SessionClosed', 'Il permesso della sessione è terminato.');
-      const result = await sendWithGas({mode, key:idempotencyKey, assertValid:()=>{assertValid();if(!keys.has(grant.id)||!grant.active)throw new SlotError('SessionClosed','La sessione è terminata.');}, send: gas => client.wallets().ethereum().sendTransaction(grant.walletId, {
+      if (!key || !grant.active) throw new SlotError('SessionClosed', 'The session permission has ended.');
+      const result = await sendWithGas({mode, key:idempotencyKey, assertValid:()=>{assertValid();if(!keys.has(grant.id)||!grant.active)throw new SlotError('SessionClosed','The session has ended.');}, send: gas => client.wallets().ethereum().sendTransaction(grant.walletId, {
         caip2: `eip155:${grant.chainId}` as 'eip155:8453', ...gas,
         params: {transaction: {to: grant.contract, chain_id: grant.chainId, value: '0x0', data: encodeFunctionData({abi: slotAbi, functionName: 'startSpin'})}},
         authorization_context: {authorization_private_keys: [key]},
@@ -157,7 +157,7 @@ export function createWalletService(appId: string, appSecret: string, excludeSha
       if (submission.hash) return submission.hash;
       if (!submission.transactionId) return undefined;
       const transaction = await client.transactions().get(submission.transactionId);
-      if (transaction.status === 'execution_reverted' || transaction.status === 'failed') throw new SlotError('TransactionFailed', 'Privy ha confermato che la transazione non è riuscita. Puoi riprovare.');
+      if (transaction.status === 'execution_reverted' || transaction.status === 'failed') throw new SlotError('TransactionFailed', 'Privy confirmed the transaction failed. You can try again.');
       return transaction.transaction_hash && /^0x[0-9a-fA-F]{64}$/.test(transaction.transaction_hash) ? transaction.transaction_hash as Hash : undefined;
     },
     revoke(grant) {

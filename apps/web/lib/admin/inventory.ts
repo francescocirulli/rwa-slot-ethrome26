@@ -6,7 +6,7 @@ import {SlotError} from '../slot/errors';
 import {BASE_PRIZE_COLLECTION,BASE_PRIZE_IDS,prizeCollectionAbi} from '../prize-collection';
 export function createInventoryReader(rpcUrl='https://base-rpc.publicnode.com',collection:Address=BASE_PRIZE_COLLECTION,client=createPublicClient({chain:base,transport:http(rpcUrl,{timeout:15000,retryCount:1})})) {
   return async function read(address:Address,contract:Address|null) {
-    if(await client.getChainId()!==8453)throw new SlotError('Chain','Il nodo RPC non è su Base.',503);
+    if(await client.getChainId()!==8453)throw new SlotError('Chain','The RPC node is not on Base.',503);
     const blockNumber=await client.getBlockNumber({cacheTime:0});
     const [balances,native,contractNative,catalog,owner,pendingOwner]=await Promise.all([
       client.multicall({blockNumber,contracts:WALLET_ASSETS.flatMap(asset=>[{address:asset.address,abi:erc20Abi,functionName:'balanceOf',args:[address]},{address:asset.address,abi:erc20Abi,functionName:'decimals'}]),allowFailure:true}),

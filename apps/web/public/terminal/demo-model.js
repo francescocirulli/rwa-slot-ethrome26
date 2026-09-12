@@ -5,7 +5,7 @@
   var collection = '0x8D411D8efCDb0d528E4F6659B44223264Fd0B719';
   // Symbol order and weights match DigitalSlotMachine._outcomeForRoll (per 1000).
   var prizes = [
-    {label:'MAGNETE', kind:2, token:collection, tokenId:'5', three:94, five:62},
+    {label:'MAGNET', kind:2, token:collection, tokenId:'5', three:94, five:62},
     {label:'FREE SPIN', kind:3, token:'0x0000000000000000000000000000000000000000', tokenId:'0', three:73, five:48},
     {label:'NVIDIA', kind:1, token:'0xb20000000000000000000078ee7ce2fE4908108C', decimals:8, three:48, five:32},
     {label:'GADGET', kind:2, token:collection, tokenId:'1', three:45, five:30},

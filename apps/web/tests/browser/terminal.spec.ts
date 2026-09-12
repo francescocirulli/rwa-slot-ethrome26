@@ -3,7 +3,6 @@ import {pairingSecret} from '../fixtures';
 
 async function link(page: Page, phone: BrowserContext) {
   await page.goto('/');
-  await page.locator('#attract-wake').click();
   await expect(page.locator('#login-qr')).toBeVisible();
   const secret = pairingSecret((await page.locator('#login-qr').getAttribute('src'))!);
   const code = (await page.locator('#pair-code').textContent())!.replace(/ /g, '');
@@ -19,11 +18,11 @@ test('real pairing UI, wallet, receive QR, verified signature and logout at iPad
   const phone = await phoneContext(browser);
   const errors: string[] = []; page.on('pageerror', (error) => errors.push(error.message));
   await link(page, phone);
-  await expect(page.locator('#balance')).toHaveText('128,50');
+  await expect(page.locator('#balance')).toHaveText('128.50');
   await expect(page.locator('#free-spin-summary')).toBeVisible();
   await expect(page.locator('#free-spin-balance')).toHaveText('—');
-  await expect(page.locator('#free-spin-note')).toHaveText('La slot non è ancora attiva.');
-  await page.getByRole('button', {name: 'Ricarica il wallet'}).click();
+  await expect(page.locator('#free-spin-note')).toHaveText('The slot is not live yet.');
+  await page.getByRole('button', {name: 'Top up'}).click();
   await expect(page.locator('#deposit-qr')).toBeVisible();
   await page.locator('#deposit-close').click();
   for (const height of [768, 650]) {
@@ -81,18 +80,18 @@ test('reload restores the connected wallet without issuing a new QR and keeps pe
   const phone = await phoneContext(browser);
   await link(page, phone);
   await expect(page.locator('body')).toHaveAttribute('data-wallet-state', 'awaiting-permission');
-  await expect(page.locator('#signature-title')).toHaveText('Autorizzazione in attesa.');
+  await expect(page.locator('#signature-title')).toHaveText('Approval pending.');
   await expect(page.locator('#sign-button')).toBeDisabled();
   const requests: string[] = [];
   page.on('request', request => {if (request.method() === 'POST') requests.push(new URL(request.url()).pathname);});
   await page.reload();
   await expect(page.locator('#wallet-panel')).toBeVisible();
   await expect(page.locator('#login-qr')).toBeHidden();
-  await expect(page.locator('#balance')).toHaveText('128,50');
+  await expect(page.locator('#balance')).toHaveText('128.50');
   expect(requests).not.toContain('/api/relay/pair');
   await phone.request.post('http://localhost:3101/api/relay/phone/logout', {data: {}});
   await expect(page.locator('#login-qr')).toBeVisible();
-  await expect(page.locator('#session-feedback')).toContainText('sessione è stata chiusa');
+  await expect(page.locator('#session-feedback')).toContainText('session was closed');
   await expect(page.locator('#balance')).not.toHaveAttribute('title');
   await phone.close();
 });
@@ -113,7 +112,7 @@ test('offline connected state blocks signing, recovers on reconnect, and does no
   await expect(page.locator('#sign-button')).toBeEnabled();
   await expect(page.locator('#connection-banner')).toBeHidden();
   await page.locator('#logout').click();
-  await expect(page.locator('#session-feedback')).toContainText('Sei uscito');
+  await expect(page.locator('#session-feedback')).toContainText('You logged out');
   await phone.close();
 });
 
@@ -135,19 +134,19 @@ test('onchain slot spins through both transactions, waits for finality, maps row
   await link(page,phone);
   await expect(page.locator('#free-spin-summary')).toBeVisible();
   await expect(page.locator('#free-spin-balance')).toHaveText('2');
-  await expect(page.locator('#free-spin-note')).toContainText('La leva li usa per primi');
+  await expect(page.locator('#free-spin-note')).toContainText('The lever uses them first');
   await expect(page.locator('#spin-free')).toBeEnabled();
   await expect(page.locator('#spin-paid')).toBeDisabled();
   await page.locator('#spin-free').click();
   await expect(page.locator('.machine')).toHaveClass(/is-spinning/);
-  await expect(page.locator('#game-phase')).toContainText('ATTESA BLOCCO');
+  await expect(page.locator('#game-phase')).toContainText('WAITING FOR BLOCK');
   await expect(page.locator('.cell[data-result-symbol]')).toHaveCount(0);
   phase='revealable';await expect(page.locator('#game-phase')).toContainText('REVEAL');
   await expect(page.locator('.machine')).toHaveClass(/is-spinning/);
-  phase='confirming';await expect(page.locator('#game-phase')).toContainText('CONFERMA RISULTATO');
+  phase='confirming';await expect(page.locator('#game-phase')).toContainText('CONFIRMING RESULT');
   await expect(page.locator('.cell[data-result-symbol]')).toHaveCount(0);
   await expect(page.locator('#game-tx')).toBeHidden();
-  phase='complete';await expect(page.locator('#game-title')).toContainText('Hai vinto 2 free spin');
+  phase='complete';await expect(page.locator('#game-title')).toContainText('You won 2 free spin');
   await expect(page.locator('.machine')).not.toHaveClass(/is-spinning/);
   await expect(page.locator('.cell.winner')).toHaveCount(5);
   await expect(page.locator('#game-tx')).toHaveAttribute('href','https://basescan.org/tx/0x'+'a'.repeat(64));
@@ -177,20 +176,20 @@ test('free-spin counter waits for the welcome grant, tracks spending and hides s
   });
   await link(page, phone);
   await expect(page.locator('#free-spin-balance')).toHaveText('0');
-  await expect(page.locator('#free-spin-note')).toContainText('+2 in arrivo');
+  await expect(page.locator('#free-spin-note')).toContainText('+2 on the way');
   await expect(page.locator('#spin-free')).toBeDisabled();
   credits = '2'; granted = true;
   await expect(page.locator('#free-spin-balance')).toHaveText('2');
   await expect(page.locator('#spin-free')).toBeEnabled();
-  await expect(page.locator('#play-consent-title')).toHaveText('Puoi già giocare gratis.');
+  await expect(page.locator('#play-consent-title')).toHaveText('You can already play for free.');
   credits = '1'; await expect(page.locator('#free-spin-balance')).toHaveText('1');
   credits = '0'; await expect(page.locator('#free-spin-balance')).toHaveText('0');
-  await expect(page.locator('#free-spin-note')).toHaveText('Nessun free spin disponibile.');
+  await expect(page.locator('#free-spin-note')).toHaveText('No free spins available.');
   await expect(page.locator('#spin-free')).toBeDisabled();
   await page.unroute('**/api/relay/tablet/game');
   await context.setOffline(true);
   await expect(page.locator('#free-spin-balance')).toHaveText('—');
-  await expect(page.locator('#free-spin-note')).toHaveText('Saldo da aggiornare.');
+  await expect(page.locator('#free-spin-note')).toHaveText('Balance pending update.');
   await phone.close();
 });
 
@@ -198,7 +197,7 @@ test('free-spin counter waits for the welcome grant, tracks spending and hides s
 test('a paired wallet can enter demo when the contract is not configured', async ({page, browser}) => {
   const phone = await phoneContext(browser);
   await link(page, phone);
-  await expect(page.locator('#free-spin-note')).toHaveText('La slot non è ancora attiva.');
+  await expect(page.locator('#free-spin-note')).toHaveText('The slot is not live yet.');
   await page.locator('#mode-switch').click();
   await expect(page).toHaveURL(/demo=1/);
   await expect(page.locator('body')).toHaveAttribute('data-mode', 'demo');
@@ -215,17 +214,17 @@ test('funding blocks both spin types, recovers after replenishment and keeps Gol
   });
   await link(page,phone);
   await expect(page.locator('.reels img[src="/symbols/jackpot.svg"]')).toHaveCount(2);
-  await expect(page.locator('#game-availability')).toContainText('Rifornimento premi');
-  await expect(page.locator('#play-consent-title')).toHaveText('Attendiamo la macchina.');
+  await expect(page.locator('#game-availability')).toContainText('Prize restock');
+  await expect(page.locator('#play-consent-title')).toHaveText('Waiting for the machine.');
   await expect(page.locator('#spin-free')).toBeDisabled();await expect(page.locator('#spin-paid')).toBeDisabled();
   await page.screenshot({path:'artifacts/terminal-funding.png'});
   funding=true;await expect(page.locator('#spin-free')).toBeEnabled();await expect(page.locator('#game-availability')).toBeHidden();
-  funding=null;await expect(page.locator('#spin-free')).toBeDisabled();await expect(page.locator('#game-availability')).toContainText('Verifichiamo le riserve');
-  funding=false;won=true;await expect(page.locator('#game-title')).toHaveText('Hai vinto 0.01 Gold (DGLD)!');
+  funding=null;await expect(page.locator('#spin-free')).toBeDisabled();await expect(page.locator('#game-availability')).toContainText('Checking prize reserves');
+  funding=false;won=true;await expect(page.locator('#game-title')).toHaveText('You won 0.01 Gold (DGLD)!');
   await expect(page.locator('.reels img[src="/symbols/jackpot.svg"]')).toHaveCount(15);
   await expect(page.locator('#won-prize')).toHaveAttribute('src','/symbols/symbol-11.svg');
   await expect(page.locator('#game-tx')).toHaveAttribute('href','https://basescan.org/tx/0x'+'b'.repeat(64));
-  await expect(page.locator('#game-availability')).toContainText('Rifornimento premi');
+  await expect(page.locator('#game-availability')).toContainText('Prize restock');
   for(const height of [768,650]){await page.setViewportSize({width:1024,height});await page.screenshot({path:`artifacts/terminal-gold-${height}.png`});expect(await page.evaluate(()=>document.documentElement.scrollHeight)).toBeLessThanOrEqual(height);}
   await phone.close();
 });

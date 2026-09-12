@@ -38,7 +38,7 @@ test('asynchronous membership revocation between fee attempts prevents ETH fallb
 test('both currencies insufficient produces a terminal error without more retries',async()=>{
   let count=0;
   await assert.rejects(sendWithGas({mode:'usdc',key:'empty',send:async gas=>{count++;throw gas.sponsor?shortage():rejected({error:'insufficient funds for gas'});}}),error=>{
-    assert.equal(definiteSendFailure(error),true);assert.match(transactionError(error),/Ricarica USDC oppure ETH/);return true;
+    assert.equal(definiteSendFailure(error),true);assert.match(transactionError(error),/Top up USDC or ETH/);return true;
   });assert.equal(count,2);
 });
 test('ETH-only requests omit token sponsorship and config defaults to the authorized user-pays mode',async()=>{

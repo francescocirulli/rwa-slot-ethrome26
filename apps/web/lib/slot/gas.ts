@@ -31,12 +31,12 @@ export function transactionError(error: unknown): string {
   if (error instanceof SlotError) return error.message;
   if (error instanceof APIError) {
     const body = payload(error);
-    if (error.status === 400 && /insufficient|not enough/i.test(body)) return 'Saldo insufficiente per operazione e commissioni. Ricarica USDC oppure ETH su Base.';
+    if (error.status === 400 && /insufficient|not enough/i.test(body)) return 'Insufficient balance for the operation and fees. Top up USDC or ETH on Base.';
     if (error.status === 400 && /sponsor_options|asset.*config|unsupported|user.pays/i.test(body)) return 'Configura User pays e USDC su Base nel dashboard Privy.';
-    if (error.status === 401 || error.status === 403) return 'Privy non ha autorizzato questa operazione. Verifica accesso e permessi del wallet.';
-    if ([400,422].includes(error.status || 0)) return 'Privy ha rifiutato la transazione prima dell’invio. Verifica parametri, saldo e configurazione.';
+    if (error.status === 401 || error.status === 403) return 'Privy did not authorize this operation. Check wallet access and permissions.';
+    if ([400,422].includes(error.status || 0)) return 'Privy rejected the transaction before sending. Check parameters, balance and configuration.';
   }
-  return 'Invio non verificabile. Controlliamo la richiesta senza inviarne una seconda.';
+  return 'Send cannot be verified. Checking the request without sending a second one.';
 }
 export async function sendWithGas<T>(options: {
   mode: GasMode; key: string; send: (gas: GasOptions) => Promise<T>;

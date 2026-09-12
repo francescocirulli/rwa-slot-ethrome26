@@ -15,7 +15,7 @@ function fixture() {
   let pending=false,unconfirmed=false,decimals=8,balance=100000000n,fail=false;
   const sends:any[]=[],writes=createWriteCoordinator();
   const reader={config:{address:contract,paymentToken:recipient,chainId:8453,gasMode:'usdc',confirmations:2},validate:async()=>{},catalog:async()=>[],
-    player:async()=>({historyReady:true,game:{pending,hasResult:unconfirmed,confirmed:!unconfirmed}}),
+    walletState:async()=>({busy:pending||unconfirmed}),
     client:{simulateContract:async()=>{},readContract:async({functionName}:any)=>functionName==='decimals'?decimals:balance}} as any;
   const service={authenticate:async(token:string)=>{if(!['owner','other'].includes(token))throw new Error();return {userId:token,wallets:[{id:token,address:token==='owner'?address:recipient}]};},
     sendOwned:async(wallet:any,authorization:any,transaction:any)=>{if(fail)throw new Error('network timeout');sends.push({wallet,authorization,transaction});return {transactionId:'pending-provider'};}} as unknown as WalletService;
@@ -58,7 +58,7 @@ test('known assets, verified decimals, current balances and whole NFT quantities
 test('wallet review blocks a lever pull; a pending round blocks prepare and a new external round blocks send',async()=>{
   const f=fixture(),prepared=await f.call('prepare',transfer);
   const engine=createSlotEngine(f.reader,undefined,f.writes);
-  await assert.rejects(engine.start(address,0n,'free',{assertSession:()=>{}}),/operazione in corso/);
+  await assert.rejects(engine.start(address,0n,'free',{assertSession:()=>{}}),/operation in progress/);
   await f.call('cancel',{id:prepared.body.id});f.pending(true);
   assert.equal((await f.call('prepare',transfer)).status,409);
   f.pending(false);f.unconfirmed(true);assert.equal((await f.call('prepare',transfer)).status,409);f.unconfirmed(false);const next=await f.call('prepare',transfer);f.pending(true);
@@ -86,10 +86,10 @@ test('account portfolio uses verified ownership without a pairing cookie and pre
 test('portfolio coalesces reads and distinguishes zero allowance, busy rounds and unavailable chain state',async()=>{
   let reads=0;
   const inventory=async()=>{reads++;return {address,contract,updatedAt:1,eth:'0',assets:[],nfts:[],freeSpins:'2'};} ;
-  const slot={reader:{config:{address:contract,gasMode:'usdc'},settings:async()=>({ticketPrice:50000n})},playerView:async()=>({allowance:'0',historyReady:true,game:{id:'1',pending:true},operation:null})};
+  const slot={reader:{config:{address:contract,gasMode:'usdc'},settings:async()=>({ticketPrice:50000n})},walletView:async()=>({allowance:'0',busy:true,activeGameId:'1'})};
   const read=createPortfolioReader(inventory as any,()=>slot as unknown as SlotEngine);
   const [a,b]=await Promise.all([read(address),read(address)]);assert.equal(reads,1);assert.equal(a,b);assert.equal(a.allowance,'0');assert.equal(a.busy,true);assert.equal(a.canTransact,false);
-  const unavailable=createPortfolioReader(inventory as any,()=>({...slot,playerView:async()=>{throw new Error();}}) as unknown as SlotEngine);
+  const unavailable=createPortfolioReader(inventory as any,()=>({...slot,walletView:async()=>{throw new Error();}}) as unknown as SlotEngine);
   const value=await unavailable(address);assert.equal(value.allowance,null);assert.equal(value.canTransact,false);
 });
 test.afterEach(()=>walletAuthorizations().dispose());
