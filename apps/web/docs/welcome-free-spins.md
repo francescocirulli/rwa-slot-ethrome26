@@ -23,28 +23,57 @@ or a transaction signature to receive or use these credits.
   normal origin/header checks. It does not renew the three-minute idle timer.
 - Signing in to the admin panel does not trigger a player welcome grant.
 
-## Contract and keeper
+## Existing contract and keeper
 
-`grantWelcomeFreeSpins(player)` requires the owner or `GAME_MANAGER_ROLE` and
-adds the fixed `WELCOME_FREE_SPINS` amount of 2 to `freeSpins[player]`.
-It records `welcomeFreeSpinsGranted[player]` permanently and emits both
-`FreeSpinsGranted` and `WelcomeFreeSpinsGranted`. A second call reverts with
-`WelcomeFreeSpinsAlreadyGranted`, including after credits have been spent or
-reset through the admin panel. Existing promotional or won credits are preserved.
-This is once per wallet on this contract, not proof of a unique person across accounts.
+The backend calls the already deployed `grantFreeSpins(player, 2)` function.
+The recipient is bound to verified onboarding, and the amount is fixed by the
+server. This adds to existing credits; it never uses `setFreeSpins` to replace
+the balance. The keeper needs `GAME_MANAGER_ROLE` or contract ownership.
+No new contract deployment, database, Privy setting or secret is required.
 
-Welcome grants share the keeper's queue and nonce stream with free-spin starts,
-reveals and expiry. Reveals take priority. The keeper calculates the transaction
-hash before broadcasting and only rebroadcasts identical signed bytes after an
-ambiguous response. Missing roles, insufficient keeper ETH or a temporary RPC
-failure leave the bonus pending and eligible for retry.
+To distinguish welcome credits from ordinary admin promotions, the backend
+appends a stable public 32-byte marker to the transaction input:
+`keccak256("rwa-slot:welcome-free-spins:v1")`. The original Solidity contract
+accepts the extra word after its two static arguments, ignores it when decoding,
+and emits its existing `FreeSpinsGranted(player, amount, newCount)` event.
+Compatibility is tested against the exact deployed creation bytecode on Anvil.
+The marker is never added to normal admin `grantFreeSpins` calls.
 
-The grant flag and balance are stored onchain; no database is required. A
-restart cannot grant another bonus after the first one was recorded. Unsent
-requests are in memory: if the process stops before broadcasting, the player
-must reconnect so the authenticated request can be recreated. A new contract
-has its own independent grant records. Run one always-on replica and do not
-share the keeper EOA with another process.
+Before crediting, the app scans that player's grant events from the configured
+deployment block. Only a successful transaction to this slot with zero ETH value,
+the exact marked calldata, a two-credit event and matching transaction/receipt
+block hashes establishes a welcome bonus. Manual credits, won credits and the
+current free-spin balance cannot establish or reset that record. The history
+also recognizes the native welcome function if used on a future contract, but
+the app does not require or call that function.
+
+Scans use 2,000-block pages with at most 12 pages per request. A partial scan
+leaves the bonus checking; it never authorizes a write. Progress stays in memory,
+with block-hash checks to invalidate caches after a reorg. RPC, transaction or
+receipt lookup failures do not advance a negative scan. Completed grants remain
+recoverable from chain history after logout, spending, resetting the balance,
+restarting the service or rotating the keeper key.
+
+The keeper repeats the history check inside its serialized nonce queue, after
+pending reveals. A negative scan must cover the same keeper nonce used for the
+new transaction. Nonces and the scanned block hash are checked again before
+signing, so a stale negative history result cannot authorize a fresh nonce after
+an earlier grant has mined. Pending keeper transactions block further sends.
+The transaction hash is computed before broadcasting; an ambiguous response only
+allows rebroadcasting identical signed bytes, never an automatic second nonce.
+
+This is an application-level once-per-wallet bonus. The existing contract still
+allows authorized managers to call `grantFreeSpins` repeatedly. The public marker
+is not an authorization mechanism: an authorized manager deliberately submitting
+the exact marked grant creates a real bonus and is recognized as such. Run one
+always-on service, use a dedicated keeper EOA, and stop its previous process
+before restarting or rotating its key. Multiple writers need durable coordination.
+This is not proof of a unique person across separate accounts.
+
+Unsent requests are in memory. If the process stops before broadcasting, the
+player must reconnect to recreate the authenticated request. A submitted grant
+is recovered from its pending nonce or mined event. Missing roles, insufficient
+keeper ETH and temporary RPC errors leave the bonus available for retry.
 
 ## Player display
 
@@ -56,27 +85,17 @@ and rewards, shows an unavailable balance while offline, and clears on logout
 or a change of player. The phone explains that available free spins need no
 USDC approval.
 
-## Deployment and validation
+## Configuration and validation
 
-Deploy the updated contract and configure its exact address and deployment
-block. Grant `GAME_MANAGER_ROLE` to the backend EOA and fund it with ETH on Base.
-No additional Privy dashboard option or secret is required. The disabled
-backend-key placeholder and an unset contract continue to support login, but
-cannot award credits. The bonus is not live until the updated contract and
-keeper are configured.
+The current Base slot at `0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c`, deployed
+at block `51208577`, supports this flow as it stands. Keep its existing address,
+deployment block and server-only `SLOT_BACKEND_PRIVATE_KEY`. The keeper must have
+the manager role and ETH on Base. An unset contract or the disabled backend-key
+placeholder still permits login but cannot credit a bonus.
 
-The original Base deployment at `0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c`
-does **not** include welcome credits and is not upgradeable. The app reports the
-bonus as `unsupported`, stops automatic phone retries for it, and leaves regular
-wallet, balance, admin and spin operations available. It never substitutes a
-repeatable `grantFreeSpins` call for the once-only grant. Deploying the updated
-contract is a separate release operation; merging app code does not enable the
-bonus on the old address.
-
-The ABI and app test bytecode are regenerated from the Foundry build. Tests
-cover contract permissions, additive accounting, duplicate grants, verified
-wallet eligibility, authenticated recovery, unchanged idle deadlines, keeper
-submission and restart recovery on Anvil, and pending/available/empty/offline
-counter states at iPad sizes. A pinned fixture from the original deployment is
-also exercised on Anvil to verify reads, manual credits, free-spin starts and
-reveals without attempting welcome writes. These checks do not send real Base transactions.
+Unit tests cover eligibility, authenticated recovery, unchanged idle deadlines,
+manual-versus-welcome history, bounded scans, lookup failures and reorgs. Anvil
+tests use the deployed bytecode to verify additive crediting, zero player charge,
+restart recovery, spent/reset balances, lost responses, pending nonces, stale
+RPC snapshots and keeper rotation. Browser tests cover the counter states at
+iPad sizes. These tests use disposable local accounts and do not send Base transactions.

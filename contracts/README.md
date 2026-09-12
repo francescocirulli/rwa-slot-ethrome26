@@ -94,7 +94,9 @@ configured because each column needs three distinct symbols; the confirmed payta
 
 ## ERC-1155 prize collection
 
-`SlotPrize1155` provides the four launch rewards with JSON and SVG artwork returned entirely as base64 data URIs:
+`SlotPrize1155` provides four constructor-defined launch rewards with JSON and SVG artwork returned entirely as
+base64 data URIs. The recorded Base mainnet collection also includes Magnet, created after deployment with the
+same fully on-chain metadata format:
 
 | Token ID | Reward |
 |---:|---|
@@ -102,11 +104,13 @@ configured because each column needs three distinct symbols; the confirmed payta
 | 2 | ENS registration |
 | 3 | Urbe Hub day pass |
 | 4 | Shirt |
+| 5 | Magnet |
 
 The collection owner can call `mint(recipient, tokenId, amount)` or `mintBatch(...)` for existing IDs. New
-sequential IDs start from 5 and can be created with an initial receiver, supply, and complete metadata URI through
-`createAndMint(recipient, amount, metadataURI)`. The four launch IDs begin with zero supply and are minted only
-when inventory is required.
+sequential IDs start from 5 on a fresh deployment and can be created with an initial receiver, supply, and complete
+metadata URI through `createAndMint(recipient, amount, metadataURI)`. On Base mainnet, Magnet occupies ID 5 and
+`nextTokenId` is now 6. The four constructor-defined IDs begin with zero supply and are minted only when inventory
+is required; the first Magnet unit was minted directly to the slot contract.
 
 ## Solvency
 
@@ -137,6 +141,14 @@ without overwriting existing ones with `grantFreeSpins(player, amount)`, and con
 
 ## Welcome bonus
 
+The deployed Base slot supports welcome credits through the app's existing
+`grantFreeSpins(player, 2)` integration. The backend distinguishes a marked
+welcome transaction from manual credits, verifies its event/receipt history and
+serializes submissions. This requires no contract redeployment; repeat prevention
+is enforced by the app. See the [app integration](../apps/web/docs/welcome-free-spins.md).
+
+The following native alternative exists only in the newer, undeployed source:
+
 The owner or a game manager can call `grantWelcomeFreeSpins(player)` to add
 exactly `WELCOME_FREE_SPINS` (2) credits once per wallet. Existing credits are
 preserved. `welcomeFreeSpinsGranted(player)` permanently records the award, and
@@ -144,7 +156,7 @@ repeated calls revert with `WelcomeFreeSpinsAlreadyGranted`, even after the
 balance is spent or reset. Both `FreeSpinsGranted` and
 `WelcomeFreeSpinsGranted` are emitted on the first successful grant. The trusted
 backend verifies new-wallet eligibility; the contract enforces the fixed amount
-and prevents duplicates. See the [app integration](../apps/web/docs/welcome-free-spins.md).
+and prevents duplicates. The current app does not require this alternative.
 
 ## Frontend interface
 
@@ -209,8 +221,8 @@ The deployed slot was built from the source pinned in
 [`deployments/base-mainnet.json`](deployments/base-mainnet.json). It predates
 `grantWelcomeFreeSpins` and is not upgradeable. The current source and generated
 ABI include welcome credits for a future deployment. Do not assume new source
-features exist at the recorded address; the app keeps the original flow working
-and disables welcome grants on that version.
+features exist at the recorded address. The app awards welcome credits on that
+existing deployment through `grantFreeSpins` and verified transaction history.
 
 ```sh
 forge test

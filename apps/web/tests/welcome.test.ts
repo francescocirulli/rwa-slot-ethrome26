@@ -1,16 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createWelcomeService} from '../lib/welcome';
-import {createSlotReader} from '../lib/slot/reader';
 import type {SlotEngine} from '../lib/slot/engine';
 import {walletFixture, testAccount} from './fixtures';
-
-test('welcome getter preserves provider failures instead of treating them as unsupported or unclaimed', async () => {
-  const reader = createSlotReader({address: testAccount.address, paymentToken: testAccount.address, chainId: 31337, deploymentBlock: 1n, rpcUrl: 'http://127.0.0.1:1', gasMode: 'eth', confirmations: 2});
-  const failure = new Error('RPC unavailable');
-  reader.client.readContract = async () => {throw failure;};
-  await assert.rejects(reader.welcomeGranted(testAccount.address), error => error === failure);
-});
 
 test('welcome eligibility uses verified first-wallet creation time and never a supplied destination', async () => {
   const fixture = walletFixture(), user = await fixture.service.authenticate('player-a'), wallet = user.wallets[0];

@@ -6,6 +6,7 @@ import {SlotError, slotError} from './errors';
 import {slotAbi} from './abi';
 import {definiteSendFailure, transactionError, type GasToken} from './gas';
 import type {WelcomeView} from '../welcome';
+import {createWelcomeHistory, welcomeGrantData, type WelcomeHistory} from './welcome-history';
 export type SubmittedSpin = {hash?: Hash; transactionId?: string; userOperationHash?:Hash; gasToken?: GasToken};
 export type SpinOperation = {key: string; attempt: number; player: Address; afterGameId: string; stage: 'submitting' | 'confirming' | 'started' | 'failed' | 'uncertain'; hash?: Hash; gameId?: string; error?: string; gasToken?: GasToken; transactionId?: string};
 export function createSlotEngine(reader: SlotReader, backendKey?: Hex) {
@@ -13,7 +14,8 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex) {
   const backend = backendKey ? privateKeyToAccount(backendKey) : undefined;
   const wallet = backend ? createWalletClient({account: backend, chain, transport: http(config.rpcUrl, {retryCount: 0, timeout: 12000})}) : undefined;
   const operations = new Map<string, SpinOperation>(), locks = new Map<string, Promise<unknown>>();
-  const welcome = new Map<string, {player: Address; hash?: Hash; nextAttempt: number; error?: string}>();
+  const welcome = new Map<string, {player: Address; hash?: Hash; nextAttempt: number; checking: boolean; error?: string}>();
+  const welcomeHistory = createWelcomeHistory(reader);
   let backendQueue = Promise.resolve<unknown>(null), ticking = false, timer: ReturnType<typeof setTimeout> | undefined, stopped = true;
   let pendingBackend: {hash: Hash; raw: Hex; nonce: number} | undefined;
   const health = {configured: !!backend, address: backend?.address || null, lastTick: 0, lastBlock: '0', error: '', canStartFreeSpin: false, balanceWei: '0'};
@@ -33,19 +35,40 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex) {
     // Re-broadcast the identical signed transaction: never invent a second nonce after a lost response.
     await client.sendRawTransaction({serializedTransaction: sent.raw}).catch(() => {});
   }
-  async function sendBackend(functionName: 'revealRound' | 'expireRound' | 'startFreeSpin' | 'grantWelcomeFreeSpins', arg: bigint | Address, onHash?: (hash: Hash) => void, assertSession?: () => void) {
+  async function sendBackend(functionName: 'revealRound' | 'expireRound' | 'startFreeSpin' | 'grantFreeSpins', arg: bigint | Address, onHash?: (hash: Hash) => void, assertSession?: () => void) {
     if (!wallet || !backend) throw new SlotError('KeeperMissing', 'Il wallet backend non è ancora configurato.', 503);
     const task = backendQueue.catch(() => {}).then(async () => {
       await flushBackend();
       const [pendingNonce, latestNonce] = await Promise.all([client.getTransactionCount({address: backend.address, blockTag: 'pending'}), client.getTransactionCount({address: backend.address, blockTag: 'latest'})]);
       if (pendingBackend || pendingNonce !== latestNonce) throw new SlotError('KeeperBusy', 'Il wallet backend sta confermando un’altra operazione. Riprova tra poco.');
-      const data = functionName === 'startFreeSpin' || functionName === 'grantWelcomeFreeSpins' ? encodeFunctionData({abi: slotAbi, functionName, args: [arg as Address]}) : encodeFunctionData({abi: slotAbi, functionName, args: [arg as bigint]});
+      let checked: WelcomeHistory | undefined;
+      if (functionName === 'grantFreeSpins') {
+        // Read again inside the nonce queue: an earlier eligibility check cannot authorize a send.
+        checked = await welcomeHistory.read(arg as Address);
+        if (checked.granted) throw new SlotError('WelcomeAlreadyGranted', 'Bonus già accreditato.');
+        if (!checked.complete) throw new SlotError('WelcomeHistorySyncing', 'Verifichiamo lo storico del bonus.');
+        if (await client.getTransactionCount({address: backend.address, blockNumber: checked.blockNumber}) !== pendingNonce) {
+          throw new SlotError('KeeperBusy', 'Verifichiamo la precedente operazione del wallet backend.');
+        }
+      }
+      const data = functionName === 'grantFreeSpins' ? welcomeGrantData(arg as Address) : functionName === 'startFreeSpin'
+        ? encodeFunctionData({abi: slotAbi, functionName, args: [arg as Address]}) : encodeFunctionData({abi: slotAbi, functionName, args: [arg as bigint]});
       await client.call({account: backend.address, to: config.address, data});
       const prepared = await wallet.prepareTransactionRequest({account: backend, chain, to: config.address, data, value: 0n, nonce: pendingNonce});
       const balance = await client.getBalance({address: backend.address, blockTag: 'pending'});
       const fee = prepared.maxFeePerGas ?? prepared.gasPrice ?? 0n;
       if (balance < (prepared.gas || 0n) * fee) throw new SlotError('KeeperGas', 'Il wallet backend non ha ETH sufficiente per questa operazione.', 503);
       assertSession?.();
+      if (checked) {
+        const [pending, latest, anchor] = await Promise.all([
+          client.getTransactionCount({address: backend.address, blockTag: 'pending'}),
+          client.getTransactionCount({address: backend.address, blockTag: 'latest'}),
+          client.getBlock({blockNumber: checked.blockNumber}),
+        ]);
+        if (pending !== pendingNonce || latest !== pendingNonce || anchor.hash !== checked.blockHash) {
+          throw new SlotError('KeeperBusy', 'Lo stato del wallet backend è cambiato. Verifichiamo prima di inviare.');
+        }
+      }
       const raw = await wallet.signTransaction(prepared), hash = keccak256(raw);
       pendingBackend = {hash, raw, nonce: pendingNonce}; onHash?.(hash);
       await client.sendRawTransaction({serializedTransaction: raw}).catch(() => { /* The receipt/identical rebroadcast resolves an ambiguous send. */ });
@@ -136,29 +159,28 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex) {
     });
   }
   async function playerView(player: Address) {
-    const state = await reader.player(player);
+    const [state, bonusHistory] = await Promise.all([reader.player(player), welcomeHistory.read(player)]);
     const operation = [...operations.values()].reverse().find(op => op.player.toLowerCase() === player.toLowerCase() &&
       (!state.latestGameId || op.afterGameId === state.latestGameId.toString() || op.gameId === state.latestGameId.toString()));
     if (operation) await reconcile(operation);
     const bonus = welcome.get(player.toLowerCase());
     return serializable({...state, operation: operation || null,
-      welcome: state.welcomeFreeSpinsGranted === null ? {status: 'unsupported', amount: '2'} : state.welcomeFreeSpinsGranted ? {status: 'granted', amount: '2'} : bonus ? {status: 'pending', amount: '2', error: bonus.error} : null});
+      welcome: bonusHistory.granted ? {status: 'granted', amount: '2'} : bonus ? {status: bonus.checking ? 'checking' : 'pending', amount: '2', error: bonus.error} : null});
   }
   async function queueWelcome(player: Address): Promise<WelcomeView> {
     return locked(`welcome:${player.toLowerCase()}`, async () => {
       await reader.validate();
-      const granted = await reader.welcomeGranted(player);
-      if (granted === null) return {status: 'unsupported', amount: '2'};
-      if (granted) {
+      const history = await welcomeHistory.read(player);
+      if (history.granted) {
         welcome.delete(player.toLowerCase()); return {status: 'granted', amount: '2'};
       }
       if (!backend) return {status: 'unavailable', amount: '2', error: 'Il bonus sarà accreditato quando il servizio sarà pronto.'};
       const existing = welcome.get(player.toLowerCase());
       if (!existing) {
         if (welcome.size >= 256) throw new SlotError('Busy', 'Troppi bonus in attesa. Riprova tra poco.', 503);
-        welcome.set(player.toLowerCase(), {player, nextAttempt: 0});
+        welcome.set(player.toLowerCase(), {player, nextAttempt: 0, checking: !history.complete});
       }
-      return {status: 'pending', amount: '2', error: existing?.error};
+      return {status: history.complete ? 'pending' : 'checking', amount: '2', error: existing?.error};
     });
   }
   async function processWelcome() {
@@ -166,18 +188,18 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex) {
     if (!entry) return;
     entry.nextAttempt = Date.now() + 10000;
     try {
-      if (await client.readContract({...contract, functionName: 'welcomeFreeSpinsGranted', args: [entry.player]})) {
-        welcome.delete(entry.player.toLowerCase()); return;
-      }
       if (entry.hash) {
+        if ((await welcomeHistory.read(entry.player)).granted) {welcome.delete(entry.player.toLowerCase()); return;}
         const receipt = await client.getTransactionReceipt({hash: entry.hash}).catch(() => null);
         // An unknown submission never permits another nonce. A confirmed revert can be retried.
         if (!receipt || receipt.status === 'success') return;
         entry.hash = undefined;
       }
-      await sendBackend('grantWelcomeFreeSpins', entry.player, hash => {entry.hash = hash;});
+      await sendBackend('grantFreeSpins', entry.player, hash => {entry.hash = hash; entry.checking = false;});
       entry.error = undefined;
-    } catch {
+    } catch (error) {
+      if (error instanceof SlotError && error.code === 'WelcomeAlreadyGranted') {welcome.delete(entry.player.toLowerCase()); return;}
+      entry.checking = error instanceof SlotError && error.code === 'WelcomeHistorySyncing';
       entry.error = 'Il bonus di benvenuto è in attesa. Riproviamo automaticamente.';
     }
   }
