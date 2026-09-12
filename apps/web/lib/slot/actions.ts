@@ -1,3 +1,4 @@
+import {approvalFundingError} from '../approval-funding';
 import {encodeFunctionData, decodeFunctionData, erc20Abi, getAddress, isAddress, parseAbi, zeroAddress, type Address, type Hex, type Abi, type AbiFunction} from 'viem';
 import {slotAbi} from './abi';
 import type {SlotReader} from './reader';
@@ -95,6 +96,14 @@ export function buildAction(reader: SlotReader, account: Address, action: string
 export async function prepareAction(reader: SlotReader, account: Address, action: string, inputs: string[]) {
   await reader.validate();
   const tx = buildAction(reader, account, action, inputs);
+  if (action === 'approveBudget') {
+    const [usdc, eth] = await Promise.all([
+      reader.client.readContract({address:reader.config.paymentToken,abi:erc20Abi,functionName:'balanceOf',args:[account]}).catch(()=>null),
+      reader.client.getBalance({address:account}).catch(()=>null),
+    ]);
+    const error = approvalFundingError(usdc, eth, reader.config.gasMode);
+    if (error) throw new SlotError('Funding', error, 409);
+  }
   if (action === 'fundERC20' || action === 'fundERC1155') {
     const token = address(inputs[0] || ''), catalog = await reader.catalog();
     const allowed = action === 'fundERC20' && token.toLowerCase() === reader.config.paymentToken.toLowerCase() ||

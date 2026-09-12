@@ -130,7 +130,11 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
       const empty=mnemonicToAccount(mnemonic,{addressIndex:4}).address;
       await fetch(rpc,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'anvil_setBalance',params:[empty,'0x0']})});
       assert.equal(await client.getBalance({address:empty}),0n);
-      const tx=await prepareAction(createSlotReader({...config,gasMode:'usdc'}),empty,'approveBudget',['2000000']);
+      const usdcReader=createSlotReader({...config,gasMode:'usdc'});
+      await assert.rejects(prepareAction(usdcReader,empty,'approveBudget',['2000000']),/Add USDC or ETH on Base/);
+      const funded=await adminWallet.writeContract({address:payment,abi:fixtures.MockERC20.abi,functionName:'mint',args:[empty,1000000n]});
+      await client.waitForTransactionReceipt({hash:funded});
+      const tx=await prepareAction(usdcReader,empty,'approveBudget',['2000000']);
       assert.equal(tx.to,payment);assert.equal(tx.gasMode,'usdc');
     });
     await t.test('ERC1155 prizes are transferred to the player and decoded from PrizePaid',async()=>{
