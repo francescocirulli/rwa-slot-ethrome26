@@ -127,3 +127,18 @@ The production iPhone viewport check found the Leaderboard shortcut above the
 wallet and successfully navigated to standings with a day/hour countdown. This
 validates recovery of real confirmed gameplay and atomic publication, not the
 still-outstanding two-player recording or populated before/after expiry demo.
+
+## Explorer query validation (2026-09-13)
+
+A read-only check of the new Explorer at Arkiv block `371373` returned eight season
+contributions (660 points). The personal season query for
+`0xbb2fee9fda8a023220d34cdd9cb2843acc23a0b6` returned four contributions (260 points).
+Combining a seven-day timestamp window, `won=true`, `matches=5` and `symbol=2`
+returned one recorded NVIDIA win. No transaction was signed or broadcast for these
+checks. This verifies real compound queries; it does not replace live expiry or
+multi-device subscription evidence.
+
+The Explorer applies the existing pagination lesson to both statistics and browsing:
+aggregate every matching page before slicing display rows, and pin the snapshot
+across pagination. Personal season totals use contributions, not just history timestamps,
+because a late-ingested history record may be deliberately excluded from the season.

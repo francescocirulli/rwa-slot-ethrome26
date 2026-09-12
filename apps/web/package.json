@@ -10,9 +10,13 @@
     "build": "next build && node scripts/prepare-standalone.mjs",
     "start": "node .next/standalone/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/account.test.ts tests/account-welcome.test.ts tests/welcome.test.ts tests/privy.test.ts tests/relay.test.ts tests/play-relay.test.ts tests/gas.test.ts tests/transactions.test.ts tests/admin.test.ts tests/wallet-authorization.test.ts tests/swaps.test.ts tests/backend-key.test.ts tests/hardware.test.ts tests/welcome-history.test.ts tests/funding.test.ts tests/prize-actions.test.ts tests/inventory.test.ts tests/quick-fund.test.ts tests/demo-model.test.ts tests/phone-wallet.test.ts tests/wallet-state.test.ts tests/reader.test.ts tests/base-read-client.test.ts tests/arkiv.test.ts",
+    "test": "tsx --test tests/account.test.ts tests/account-welcome.test.ts tests/welcome.test.ts tests/privy.test.ts tests/relay.test.ts tests/play-relay.test.ts tests/gas.test.ts tests/transactions.test.ts tests/admin.test.ts tests/wallet-authorization.test.ts tests/swaps.test.ts tests/backend-key.test.ts tests/hardware.test.ts tests/welcome-history.test.ts tests/funding.test.ts tests/prize-actions.test.ts tests/inventory.test.ts tests/quick-fund.test.ts tests/demo-model.test.ts tests/phone-wallet.test.ts tests/wallet-state.test.ts tests/reader.test.ts tests/base-read-client.test.ts tests/arkiv.test.ts tests/ens.test.ts tests/ens-source.test.ts tests/ens-user-operation-proof.test.ts tests/explorer.test.ts",
     "test:browser": "playwright test",
-    "test:chain": "forge build --root ../../contracts && tsx --test tests/slot-chain.test.ts"
+    "test:chain": "forge build --root ../../contracts && tsx --test tests/slot-chain.test.ts",
+    "ens:inspect": "tsx scripts/setup-ens.ts",
+    "ens:setup": "tsx scripts/setup-ens.ts --apply",
+    "test:ens:chain": "forge build --root ../../contracts && tsx --test tests/ens-source-chain.test.ts",
+    "test:ens:browser": "playwright test --config playwright.ens.config.ts"
   },
   "dependencies": {
     "@arkiv-network/sdk": "0.8.1",
