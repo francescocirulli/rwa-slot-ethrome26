@@ -37,7 +37,7 @@ export function loadArkivConfig(env:Readonly<Record<string,string|undefined>> = 
   const project = env.ARKIV_PROJECT || 'wall-street-slot-ethrome26';
   if (!/^[a-zA-Z0-9_-]{1,80}$/.test(project)) throw new Error('Invalid ARKIV_PROJECT');
   const {httpUrl,wsUrl} = arkivEndpoints(env);
-  const seasonBlocks = integer('ARKIV_SEASON_BLOCKS','60'), historyDays = Number(integer('ARKIV_HISTORY_DAYS','30'));
+  const seasonBlocks = integer('ARKIV_SEASON_BLOCKS','1296000'), historyDays = Number(integer('ARKIV_HISTORY_DAYS','30'));
   if (seasonBlocks < 10n || seasonBlocks > 15768000n || historyDays < 1 || historyDays > 365) throw new Error('Invalid Arkiv retention');
   return {project,httpUrl,wsUrl,writer:getAddress(writer),privateKey:privateKey as Hex|undefined,anchor:integer('ARKIV_SEASON_ANCHOR_BLOCK'),seasonBlocks,baseFromBlock:integer('ARKIV_BASE_FROM_BLOCK'),historyDays};
 }
