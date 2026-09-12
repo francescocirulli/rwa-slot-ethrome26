@@ -55,6 +55,7 @@ export function PhoneWallet({wallet,transaction,paired,reload,loading=false}:{wa
     </section>
     {transaction.confirmed>0&&!transaction.busy&&!transaction.pending&&<div className="ready-card" role="status">Transaction confirmed on Base. Balances refresh automatically.</div>}
     {transaction.pending&&<div className="phone-progress" role="status">Transaction under verification. Do not send it again.<button className="phone-text" disabled={transaction.busy} onClick={()=>void transaction.check()}>Check transaction</button></div>}
+    {transaction.unrecoverable&&<div className="phone-error" role="alert">The service restarted and no longer knows this request. Verify it on BaseScan, then discard it to continue.<button className="phone-text" disabled={transaction.busy} onClick={()=>transaction.discard()}>Discard request</button></div>}
     {(error||transaction.error)&&<p className="phone-error" role="alert">{error||transaction.error}</p>}
     {transaction.hash&&<a className="phone-chain-link" href={'https://basescan.org/tx/'+transaction.hash} target="_blank" rel="noreferrer">View transaction on Base ↗</a>}
   </>;
