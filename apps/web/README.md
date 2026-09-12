@@ -363,3 +363,16 @@ RPC reads and backend transaction preparation use the configured fallback endpoi
 when QuickNode reports its daily request quota through JSON-RPC error `-32003`.
 Genuine transaction rejections and contract reverts keep their existing behavior;
 ambiguous backend submissions retain the same signed transaction and nonce.
+
+## Arkiv seasons
+
+The phone leaderboard and iPad **Ranks** panel read a shared Arkiv season. Confirmed
+Base spins are indexed by one writer in the existing service; all season
+contributions expire at one common Arkiv block. History uses separate retention.
+The countdown waits for the network before changing seasons. Optional configuration
+is documented in [Arkiv setup](../../arkiv/README.md) and the
+[schema](../../arkiv/schema.md). No credentials means a supported unconfigured state.
+An explicit `ARKIV_USE_SLOT_BACKEND_KEY=true` reuses the keeper EOA on Tiramisu;
+otherwise provide a separate Arkiv signing key. `ARKIV_API_KEY` authenticates both
+server transports. Keep one always-on service replica and one Arkiv writer; this adds a public database
+without adding a second keeper or distributed write coordination.

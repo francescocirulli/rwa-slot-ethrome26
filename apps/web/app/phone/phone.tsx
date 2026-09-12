@@ -4,6 +4,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {PrivyProvider, useCreateWallet, useLoginWithEmail, useLoginWithPasskey, usePrivy, useSigners, useSignupWithPasskey, useWallets, useLinkWithPasskey} from '@privy-io/react-auth';
 import {base} from 'viem/chains';
 import {PhoneGame} from './game';
+import {SeasonLeaderboard} from './leaderboard';
 import {PhoneWallet} from './wallet';
 import {PairingScanner} from './scanner';
 import type {AccountView} from '@/lib/account';
@@ -12,7 +13,7 @@ import {TransactionConfirmation} from '@/lib/slot/transaction-review';
 import type {SessionView} from '@/lib/types';
 
 function Shell({children}: {children: React.ReactNode}) {
-  return <div className="phone-shell"><header className="phone-header"><span className="phone-mark">$</span><span>WALL STREET<br/>SLOT<span className="registered">™</span></span><span className="phone-network">● BASE</span></header><main>{children}</main><footer>YOUR WALLET. YOUR SESSION. ONCHAIN. <span>★</span></footer></div>;
+  return <div className="phone-shell"><header className="phone-header"><span className="phone-mark">$</span><span>WALL STREET<br/>SLOT<span className="registered">™</span></span><span className="phone-network">● BASE</span></header><main>{children}<SeasonLeaderboard/></main><footer>YOUR WALLET. YOUR SESSION. ONCHAIN. <span>★</span></footer></div>;
 }
 export function PhoneProvider({appId, configured}: {appId: string; configured: boolean}) {
   if (!appId || !configured) return <Shell><div className="phone-card"><span className="eyebrow">ALMOST READY</span><h1>Your seat<br/>is waiting<span>.</span></h1><p>We are setting up the link. Try again shortly from the QR code on the iPad.</p></div></Shell>;
