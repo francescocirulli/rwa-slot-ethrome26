@@ -1,4 +1,4 @@
-import {createPublicClient, fallback, formatUnits, defineChain, http, erc20Abi, keccak256, toHex, zeroAddress, type Address, type Hash, type Transport} from 'viem';
+import {createPublicClient, fallback, formatUnits, defineChain, http, erc20Abi, keccak256, toHex, zeroAddress, parseEventLogs, type Address, type Hash, type Transport} from 'viem';
 import {slotAbi} from './abi';
 import {GAME_STATES, serializable, type SlotConfig} from './config';
 import {SlotError} from './errors';
@@ -16,11 +16,12 @@ export function createSlotReader(config: SlotConfig) {
   // A single endpoint can rate-limit or go down; fallback retries the next one in order.
   const rpcUrls = config.rpcUrls && config.rpcUrls.length ? config.rpcUrls : [config.rpcUrl];
   const transport: Transport = rpcUrls.length > 1
-    ? fallback(rpcUrls.map(url => http(url, {batch: true, timeout: 12000, retryCount: 1})),{shouldThrow:shouldThrowRpcError})
-    : http(rpcUrls[0], {batch: true, timeout: 12000, retryCount: 1});
+    ? fallback(rpcUrls.map(url => http(url, {batch: true, timeout: 4000, retryCount: 0})),{retryCount:0,shouldThrow:shouldThrowRpcError})
+    : http(rpcUrls[0], {batch: true, timeout: 4000, retryCount: 0});
   const client = createPublicClient({chain, transport});
   const contract = {address: config.address, abi: slotAbi};
   let checkedAt = 0;
+  let validation:Promise<void>|undefined;
   const tokenInfo = new Map<string, {symbol: string; decimals: number}>();
   async function tokenMetadata(token: Address) {
     const cached = tokenInfo.get(token.toLowerCase()); if (cached) return cached;
@@ -33,12 +34,15 @@ export function createSlotReader(config: SlotConfig) {
   const scans = new Map<string, {head: bigint; cursor: bigint}>();
   async function validate() {
     if (Date.now() - checkedAt < 5000) return;
-    const [chainId, code, token] = await Promise.all([client.getChainId(), client.getCode({address: config.address}),
-      client.readContract({...contract, functionName: 'paymentToken'})]);
-    if (chainId !== config.chainId || !code || code === '0x' || token.toLowerCase() !== config.paymentToken.toLowerCase()) {
-      throw new SlotError('WrongDeployment', 'Contract, network or payment token do not match the configuration.', 503);
-    }
-    checkedAt = Date.now();
+    if(!validation)validation=(async()=>{
+      const [chainId, code, token] = await Promise.all([client.getChainId(), client.getCode({address: config.address}),
+        client.readContract({...contract, functionName: 'paymentToken'})]);
+      if (chainId !== config.chainId || !code || code === '0x' || token.toLowerCase() !== config.paymentToken.toLowerCase()) {
+        throw new SlotError('WrongDeployment', 'Contract, network or payment token do not match the configuration.', 503);
+      }
+      checkedAt = Date.now();
+    })().finally(()=>{validation=undefined;});
+    await validation;
   }
   async function settings(blockNumber?: bigint) {await validate(); return client.readContract({...contract, functionName: 'getContractSettings', blockNumber});}
   async function catalog(blockNumber?: bigint) {
@@ -124,9 +128,9 @@ export function createSlotReader(config: SlotConfig) {
   }
   // Wallet management needs current state, not the unbounded history of past spins.
   // Also inspect the confirmed block so a just-settled round stays locked until finality.
-  async function walletState(address: Address) {
+  async function walletState(address: Address, blockNumber?: bigint) {
     await validate();
-    const block = await client.getBlockNumber({cacheTime: 0});
+    const block = blockNumber ?? await client.getBlockNumber({cacheTime: 0});
     const confirmedBlock = block >= BigInt(config.confirmations - 1) ? block - BigInt(config.confirmations - 1) : 0n;
     const [[freeSpins, activeGameId], [, confirmedActiveId], allowance, balance] = await Promise.all([
       client.readContract({...contract, functionName: 'getPlayerState', args: [address], blockNumber: block}),
@@ -135,7 +139,66 @@ export function createSlotReader(config: SlotConfig) {
       client.readContract({address: config.paymentToken, abi: erc20Abi, functionName: 'balanceOf', args: [address], blockNumber: block}),
     ]);
     return {address,freeSpins,allowance,balance,activeGameId,
-      busy:activeGameId !== 0n || confirmedActiveId !== 0n,block};
+      confirmedActiveId,busy:activeGameId !== 0n || confirmedActiveId !== 0n,block};
+  }
+  // Session recovery uses IDs observed in current state or verified receipts, never
+  // a scan from deployment. Sessions are invalidated when this process restarts.
+  const playGames = new Map<string, bigint>();
+  const revealHashes = new Map<bigint, Hash>();
+  function rememberGame(player: Address, id: bigint) {
+    const key = player.toLowerCase();
+    const previous=playGames.get(key)||0n;
+    if (id > previous) {playGames.set(key, id);revealHashes.delete(previous);}
+  }
+  function rememberReveal(id: bigint, hash: Hash) {revealHashes.set(id, hash);}
+  async function playGame(id: bigint, player: Address, block: bigint): Promise<Awaited<ReturnType<typeof game>>> {
+    const raw = await client.readContract({...contract,functionName:'getGame',args:[id],blockNumber:block});
+    if (raw.player.toLowerCase() !== player.toLowerCase()) throw new SlotError('WrongPlayer','The round belongs to another wallet.');
+    const confirmedBlock = block >= BigInt(config.confirmations - 1) ? block - BigInt(config.confirmations - 1) : 0n;
+    const settled = raw.hasResult || raw.invalidated
+      ? await client.readContract({...contract,functionName:'getGame',args:[id],blockNumber:confirmedBlock}) : null;
+    // Render the state actually read at the confirmation depth, not a locally
+    // predicted grid. An outside revealer needs no receipt/history lookup to settle.
+    const confirmed = !!settled?.hasResult && settled.player.toLowerCase()===player.toLowerCase() &&
+      settled.commitment===raw.commitment && settled.catalogVersion===raw.catalogVersion &&
+      settled.winningSymbol===raw.winningSymbol && settled.matchCount===raw.matchCount &&
+      settled.winningLine===raw.winningLine && settled.symbols.every((symbol,index)=>symbol===raw.symbols[index]);
+    const result = confirmed ? settled! : raw;
+    const status = result.invalidated ? 'invalidated' : result.hasResult ? result.won ? 'won' : 'lost'
+      : block > result.revealDeadline ? 'expired' : block > result.targetBlock ? 'revealable' : 'waiting';
+    let payout: Awaited<ReturnType<typeof game>>['payout'] = null;
+    let transactionHash: Hash | null = null, resultBlock: bigint | null = null;
+    const hash = revealHashes.get(id);
+    if (confirmed && hash) {
+      // Receipt details are optional. A failed receipt/metadata request must not
+      // prevent an already confirmed result or the wallet balances from rendering.
+      try {
+        const receipt = await client.getTransactionReceipt({hash});
+        const logs = receipt.logs.filter(log=>log.address.toLowerCase()===config.address.toLowerCase());
+        const reveal = parseEventLogs({abi:slotAbi,eventName:'RoundRevealed',logs,strict:true}).find(event=>event.args.gameId===id&&event.args.player.toLowerCase()===player.toLowerCase());
+        if (receipt.status==='success' && receipt.blockNumber<=confirmedBlock && reveal &&
+            (await client.getBlock({blockNumber:receipt.blockNumber})).hash===receipt.blockHash) {
+          transactionHash=hash;resultBlock=receipt.blockNumber;
+          const paid=parseEventLogs({abi:slotAbi,eventName:'PrizePaid',logs,strict:true}).find(event=>event.args.gameId===id&&event.args.recipient.toLowerCase()===player.toLowerCase());
+          if(paid){
+            const {kind,token,tokenId,amount}=paid.args;
+            const metadata=kind===1?await tokenMetadata(token):null;
+            payout={kind,token,tokenId,amount,transactionHash:hash,blockNumber:receipt.blockNumber,
+              formattedAmount:metadata?formatUnits(amount,metadata.decimals):amount.toString(),tokenSymbol:metadata?.symbol||null,decimals:metadata?.decimals??null};
+          }
+        }
+      } catch { /* The confirmed getGame state remains authoritative. */ }
+    }
+    return {id,...result,status,confirmed,resultBlock,transactionHash,payout};
+  }
+  async function playPlayer(address: Address, blockNumber?: bigint) {
+    const state=await walletState(address,blockNumber);
+    rememberGame(address,state.activeGameId || state.confirmedActiveId);
+    const id=playGames.get(address.toLowerCase()) || 0n;
+    let current:Awaited<ReturnType<typeof game>>|null=null,gameUnavailable=false;
+    if(id)try{current=await playGame(id,address,state.block);}catch{gameUnavailable=true;}
+    return {...state,latestGameId:id,game:current,gameUnavailable,
+      busy:state.busy || gameUnavailable || !!current?.hasResult&&!current.confirmed};
   }
   async function player(address: Address, blockNumber?: bigint) {
     const block = blockNumber ?? await client.getBlockNumber({cacheTime: 0});
@@ -187,7 +250,8 @@ export function createSlotReader(config: SlotConfig) {
       collection: admin ? {address:collectionAddress,owner:collectionOwners?.[0]??null,pendingOwner:collectionOwners?.[1]??null} : null,
       pendingOwner: pendingOwner ? {address: pendingOwner[0], schedule: pendingOwner[1]} : null});
   }
-  return {config, chain, client, contract, validate, settings, catalog, roles, lastGame, player, walletState, game, activeGames, history, snapshot, funding};
+  return {config, chain, client, contract, validate, settings, catalog, roles, lastGame, player, walletState, game, activeGames, history, snapshot, funding,
+    playPlayer,playGame,rememberGame,rememberReveal};
 }
 export type SlotReader = ReturnType<typeof createSlotReader>;
 export type SlotSnapshot = Awaited<ReturnType<SlotReader['snapshot']>>;

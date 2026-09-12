@@ -85,7 +85,7 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
       sender.sendRawTransaction = async request => {broadcasts++; await sendRaw(request); throw new Error('Simulated lost broadcast response');};
       try {await engine!.tick();} finally {sender.sendRawTransaction = sendRaw;}
       assert.equal(broadcasts, 1);
-      await until(async () => (await engine!.playerView(player.address)).welcome?.status === 'granted' || null, 'Welcome bonus not recorded');
+      await until(async () => {await engine!.tick(); return (await engine!.playerView(player.address)).welcome?.status === 'granted' || null;}, 'Welcome bonus not recorded');
       assert.equal((await reader.player(player.address)).freeSpins, 2n);
       const events = await client.getContractEvents({address: slot, abi: slotAbi, eventName: 'FreeSpinsGranted', args: {player: player.address}, fromBlock: deployed});
       assert.equal(events.length, 1); assert.equal(events[0].args.amount, 2n);
@@ -101,7 +101,7 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
     await t.test('free spin is sent by backend for player and does not debit USDC',async()=>{
       await engine!.tick();
       const balance=await client.readContract({address:payment,abi:erc20Abi,functionName:'balanceOf',args:[player.address]});
-      await engine!.start(player.address,firstId,'free',{assertSession:()=>{}});
+      await engine!.start(player.address,BigInt((await engine!.playerView(player.address)).latestGameId),'free',{assertSession:()=>{}});
       const next=await until(async()=>{const state=await reader.player(player.address);return state.game?.pending?state:null;},'Free spin missing');
       freeId=next.latestGameId;assert.equal(next.game!.freeSpin,true);assert.equal(next.game!.player,player.address);assert.equal(next.freeSpins,1n);
       assert.equal((await engine!.queueWelcome(player.address)).status, 'granted');
@@ -166,12 +166,19 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
     });
     await t.test('a long-idle history cache resumes in bounded requests instead of blocking the terminal',async()=>{
       const empty=mnemonicToAccount(mnemonic,{addressIndex:3}).address;
-      const fresh=createSlotReader(config);
-      assert.deepEqual(await fresh.lastGame(empty,await client.getBlockNumber({cacheTime:0})),{id:0n,complete:true});
-      await mine(24001);
+      const head=await client.getBlockNumber({cacheTime:0});
+      // Exceed the same 12-page budget using the production's capped page size.
+      // Mining 24,001 blocks only tests Anvil's speed and can exhaust the suite timeout.
+      const fresh=createSlotReader({...config,logPageBlocks:5n,historyFromBlock:head});
+      assert.deepEqual(await fresh.lastGame(empty,head),{id:0n,complete:true});
+      let requests=0;const readEvents=fresh.client.getContractEvents;
+      fresh.client.getContractEvents=(async (args:Parameters<typeof readEvents>[0])=>{requests++;assert.ok((args.toBlock as bigint)-(args.fromBlock as bigint)<5n);return readEvents(args);}) as typeof readEvents;
+      await mine(61);
       const block=await client.getBlockNumber({cacheTime:0});
       assert.deepEqual(await fresh.lastGame(empty,block),{id:0n,complete:false});
+      assert.equal(requests,12);requests=0;
       assert.deepEqual(await fresh.lastGame(empty,block),{id:0n,complete:true});
+      assert.ok(requests>0&&requests<=12);
     });
     await t.test('collection ownership, reviewed mint/deposit and grouped reserves gate new paid and free spins',async()=>{
       const artifact=JSON.parse(await readFile(new URL('../../../contracts/out/SlotPrize1155.sol/SlotPrize1155.json',import.meta.url),'utf8'));
@@ -244,7 +251,7 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
         assert.equal((await legacyEngine.queueWelcome(player.address)).status, 'pending');
         await legacyEngine.tick();
         assert.equal(await client.getTransactionCount({address: keeper.address}), nonce + 1);
-        assert.equal((await legacyEngine.playerView(player.address)).welcome?.status, 'granted');
+        await until(async()=>{await legacyEngine.tick();return (await legacyEngine.playerView(player.address)).welcome?.status==='granted'||null;},'Welcome confirmation not processed');
         assert.equal((await legacyReader.player(player.address)).freeSpins, 4n);
         legacyEngine.stop(); legacyEngine = createSlotEngine(createSlotReader({...config, address: legacySlot, deploymentBlock: legacyBlock}), toHex(keeper.getHdKey().privateKey!) as Hex);
         assert.equal((await legacyEngine.queueWelcome(player.address)).status, 'granted');
@@ -330,6 +337,78 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
           } finally {rotated.stop();}
         });
       } finally {legacyEngine.stop();}
+    });
+    await t.test('minimal paid/free play and confirmed results work with every history RPC forbidden',async()=>{
+      const minimalSlot=await deploy(slotAbi,fixtures.slotBytecode,[owner.address,keeper.address,payment,50000n]);
+      async function configure(functionName:string,args:unknown[]=[]){const hash=await adminWallet.writeContract({address:minimalSlot,abi:slotAbi as Abi,functionName,args});await client.waitForTransactionReceipt({hash});}
+      await configure('setNoWinWeight',[0]);
+      await configure('setRevealSettings',[2,256]);
+      for(let symbol=0;symbol<3;symbol++)await configure('configurePrize',[symbol,3,zeroAddress,0n,1n,0,symbol===2?400:300]);
+      await configure('grantFreeSpins',[player.address,2n]);
+      await userWallet.writeContract({address:payment,abi:erc20Abi,functionName:'approve',args:[minimalSlot,100000n]});
+      const minimalReader=createSlotReader({...config,address:minimalSlot});
+      let logs=0;
+      minimalReader.client.getContractEvents=(async()=>{logs++;throw new Error('History RPC forbidden');}) as any;
+      const minimal=createSlotEngine(minimalReader,toHex(keeper.getHdKey().privateKey!) as Hex);
+      try{
+        await minimal.tick();
+        const readFunding=minimalReader.funding;
+        let releaseFunding!:()=>void;
+        const fundingGate=new Promise<void>(resolve=>{releaseFunding=resolve;});
+        minimalReader.funding=async()=>{await fundingGate;return readFunding();};
+        let view=await minimal.playView(player.address);
+        // An unresolved reserve RPC does not hold the balance/current-game response.
+        assert.equal(view.prizeAvailability.state,'checking');
+        releaseFunding();minimalReader.funding=readFunding;
+        assert.equal(view.settings.revealDelayBlocks,'2');
+        assert.equal(view.player.freeSpins,'2');assert.equal(view.player.busy,false);assert.equal(view.player.game,null);
+        assert.ok(BigInt(view.player.balance)>100000n);assert.equal('funding' in view,false);assert.equal('catalog' in view,false);
+        let paidSends=0;
+        for(const mode of ['free','paid'] as const){
+          const after=BigInt(view.player.latestGameId),balance=BigInt(view.player.balance);
+          const options={assertSession:()=>{},maxPrice:50000n,sendPaid:async()=>{paidSends++;return {hash:await userWallet.writeContract({address:minimalSlot,abi:slotAbi,functionName:'startSpin'})};}};
+          const first=await minimal.start(player.address,after,mode,options);
+          const duplicate=await minimal.start(player.address,after,mode,options);assert.equal(duplicate.key,first.key);
+          const pending=await until(async()=>{const s=await minimal.playView(player.address);return s.player.game?.pending?s:null;},'Minimal spin not started');
+          assert.equal(BigInt(pending.player.balance),balance-(mode==='paid'?50000n:0n));
+          const id=BigInt(pending.player.game!.id),head=await client.getBlockNumber({cacheTime:0});
+          const started=await client.getContractEvents({address:minimalSlot,abi:slotAbi,eventName:'SpinStarted',args:{gameId:id},fromBlock:deployed});
+          assert.equal(BigInt(pending.player.game!.targetBlock)-started[0].blockNumber,2n);
+          // At the target block the reveal is still forbidden; the next block is eligible.
+          await mine(Number(BigInt(pending.player.game!.targetBlock)-head));await minimal.tick();
+          assert.equal((await minimal.playView(player.address)).player.game!.hasResult,false);
+          await mine();
+          await minimal.tick();
+          const unconfirmed=await minimal.playView(player.address);
+          assert.equal(unconfirmed.player.game!.hasResult,true);assert.equal(unconfirmed.player.game!.confirmed,false);assert.equal(unconfirmed.player.busy,true);
+          await assert.rejects(minimal.start(player.address,id,mode,options),{code:'WalletBusy'});
+          await mine();view=await minimal.playView(player.address);
+          assert.equal(view.player.game!.confirmed,true);assert.equal(view.player.game!.won,true);assert.equal(view.player.busy,false);
+          assert.equal(view.player.game!.payout!.kind,3);assert.equal(view.player.game!.payout!.amount,'1');assert.ok(view.player.game!.transactionHash);
+          // Optional receipt details can fail without hiding the confirmed outcome.
+          const getReceipt=minimalReader.client.getTransactionReceipt;
+          minimalReader.client.getTransactionReceipt=async()=>{throw new Error('Receipt RPC unavailable');};
+          try{const result=await minimal.playView(player.address);assert.equal(result.player.game!.confirmed,true);assert.equal(result.player.game!.payout,null);assert.equal(result.player.balance,view.player.balance);}
+          finally{minimalReader.client.getTransactionReceipt=getReceipt;}
+          const stale=await minimal.start(player.address,after,mode,options);assert.equal(stale.key,first.key);
+        }
+        assert.equal(paidSends,1);assert.equal(logs,0);
+        // A restart can rediscover a pending round via getPlayerState alone.
+        await minimal.start(player.address,BigInt(view.player.latestGameId),'free',{assertSession:()=>{}});
+        const pending=await until(async()=>{const s=await minimal.playView(player.address);return s.player.game?.pending?s:null;},'Recovery spin not started');
+        const recoveredReader=createSlotReader({...config,address:minimalSlot});
+        recoveredReader.client.getContractEvents=minimalReader.client.getContractEvents;
+        const recovered=createSlotEngine(recoveredReader);
+        const recoveredView=await recovered.playView(player.address);
+        assert.equal(recoveredView.player.game!.id,pending.player.game!.id);assert.equal(recoveredView.player.busy,true);
+        const head=await client.getBlockNumber({cacheTime:0});
+        await mine(Number(BigInt(pending.player.game!.targetBlock)-head+1n));
+        await configure('revealRound',[BigInt(pending.player.game!.id)]);await mine();
+        const externalResult=await recovered.playView(player.address);
+        assert.equal(externalResult.player.game!.confirmed,true);assert.equal(externalResult.player.game!.won,true);
+        assert.equal(externalResult.player.game!.payout,null);assert.equal(externalResult.player.game!.transactionHash,null);
+        assert.equal(logs,0);recovered.stop();
+      }finally{minimal.stop();}
     });
   } finally {engine?.stop();process.kill('SIGTERM');}
 });

@@ -22,6 +22,40 @@
         "blockNumber": 51212168,
         "recipient": "0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c",
         "amount": 1
+      },
+      "ownershipReturnToBackend": {
+        "initiatedTransactionHash": "0xae0ac351954a4d26c44b0089a408c9d58ad6a58b82c3d3f3eb77c0080e2210a7",
+        "initiatedBlockNumber": 51225938,
+        "acceptedTransactionHash": "0x6542365475a2f77598e3e6a414847bd0a7726e94bc938f5742ed4567248b1a9f",
+        "acceptedBlockNumber": 51225974
+      },
+      "physicalPrizeExpansion": {
+        "blockNumber": 51226098,
+        "slotInventoryPerTokenId": 20,
+        "existingIdTopUpTransactions": [
+          "0x58a644bc7b7a70dd9b0ca5461b1441249c3dcdd30e8f1561d4ae0cfc02a014d7",
+          "0xa2c6f5ae27341a519f97157adcfdb8463fa91a4d86b94ebd8ba9acfbc855b0ac",
+          "0xd9a431ed443f84ece44f9f4ce1d37e3e5cbbd21ee4753a93ad061e8868fdbad6",
+          "0x2f722e9d1f869357c237b1e3d1131d554d1d1fead7cb94bd7cd7316e7dd2fc1a",
+          "0xc296a993418fb660f5d10e42e2423d147ab074556aa79e8b920cd3baa314c3e8"
+        ],
+        "createdTokens": [
+          {
+            "label": "BOOKS",
+            "tokenId": 6,
+            "transactionHash": "0x94634421e4edbfd04a787cb142cb02705360195782638cc7e8939b13f538cf7d"
+          },
+          {
+            "label": "WATER_BOTTLE",
+            "tokenId": 7,
+            "transactionHash": "0x497609eee89d219dc5d5f07816040ad8227b064f72687fad75ed866b4b62bd39"
+          },
+          {
+            "label": "CAPS",
+            "tokenId": 8,
+            "transactionHash": "0xae7f86a255579f384ec98a5e2a34db623128879ec140a1e6ed07874583e0ea56"
+          }
+        ]
       }
     },
     "DigitalSlotMachine": {
@@ -36,10 +70,11 @@
       "ticketPriceUSDC": "0.05",
       "paytableConfiguration": {
         "startBlock": 51216125,
-        "endBlock": 51216136,
-        "catalogVersion": 12,
-        "noWinWeight": 101,
+        "endBlock": 51226098,
+        "catalogVersion": 16,
+        "noWinWeight": 10,
         "totalOutcomeWeight": 1000,
+        "noWinUpdateTransactionHash": "0xaa34d3ed5ea069c16a5acdc6cf32e2a2859c17387c488f697e60b85a17f2d6bf",
         "entries": [
           {
             "symbolId": 0,
@@ -100,6 +135,21 @@
             "symbolId": 11,
             "label": "GOLD",
             "transactionHash": "0x76dde4fc7f001065a023c149211ddd256049fec7fcbf9c17ed03afa2a064c1cc"
+          },
+          {
+            "symbolId": 12,
+            "label": "BOOKS",
+            "transactionHash": "0x01fdd27a374386a5c3af29d07fa2d5e517a436f7d73d19b7eb36b819cd67fed1"
+          },
+          {
+            "symbolId": 13,
+            "label": "WATER_BOTTLE",
+            "transactionHash": "0x765344337decc998259835af6bf9b81499ec9f04cdda3baeaeefd77b84ddde83"
+          },
+          {
+            "symbolId": 14,
+            "label": "CAPS",
+            "transactionHash": "0x8be08f7fe1f31c0f71ed12a6004ad19df150e0d725118a03d6fe9d03dd1016ce"
           }
         ]
       }

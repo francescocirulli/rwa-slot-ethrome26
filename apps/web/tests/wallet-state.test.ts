@@ -17,6 +17,7 @@ function fixture(){
     if(args.functionName==='getPlayerState'){blocks.push(args.blockNumber);return [2n,args.blockNumber===100000n?current:confirmed];}
     if(args.functionName==='allowance')return 2500000n;
     if(args.functionName==='balanceOf')return 10000000n;
+    if(args.functionName==='getContractSettings')return {ticketPrice:50000n,paused:false,totalOutcomeWeight:1000,configuredPrizeCount:3};
     throw new Error('Unexpected call');
   }) as any;
   return {reader,blocks,set:(a:bigint,b:bigint)=>{current=a;confirmed=b;},fail:()=>{fail=true;},logs:()=>logs};
@@ -34,6 +35,31 @@ test('current pending rounds and just-settled unconfirmed rounds keep wallet wri
   f.set(0n,7n);assert.equal((await f.reader.walletState(address)).busy,true);
   f.set(0n,0n);assert.equal((await f.reader.walletState(address)).busy,false);
   f.fail();await assert.rejects(f.reader.walletState(address),/RPC unavailable/);assert.equal(f.logs(),0);
+});
+test('play polling returns balances without history, catalog, inventory, roles or bonus scans',async()=>{
+  const f=fixture(),engine=createSlotEngine(f.reader);
+  const snapshot=await engine.playView(address),view=snapshot.player;
+  assert.equal(view.freeSpins,'2');assert.equal(view.balance,'10000000');
+  assert.equal(view.latestGameId,'0');assert.equal(view.busy,false);assert.equal(f.logs(),0);
+  assert.equal(view.welcome,null);
+  assert.equal('funding' in snapshot,false);assert.equal('catalog' in snapshot,false);
+});
+test('an unreadable current round blocks new spins while balances remain available',async()=>{
+  const f=fixture();f.set(7n,7n);
+  const view=await createSlotEngine(f.reader).playerView(address);
+  assert.equal(view.freeSpins,'2');assert.equal(view.balance,'10000000');
+  assert.equal(view.latestGameId,'7');assert.equal(view.busy,true);assert.equal(view.gameUnavailable,true);assert.equal(f.logs(),0);
+});
+test('a confirmed result must agree with the current round and wallet across RPC responses',async()=>{
+  const f=fixture();
+  const raw={player:address,hasResult:true,pending:false,won:true,invalidated:false,targetBlock:100n,revealDeadline:356n,
+    commitment:'0x1234',catalogVersion:1n,winningSymbol:2,matchCount:5,winningLine:0,symbols:Array(15).fill(2)};
+  let settled={...raw};
+  f.reader.client.readContract=(async({blockNumber}:any)=>blockNumber===110n?raw:settled) as any;
+  assert.equal((await f.reader.playGame(7n,address,110n)).confirmed,true);
+  settled={...raw,player:slot};assert.equal((await f.reader.playGame(7n,address,110n)).confirmed,false);
+  settled={...raw,symbols:Array(15).fill(1)};assert.equal((await f.reader.playGame(7n,address,110n)).confirmed,false);
+  assert.equal(f.logs(),0);
 });
 test('scanner accepts only a single valid pairing secret from this origin and never navigates to QR content',()=>{
   const origin='https://slot.example',secret='a'.repeat(64);

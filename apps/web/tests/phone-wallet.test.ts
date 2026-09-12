@@ -121,3 +121,12 @@ test('paid play reserves the ticket balance, requires USDC even with ETH, and pr
   assert.match(approvalFundingError(null,1n,'usdc',50000n)!,/unavailable/);
   assert.match(approvalFundingError(1000000n,null,'eth')!,/unavailable/);
 });
+
+test('expanded Base prizes can be transferred without a currently configured catalog',async()=>{
+  for(const id of ['6','7','8']){
+    const f=fixture(),prepared=await f.call('prepare',{action:'transferERC1155',args:[BASE_PRIZE_COLLECTION,id,recipient,'2']});
+    assert.equal(prepared.status,200);
+    assert.deepEqual(decodeFunctionData({abi:prizeCollectionAbi,data:prepared.body.transaction.data}).args,[address,recipient,BigInt(id),2n,'0x']);
+    await f.call('send',{id:prepared.body.id,confirm:true});assert.equal(f.sends.length,1);
+  }
+});

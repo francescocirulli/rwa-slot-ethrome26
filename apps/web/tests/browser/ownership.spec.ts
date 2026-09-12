@@ -40,3 +40,27 @@ test('unknown collection ownership blocks a nomination and collaborators cannot 
   await page.goto('/ownership-fixture?operator');await page.getByRole('button',{name:'Operations',exact:false}).click();
   for(const value of ['transferPrizeOwnership','acceptPrizeOwnership','acceptPrizeOwnershipBackend'])await expect(page.locator('option[value="'+value+'"]')).toHaveCount(0);
 });
+
+test('expanded prizes keep their labels, configuration IDs and historical payout amounts in admin',async({page})=>{
+  const entries=[{symbol:12,name:'BOOKS',id:'6',weight:20},{symbol:13,name:'WATER BOTTLE',id:'7',weight:21},{symbol:14,name:'CAPS',id:'8',weight:50}];
+  const catalog=entries.map(p=>({symbol:p.symbol,kind:2,token:collection,tokenId:p.id,fiveMatchAmount:'1',threeMatchWeight:0,fiveMatchWeight:p.weight}));
+  const games=entries.map(p=>({id:String(p.symbol),player:shared,status:'won',freeSpin:true,won:true,hasResult:true,confirmed:true,winningSymbol:p.symbol,catalogVersion:'16',symbols:Array(15).fill(p.symbol),targetBlock:'90',revealDeadline:'346',payout:{kind:2,token:collection,tokenId:p.id,formattedAmount:'2',tokenSymbol:null}}));
+  await page.route('**/api/contract?*',route=>route.fulfill({json:new URL(route.request().url()).searchParams.get('view')==='history'?{games,next:'0'}:{configured:true,address:collection,block:'100',gasMode:'usdc',settings:{paused:false,ticketPrice:'50000',activeRoundCount:'0',nextGameId:'15',configuredPrizeCount:15,totalOutcomeWeight:1000,noWinWeight:10},catalog,inventory:[],funding:null,permissions:{owner:shared,isOwner:true,manager:true,treasurer:true,pauser:true},keeper:{configured:true,address:backend,balanceWei:'1000000000000000',pendingTransaction:null,canStartFreeSpin:true,error:''}}}));
+  await page.goto('/ownership-fixture');
+  for(const p of entries){
+    await page.getByRole('button',{name:'Prizes and reserves',exact:true}).click();
+    const card=page.locator('.prize-card').filter({has:page.getByRole('heading',{name:p.name,exact:true})});
+    await expect(card).toContainText('ID '+p.id);await card.getByRole('button',{name:'Edit prize'}).click();
+    await expect(page.getByLabel('Symbol ID (0–15)',{exact:true})).toHaveValue(String(p.symbol));
+    await expect(page.getByLabel('Token ID (0 for ERC20/free spin)',{exact:true})).toHaveValue(p.id);
+    await expect(page.getByLabel('5/5 weight (1 unit = 0.1%)',{exact:true})).toHaveValue(String(p.weight));
+  }
+  await page.getByRole('button',{name:'Onchain spins',exact:true}).click();
+  for(const p of entries){
+    await expect(page.getByRole('cell',{name:'2 '+p.name,exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Spin details '+p.symbol,exact:true}).click();
+    await expect(page.getByRole('dialog')).toContainText('2 '+p.name);
+    await expect(page.getByRole('dialog').getByRole('img',{name:p.name,exact:true})).toHaveCount(15);
+    await page.getByRole('button',{name:'Close details',exact:true}).click();
+  }
+});

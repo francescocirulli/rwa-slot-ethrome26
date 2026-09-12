@@ -156,16 +156,31 @@ explicit onchain action to revoke it or replace it with another finite amount,
 including without iPad pairing. If a play signer is active, it can use the new
 allowance during that session. Approving USDC alone never authorizes an iPad.
 
-The reels spin from submission until the reveal has two confirmations. The
+The reels spin from submission until the reveal has two confirmations. Active
+rounds poll every second (idle sessions every two seconds), with no fixed animation
+minimum. Reveal timing follows the live contract's target block, including a
+two-block delay; the keeper reveals only after that target block. The
 backend waits for the block required by the contract and finishes the game even
 if the phone is closed or the session has ended. The contract pays the prize to
 the original player. Results are neither fabricated nor shown early through
 `previewPendingResult`.
 
-Current state comes from read calls; historical prizes come from `RoundRevealed`
-and `PrizePaid`. The keeper recovers pending games through `getActiveGameIds`
-after each restart. **No database.** Details, ABI mapping, limits and configuration:
-[docs/contracts.md](docs/contracts.md).
+The paired phone/iPad poll reads only current USDC balance, allowance, free spins,
+settings and the current round. It does not scan spin or welcome history, read the
+prize catalog, or await reserve checks. The iPad uses this same response for its USDC display;
+the separate balance endpoint is a fallback when game reads are unavailable.
+Results come from `getGame` at the confirmation depth. Known keeper receipts add
+exact prize amounts and a transaction link; missing receipt details do not block a
+confirmed result. A shared background reserve check runs at most once per 15 seconds
+while play is being polled; its cached availability disables new spins while checking,
+unavailable, or underfunded. It never delays balance or result responses. A fresh
+reserve check still runs before submission, and confirmed starts invalidate cached
+availability. Welcome history runs separately from play. Historical results remain
+available in admin.
+
+The keeper recovers pending games through `getActiveGameIds` after each restart.
+A new session recovers an active round from `getPlayerState`; it does not restore
+old completed rounds. **No database.** Details: [docs/contracts.md](docs/contracts.md).
 
 The earlier `personal_sign` proof remains available when no contract is connected.
 It uses a separate policy limited to the exact message with a nonce/session,
@@ -279,11 +294,13 @@ deployment. Physical iPad and email OTP checks also remain outstanding.
 ## Token inventory and swaps
 
 The admin panel includes **Swap** (LI.FI API, USDC or native ETH → six supported
-Base RWA tokens) and **Inventory** (shared wallet balances, NFT placeholders,
+Base RWA tokens) and **Inventory** (shared wallet balances, ERC1155 prizes,
 free-spin counter and reviewed contract deposits). The Swap tab also offers a
-quick-fund action that computes the missing reserve for a chosen number of rounds,
+quick-fund action that adds a chosen number of rounds (1–99) to the current reserve,
 buys the shortfall of the six RWA tokens with USDC and prepares the deposit
-transactions in sequence. Start once, then confirm each requested signature;
+transactions in sequence. Completed top-ups can be repeated. An interrupted top-up
+keeps its target across page reloads, so resuming skips confirmed deposits.
+Start once, then confirm each requested signature;
 approvals, swaps, balance checks and deposits advance automatically. The manual
 swap form is available in a collapsed section. Admin RPC reads share batching and
 `BASE_RPC_FALLBACK_URLS`; the funding path skips NFT reads and reuses concurrent
@@ -306,9 +323,30 @@ Mint requires collection ownership and the updated collaborator policy. See
 Admin Operations also supports two-step collection ownership transfers, including
 explicitly confirmed acceptance signed by the configured backend wallet with ETH gas.
 
-The terminal blocks new paid/free spins when prize reserves cannot cover a round
-or reserve reads are unavailable. Confirmed wins display the actual award and a
-BaseScan reveal link. Gold uses jackpot artwork only on the reels.
+The prize catalog includes Books (symbol 12 / token ID 6), Water Bottle (13 / 7),
+and Caps (14 / 8). They appear in the phone portfolio and transfer flow, admin
+inventory/deposit/mint forms, prize configuration, history, terminal reels and
+win displays. The terminal help and offline demo use their 2.0%, 2.1% and 5.0%
+five-match odds, with 1.0% no prize. Live payouts and reserves come from the contract.
+
+The backend rejects paid/free submissions when reserves cannot cover a round or
+reserve reads fail. These checks do not block idle balance reads or settlement
+polling. Confirmed wins include the exact award and BaseScan link when the keeper
+receipt is available; otherwise they show the confirmed grid and win/loss without
+inventing a payout amount. Gold uses jackpot artwork only on the reels.
+
+The terminal explains when the operator must refill prize reserves and keeps free
+credits visible. Insufficient player USDC disables paid spins only; free spins do
+not require a USDC balance. Reserve RPC failures disable new spins and retry in the
+background without concealing a pending round or a confirmed result.
+
+While the server checks a requested spin, the terminal keeps the reels still and
+locks repeated input. Animation starts when submission is reported or a current
+round is observed. A rejected request keeps its explanation visible across polls,
+without hiding the remaining free-spin balance. Railway receives structured
+`slot.spin_rejected` and `slot.spin_submission_failed` records containing the
+public wallet, mode, previous round and normalized error code; request payloads,
+credentials and raw SDK errors are never logged.
 
 ### Phone approval and funding
 

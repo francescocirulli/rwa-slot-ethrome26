@@ -3,6 +3,8 @@ import {privateKeyToAccount} from 'viem/accounts';
 import type {SlotReader} from './reader';
 import {serializable} from './config';
 import {SlotError, slotError} from './errors';
+import {logSpinFailure} from './diagnostics';
+import {createPrizeAvailability} from './availability';
 import {slotAbi} from './abi';
 import {definiteSendFailure, transactionError, type GasToken} from './gas';
 import type {WelcomeView} from '../welcome';
@@ -20,6 +22,8 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
   const operations = new Map<string, SpinOperation>(), locks = new Map<string, Promise<unknown>>();
   const welcome = new Map<string, {player: Address; hash?: Hash; nextAttempt: number; checking: boolean; error?: string}>();
   const welcomeHistory = createWelcomeHistory(reader);
+  const welcomeViews = new Map<string, WelcomeView>();
+  const prizeAvailability = createPrizeAvailability(() => reader.funding());
   let backendQueue = Promise.resolve<unknown>(null), ticking = false, timer: ReturnType<typeof setTimeout> | undefined, stopped = true;
   let pendingBackend: {hash: Hash; raw: Hex; nonce: number} | undefined;
   const health = {configured: !!backend, address: backend?.address || null, lastTick: 0, lastBlock: '0', error: '', canStartFreeSpin: false, balanceWei: '0'};
@@ -99,7 +103,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
     const receipt = await client.getTransactionReceipt({hash: operation.hash}).catch(() => null);
     if (!receipt) return;
     if (receipt.status === 'reverted') {operation.stage = 'failed'; operation.error = 'Transaction reverted by the contract. No spin opened.'; return;}
-    try {operation.gameId = startEvent(receipt, operation.player).args.gameId.toString(); operation.stage = 'started'; operation.error = undefined;}
+    try {const id=startEvent(receipt, operation.player).args.gameId;reader.rememberGame(operation.player,id);operation.gameId = id.toString(); operation.stage = 'started'; operation.error = undefined;prizeAvailability.invalidate();}
     catch (error) {operation.stage = 'failed'; operation.error = slotError(error).message;}
   }
   async function start(player: Address, afterGameId: bigint, mode: 'paid' | 'free', options: {
@@ -122,17 +126,20 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
         return !(await reader.walletState(player)).busy;
       });
       try {
-        const state = await reader.player(player);
-        if (!state.historyReady) throw new SlotError('HistorySyncing', 'Recovering the onchain history. Wait before starting.');
+        const state = await reader.playPlayer(player);
+        if (state.gameUnavailable) throw new SlotError('GameUnavailable', 'Checking the current round. Wait before starting.',503);
         if (afterGameId > state.latestGameId) throw new SlotError('StaleGame', 'Refresh the session before starting.');
         if (state.game?.pending || state.latestGameId !== afterGameId) {
           writes.release(player.toLowerCase(), leaseId);
           return {key, attempt: 0, player, afterGameId: afterGameId.toString(), stage: 'started' as const, gameId: state.latestGameId.toString()};
         }
+        if(state.busy)throw new SlotError('GamePending','Waiting for the current round to confirm.');
         const settings = await reader.settings();
         if (settings.paused) throw new SlotError('Paused', 'The machine is paused.');
         if (settings.totalOutcomeWeight !== 1000 || settings.configuredPrizeCount < 3) throw new SlotError('Paytable', 'The prize table is not ready.');
-        if (!(await reader.funding()).ready) throw new SlotError('InsufficientPrizeInventory', 'The slot is restocking prizes. Wait before you spin: your balance and free spins stay available.');
+        const funding = await reader.funding();
+        prizeAvailability.record(funding.ready);
+        if (!funding.ready) throw new SlotError('InsufficientPrizeInventory', 'The slot needs a prize refill. Your balance and free spins stay available.');
         if (!backend || !health.configured) throw new SlotError('KeeperMissing', 'The reveal service is not configured yet.', 503);
         if (!health.lastTick || Date.now() - health.lastTick > 30000 || health.balanceWei === '0' || health.error) throw new SlotError('KeeperNotReady', 'The reveal service must be online and hold ETH for gas.', 503);
         if (mode === 'free') {
@@ -180,6 +187,8 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
             const rejected = operation.hash || operation.transactionId ? error instanceof SlotError && error.code === 'TransactionFailed' : definiteSendFailure(error);
             operation.stage = !rejected && (operation.hash || mode === 'paid') ? 'uncertain' : 'failed';
             operation.error = mode === 'paid' ? transactionError(error) : slotError(error).message;
+            if (slotError(error).code === 'InsufficientPrizeInventory') prizeAvailability.record(false);
+            logSpinFailure('slot.spin_submission_failed',player,mode,operation.afterGameId,error,operation.stage);
           }
         })();
         return {...operation};
@@ -192,20 +201,29 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
     for (const op of pending) await reconcile(op);
     return serializable({...state,busy:state.busy || pending.some(op => !['started','failed'].includes(op.stage))});
   }
-  async function playerView(player: Address) {
-    const [state, bonusHistory] = await Promise.all([reader.player(player), welcomeHistory.read(player)]);
+  async function playerView(player: Address, blockNumber?:bigint) {
+    // Reconcile submissions before selecting the round: it can have settled before
+    // the first browser poll. The ID comes from the verified SpinStarted receipt.
+    for(const op of operations.values())if(op.player.toLowerCase()===player.toLowerCase()&&op.stage!=='started'&&op.stage!=='failed')await reconcile(op);
+    const state = await reader.playPlayer(player,blockNumber);
     const operation = [...operations.values()].reverse().find(op => op.player.toLowerCase() === player.toLowerCase() &&
       (!state.latestGameId || op.afterGameId === state.latestGameId.toString() || op.gameId === state.latestGameId.toString()));
-    if (operation) await reconcile(operation);
     const bonus = welcome.get(player.toLowerCase());
     return serializable({...state, operation: operation || null,
-      welcome: bonusHistory.granted ? {status: 'granted', amount: '2'} : bonus ? {status: bonus.checking ? 'checking' : 'pending', amount: '2', error: bonus.error} : null});
+      welcome: bonus ? {status: bonus.checking ? 'checking' : 'pending', amount: '2', error: bonus.error} : welcomeViews.get(player.toLowerCase()) || null});
+  }
+  async function playView(player:Address) {
+    const block=await client.getBlockNumber({cacheTime:0});
+    const [settings,state]=await Promise.all([reader.settings(block),playerView(player,block)]);
+    return serializable({configured:true,address:config.address,chainId:config.chainId,paymentToken:config.paymentToken,
+      gasMode:config.gasMode,block,settings,player:state,keeper:health,prizeAvailability:prizeAvailability.view()});
   }
   async function queueWelcome(player: Address): Promise<WelcomeView> {
     return locked(`welcome:${player.toLowerCase()}`, async () => {
       await reader.validate();
       const history = await welcomeHistory.read(player);
       if (history.granted) {
+        welcomeViews.set(player.toLowerCase(),{status:'granted',amount:'2'});
         welcome.delete(player.toLowerCase()); return {status: 'granted', amount: '2'};
       }
       if (!backend) return {status: 'unavailable', amount: '2', error: 'The bonus will be credited once the service is ready.'};
@@ -223,16 +241,16 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
     entry.nextAttempt = Date.now() + 10000;
     try {
       if (entry.hash) {
-        if ((await welcomeHistory.read(entry.player)).granted) {welcome.delete(entry.player.toLowerCase()); return;}
+        if ((await welcomeHistory.read(entry.player)).granted) {welcomeViews.set(entry.player.toLowerCase(),{status:'granted',amount:'2'});welcome.delete(entry.player.toLowerCase()); return;}
         const receipt = await client.getTransactionReceipt({hash: entry.hash}).catch(() => null);
         // An unknown submission never permits another nonce. A confirmed revert can be retried.
         if (!receipt || receipt.status === 'success') return;
         entry.hash = undefined;
       }
-      await sendBackend('grantFreeSpins', entry.player, hash => {entry.hash = hash; entry.checking = false;});
+      await sendBackend('grantFreeSpins', entry.player, hash => {entry.hash = hash; entry.checking = false; entry.nextAttempt=Date.now()+1000;});
       entry.error = undefined;
     } catch (error) {
-      if (error instanceof SlotError && error.code === 'WelcomeAlreadyGranted') {welcome.delete(entry.player.toLowerCase()); return;}
+      if (error instanceof SlotError && error.code === 'WelcomeAlreadyGranted') {welcomeViews.set(entry.player.toLowerCase(),{status:'granted',amount:'2'});welcome.delete(entry.player.toLowerCase()); return;}
       entry.checking = error instanceof SlotError && error.code === 'WelcomeHistorySyncing';
       entry.error = 'The welcome bonus is pending. We retry automatically.';
     }
@@ -251,9 +269,10 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
       rounds.sort((a, b) => a.game.revealDeadline < b.game.revealDeadline ? -1 : 1);
       health.error = '';
       for (const round of rounds) {
+        reader.rememberGame(round.game.player,round.id);
         if (!round.game.pending || block <= round.game.targetBlock) continue;
         const method = block > round.game.revealDeadline ? 'expireRound' : 'revealRound';
-        try {await sendBackend(method, round.id);}
+        try {await sendBackend(method, round.id,hash=>{if(method==='revealRound')reader.rememberReveal(round.id,hash);});}
         catch (error) {const safe = slotError(error); if (safe.code !== 'KeeperBusy' && safe.code !== 'NoPendingRound') health.error = safe.message;}
         // One transaction at a time, sharing the nonce stream with free spins.
         if (pendingBackend) break;
@@ -269,7 +288,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
     async function loop() {await tick(); if (!stopped) {timer = setTimeout(loop, 1000); timer.unref();}}
     void loop();
   }
-  return {reader, start, playerView, walletView, tick, startKeeper, sendBackend, queueWelcome,
+  return {reader, start, playerView, playView, walletView, tick, startKeeper, sendBackend, queueWelcome,
     health: () => ({...health, pendingTransaction: pendingBackend?.hash || null}),
     stop() {stopped = true; if (timer) clearTimeout(timer);},
   };

@@ -9,7 +9,7 @@
 - Payment: Base USDC only. USDC cannot be configured as a prize.
 - Rewards: ERC-20, ERC-1155, or free-spin counter credits.
 - Dividend: an ERC-20 3/5 result pays exactly half the configured 5/5 amount.
-- Jackpot: disabled; its 0.1% bucket is assigned to the no-win result.
+- Jackpot: disabled.
 - Column reroll: removed from the current version.
 - Column uniqueness: the same symbol may appear at most once among the three cells of any vertical column.
 - Player concurrency: one pending paid or free spin per address.
@@ -22,12 +22,13 @@ win. That cannot reproduce a paytable whose percentages describe complete outcom
 The current design instead uses 1,000 explicit probability buckets:
 
 ```text
-0 ... 100       -> NOTHING       (101 buckets / 10.1%)
+0 ... 9         -> NOTHING       (10 buckets / 1.0%)
 remaining range -> configured 3/5 and 5/5 symbol entries
 ```
 
-The eight 3/5 entries occupy 404 buckets and the twelve 5/5 entries occupy 495 buckets. Together with the 101
-no-win buckets, every random roll maps to exactly one outcome.
+The eight 3/5 entries occupy 404 buckets and the fifteen 5/5 entries occupy 586 buckets. Together with the 10
+no-win buckets, every random roll maps to exactly one outcome. Books use 20 buckets (2%), Water Bottle uses 21
+buckets (2.1%), and Caps uses 50 buckets (5%).
 
 After choosing the outcome, separate entropy chooses one of the three paylines. The contract fills the remaining
 cells column by column, without repeating a symbol vertically. In a 3/5 result, the winning symbol is placed away
