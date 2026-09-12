@@ -14,7 +14,7 @@ const relay = createRelay({origin, walletService: walletFixture().service,
   readBalance: async () => ({amount: '128.50', updatedAt: Date.now(), stale: false})});
 const hardware = createHardware({origin, token: 'browser-hardware-test-token-32-characters'});
 const bundle=buildSync({entryPoints:['tests/browser/inventory-fixture.tsx'],bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',define:{'process.env.NODE_ENV':'"test"'}});
-const phoneBundle=buildSync({entryPoints:['tests/browser/phone-fixture.tsx'],bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',outfile:'phone.js',alias:{'@privy-io/react-auth':'./tests/browser/phone-privy-fixture.tsx','@/lib/slot/use-transaction':'./tests/browser/phone-transaction-fixture.ts'},define:{'process.env.NODE_ENV':'"test"'}});
+const phoneBundle=buildSync({entryPoints:['tests/browser/phone-fixture.tsx'],bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',outfile:'phone.js',alias:{'@privy-io/react-auth':'./tests/browser/phone-privy-fixture.tsx','@/lib/slot/use-transaction':'./tests/browser/phone-transaction-fixture.ts','@/lib/wallet-authorization-client':'./tests/browser/ownership-wallet-fixture.ts'},define:{'process.env.NODE_ENV':'"test"'}});
 const quickBundle=buildSync({entryPoints:['tests/browser/quick-fund-fixture.tsx'],outfile:'quick.js',bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',alias:{'@privy-io/react-auth':'./tests/browser/quick-fund-privy-fixture.ts','@/lib/wallet-authorization-client':'./tests/browser/quick-fund-wallet-fixture.ts'},define:{'process.env.NODE_ENV':'"test"'}});
 const ownershipBundle=buildSync({entryPoints:['tests/browser/ownership-fixture.tsx'],outfile:'ownership.js',bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',alias:{'@privy-io/react-auth':'./tests/browser/quick-fund-privy-fixture.ts','@/lib/wallet-authorization-client':'./tests/browser/ownership-wallet-fixture.ts'},define:{'process.env.NODE_ENV':'"test"'}});
 const wallet='0x0000000000000000000000000000000000000011';
@@ -34,6 +34,7 @@ const seasonClients=new Set<ServerResponse>();
 const sendSeason=(res:ServerResponse)=>res.write('event: standings\ndata: '+JSON.stringify(seasonView)+'\n\n');
 const server = createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://localhost:3101');
+  if(url.pathname==='/api/ens'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({configured:false,names:[],claims:[]}));return;}
   if(url.pathname==='/api/leaderboard/stream') {
     res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store'});sendSeason(res);seasonClients.add(res);req.on('close',()=>seasonClients.delete(res));return;
   }
@@ -90,5 +91,5 @@ const server = createServer(async (req, res) => {
   const types: Record<string, string> = {html: 'text/html', js: 'text/javascript', css: 'text/css', svg: 'image/svg+xml'};
   res.setHeader('Content-Type', types[path.split('.').pop()!]); res.end(await readFile(join(process.cwd(), 'public', path)));
 });
-server.listen(3101, host);
+server.listen(Number(process.env.FIXTURE_PORT||3101), host);
 process.on('SIGTERM', () => {relay.close(); server.close();});

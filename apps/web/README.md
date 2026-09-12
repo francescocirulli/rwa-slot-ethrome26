@@ -270,7 +270,9 @@ Terminal browser tests use test pairing APIs and controlled onchain snapshots.
 They verify both transaction stages, confirmations, the row-major grid, winning
 line, logout and 1024×768 / 1024×650 layouts. Backend tests cover authentication,
 exact budgets, isolation and revocation during asynchronous operations.
-All terminal bundles are checked for ES5 compatibility.
+All terminal bundles are checked for ES5 compatibility. To test an isolated
+worktree without colliding with another fixture server, use
+`FIXTURE_PORT=3190 npm run test:browser` from `apps/web`.
 
 Manual checks in `scripts/live-privy-check.mjs` and `scripts/live-admin-check.mjs`
 create test Privy accounts with virtual passkeys and empty wallets. They neither
@@ -400,6 +402,15 @@ transactions remain the deduplication source even after credits are spent, a
 restart or keeper rotation. Claims share the keeper nonce queue, check history
 again before signing and rotate fairly between pending wallets. Uncertain sends
 retain the original transaction; a balance of zero never authorizes another bonus.
+
+## ENSv2 on the phone
+
+Optional ENS voucher redemption registers `*.wallstreetslot.eth` on Sepolia
+using the existing backend EOA. The player receives the ENS name and pays no
+Sepolia gas. Existing Base ENS vouchers are transferred to `0x000000000000000000000000000000000000dEaD`, not burned;
+the player's Base transfer follows the app's existing USDC/ETH fee mode.
+The phone confirms the voucher once, then follows backend registration automatically.
+See [ENS setup, costs and recovery](docs/ens.md) before enabling the feature.
 
 ### Game Explorer and personal statistics
 

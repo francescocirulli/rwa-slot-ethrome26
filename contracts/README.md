@@ -268,3 +268,16 @@ Machine-readable addresses and deployment transactions are recorded in
 [`abi/DigitalSlotMachine.json`](abi/DigitalSlotMachine.json) and [`abi/SlotPrize1155.json`](abi/SlotPrize1155.json).
 
 See [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) for the outcome-generation and inventory rationale.
+
+## ENS voucher redemption
+
+The existing ENS prize (ID 2) is transferred directly to
+`0x000000000000000000000000000000000000dEaD` on Base. No Base redemption
+contract is deployed. The transfer calldata binds the reservation and the
+backend verifies the finalized receipt and ERC1155 event before fulfilling it.
+This transfer does not burn the token or reduce its supply.
+`SlotENSRegistrar` uses the real ENSv2 UserRegistry and PermissionedResolver on
+Sepolia, with a backend-attested Base transaction/log identifier that can be
+used only once. The player owns the name and resolver; the backend controls the
+parent namespace. See the [ENS setup and trust model](../apps/web/docs/ens.md)
+for configuration, fees, finality and recovery requirements.

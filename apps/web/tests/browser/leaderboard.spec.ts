@@ -1,3 +1,4 @@
+import {fixtureOrigin} from './origin';
 import {test,expect} from '@playwright/test';
 import {emptyView,type LeaderboardView} from '../../lib/arkiv/model';
 const player='0x0000000000000000000000000000000000000011';
@@ -23,7 +24,7 @@ test('iPad and phone share pushed standings; countdown cannot invent a season re
   await expect(page.locator('#leaderboard-title')).toHaveText('Season 2');
   await expect(page.locator('#leaderboard-rows tr')).toHaveCount(0);
   await expect(phone.getByRole('region',{name:'Season leaderboard'})).toContainText('No spins in this season yet.');
-  expect(requests).toEqual(['http://localhost:3101/api/leaderboard/stream']);
+  expect(requests).toEqual([fixtureOrigin+'/api/leaderboard/stream']);
   await request.post('/fixture/season',{data:{...season('3'),remainingSeconds:2591990}});
   await expect(page.locator('#leaderboard-countdown')).toContainText('29d 23h 59m');
   await expect(phone.getByRole('region',{name:'Season leaderboard'})).toContainText('29d 23h 59m');
