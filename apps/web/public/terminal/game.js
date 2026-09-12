@@ -3,7 +3,7 @@
   'use strict';
   var currentSession = null, revision = 0, snapshot = null, fetching = false, sending = false, timer, online = true, shownResult = '', settleTimer, hardwareState = '', observedPending = false, configuredState = null;
   var lines = [[5,6,7,8,9], [0,1,7,13,14], [10,11,7,3,4]];
-  var labels = ['MAGNET','FREE SPIN','NVIDIA','GADGET','SPACEX','APPLE','ALPHABET','AMAZON','ENS','URBE PASS','T-SHIRT','GOLD','SYMBOL 12','SYMBOL 13','SYMBOL 14','SYMBOL 15'];
+  var labels = ['MAGNET','FREE SPIN','NVIDIA','HOPERA','SPACEX','APPLE','ALPHABET','AMAZON','ENS','URBE PASS','T-SHIRT','GOLD','SYMBOL 12','SYMBOL 13','SYMBOL 14','SYMBOL 15'];
   function el(id) {return document.getElementById(id);}
   function show(id, value) {el(id).hidden = !value;}
   function xhr(path, body, callback) {
@@ -42,7 +42,7 @@
   function clear() {
     observedPending = false; configuredState = null; feedback({phase: 'idle', ready: false});
     revision++; snapshot = null; fetching = false; sending = false; shownResult = ''; window.clearTimeout(timer); timer = null; window.clearTimeout(settleTimer);
-    spin(false); resetGrid(); hideResult(); show('game-availability', false); show('game-controls', false); show('game-unconfigured', true); show('play-consent-status', false);
+    spin(false); resetGrid(); hideResult(); hideOutcome(); show('game-availability', false); show('game-controls', false); show('game-unconfigured', true); show('play-consent-status', false);
     document.body.classList.remove('game-enabled');
     document.body.classList.remove('has-free-spins'); show('free-spin-summary', false);
     el('free-spin-balance').textContent = '—'; el('free-spin-count').textContent = '—'; el('free-spin-note').textContent = '';
@@ -50,6 +50,39 @@
     var originals = [2, 1, 0, 4, 3, 5, 6, 11, 8, 7, 9, 10, 11, 2, 1];
     var images = document.querySelectorAll('.cell img');
     for (var i = 0; i < images.length; i++) {images[i].src = reelSource(originals[i]); images[i].alt = originals[i] === 11 ? 'JACKPOT' : labels[originals[i]];}
+  }
+  function prizeName(game, prize) {
+    var isGold = prize.kind === 1 && String(prize.token || '').toLowerCase() === '0xe908475f8beb7a138b0dc6eb5a05cb27068ffb9a';
+    if (prize.kind === 1 && prize.decimals === null) return 'base units of ' + (isGold ? 'Gold (DGLD)' : prize.tokenSymbol || 'token');
+    if (isGold) return 'Gold (DGLD)';
+    if (prize.kind === 3) return 'free spin';
+    if (prize.kind === 2) return labels[game.winningSymbol];
+    // Tokenized stocks: a 3/5 pays the half-share dividend, a 5/5 pays the full stock amount.
+    if (prize.kind === 1 && labels[game.winningSymbol]) return labels[game.winningSymbol] + (game.matchCount === 3 ? '_Dividend' : '_Stock');
+    return prize.tokenSymbol || 'token units';
+  }
+  var outcomeTimer;
+  function hideOutcome() {
+    window.clearTimeout(outcomeTimer); show('outcome', false); el('outcome').className = 'outcome';
+    var machine = document.querySelector('.machine'); machine.classList.remove('tier-3'); machine.classList.remove('tier-5'); machine.classList.remove('tier-jackpot'); machine.classList.remove('tier-loss');
+  }
+  // Display only: the big result card and the cabinet lights for the confirmed onchain outcome.
+  function showOutcome(game) {
+    var jackpot = !!game.won && game.matchCount === 5 && game.winningSymbol === 11;
+    var tier = !game.won ? 'loss' : jackpot ? 'jackpot' : game.matchCount === 5 ? '5' : '3';
+    var box = el('outcome'); box.className = 'outcome outcome-' + tier;
+    var fx = el('outcome-fx'); fx.innerHTML = '';
+    if (game.won) {
+      var glyph = game.matchCount === 5 ? '$' : '★', count = jackpot ? 18 : 9;
+      for (var i = 0; i < count; i++) {var piece = document.createElement('span'); piece.textContent = glyph; piece.style.left = (4 + Math.random() * 92) + '%'; piece.style.animationDelay = (Math.random() * 1.4) + 's'; piece.style.fontSize = (jackpot ? 24 + Math.random() * 26 : 14 + Math.random() * 12) + 'px'; fx.appendChild(piece);}
+    }
+    el('outcome-kicker').textContent = jackpot ? 'JACKPOT!' : game.won ? (game.matchCount === 5 ? '5 OF A KIND' : '3 OF A KIND') : 'NO PRIZE';
+    el('outcome-title').textContent = game.won ? 'YOU WIN' : 'YOU LOST';
+    el('outcome-copy').textContent = game.won ? 'Congrats, you win ' + (game.payout ? game.payout.formattedAmount + ' ' + prizeName(game, game.payout) : 'a prize') + '!' : 'Sorry, the market was not on your side. Spin again!';
+    if (game.won) {el('outcome-prize').src = game.winningSymbol === 11 ? '/symbols/jackpot.svg' : '/symbols/symbol-' + game.winningSymbol + '.svg'; show('outcome-prize', true);} else show('outcome-prize', false);
+    document.querySelector('.machine').classList.add('tier-' + tier);
+    show('outcome', true);
+    window.clearTimeout(outcomeTimer); outcomeTimer = window.setTimeout(hideOutcome, jackpot ? 7000 : game.won ? 5000 : 3000);
   }
   function resultText(game) {
     var hash = game.transactionHash;
@@ -60,8 +93,7 @@
     if (!game.won) {el('wins-display').textContent = '0'; status('SPIN #' + game.id + ' · SETTLED', 'No prize this time.', 'Result confirmed on Base.'); return;}
     var prize = game.payout;
     if (!prize) {el('wins-display').textContent = 'WIN'; status('SPIN #' + game.id + ' · WON', 'You won!', 'Prize confirmed. Reading the details from the contract.'); return;}
-    var isGold = prize.kind === 1 && String(prize.token || '').toLowerCase() === '0xe908475f8beb7a138b0dc6eb5a05cb27068ffb9a';
-    var name = prize.kind === 1 && prize.decimals === null ? 'base units of ' + (isGold ? 'Gold (DGLD)' : prize.tokenSymbol || 'token') : isGold ? 'Gold (DGLD)' : prize.kind === 3 ? 'free spin' : prize.kind === 2 ? labels[game.winningSymbol] : prize.tokenSymbol || 'token units';
+    var name = prizeName(game, prize);
     el('wins-display').textContent = prize.formattedAmount + ' ' + name;
     status('SPIN #' + game.id + ' · ' + game.matchCount + '/5', 'You won ' + prize.formattedAmount + ' ' + name + '!', prize.kind === 3 ? 'Credits are already available for this wallet.' : 'The prize has already been sent to your wallet.');
   }
@@ -89,7 +121,7 @@
     if (window.slotDemo) {el('play-consent-title').textContent = 'Test credits only.'; el('play-consent-copy').textContent = '5 cents + 1 cent of simulated gas. No real funds.';}
     if (inFlight || pending && game.status !== 'expired' || waitingConfirmation) {
       observedPending = true; feedback({phase: 'spin', ready: false});
-      spin(true); resetGrid(); hideResult(); shownResult = '';
+      spin(true); resetGrid(); hideResult(); hideOutcome(); shownResult = '';
       if (!online) status('WAITING ONCHAIN', 'Looking for the signal.', 'Your spin continues on the contract. Do not send a new request.');
       else if (inFlight) status('01 / SENDING SPIN', operation && operation.stage === 'uncertain' ? 'Verifying the transaction…' : 'Here we go. Good luck!', operation && operation.error || 'Waiting for the first transaction to confirm.');
       else if (waitingConfirmation) status('03 / CONFIRMING RESULT', 'Almost there…', 'Waiting for the reveal confirmations on Base.');
@@ -99,7 +131,7 @@
       return;
     }
     if (game && game.hasResult && game.confirmed) {
-      if (shownResult !== game.id) {shownResult = game.id; finalGrid(game); spin(false); if (observedPending) {observedPending = false; feedback({phase: 'result', id: game.id, tier: game.won ? Math.max(0, Math.min(3, game.matchCount - 2)) : 0, hub: !!game.won && game.winningSymbol === 9, ready: !el('spin-free').disabled || !el('spin-paid').disabled});}}
+      if (shownResult !== game.id) {shownResult = game.id; finalGrid(game); spin(false); showOutcome(game); if (observedPending) {observedPending = false; feedback({phase: 'result', id: game.id, tier: game.won ? Math.max(0, Math.min(3, game.matchCount - 2)) : 0, hub: !!game.won && game.winningSymbol === 9, ready: !el('spin-free').disabled || !el('spin-paid').disabled});}}
       resultText(game);
       if (window.slotDemo) {el('game-phase').textContent = 'DEMO · SIMULATED RESULT'; el('game-detail').textContent = 'No transaction, no real prize.';}
     } else {
@@ -148,6 +180,7 @@
   document.addEventListener('visibilitychange', function () {if (!document.hidden) {hardwareState = ''; window.clearTimeout(timer); poll();}});
   window.addEventListener('offline', function () {online = false; render();});
   window.addEventListener('online', function () {window.clearTimeout(timer); poll();});
+  el('outcome').onclick = hideOutcome;
   el('spin-paid').onclick = function () {start('paid');}; el('spin-free').onclick = function () {start('free');};
   window.slotCanSwitchMode = function () {return !sending && !fetching && (!currentSession || currentSession.state !== 'active' || configuredState === false || !!snapshot && online && !document.querySelector('.machine').classList.contains('is-spinning'));};
   // Hardware and touch share exactly the same eligibility and submission lock.

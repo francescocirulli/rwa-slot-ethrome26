@@ -8,7 +8,7 @@
     {label:'MAGNET', kind:2, token:collection, tokenId:'5', three:94, five:62},
     {label:'FREE SPIN', kind:3, token:'0x0000000000000000000000000000000000000000', tokenId:'0', three:73, five:48},
     {label:'NVIDIA', kind:1, token:'0xb20000000000000000000078ee7ce2fE4908108C', decimals:8, three:48, five:32},
-    {label:'GADGET', kind:2, token:collection, tokenId:'1', three:45, five:30},
+    {label:'HOPERA', kind:2, token:collection, tokenId:'1', three:45, five:30},
     {label:'SPACEX', kind:1, token:'0xb2000000000000000000007b9fcbd005511aCBd5', decimals:8, three:38, five:26},
     {label:'APPLE', kind:1, token:'0xb200000000000000000000C2e324d24d7eEcd1fb', decimals:8, three:38, five:26},
     {label:'ALPHABET', kind:1, token:'0xb2000000000000000000002D0BA3164cc74f58B7', decimals:8, three:38, five:26},
