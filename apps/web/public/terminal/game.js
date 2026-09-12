@@ -1,13 +1,15 @@
 /* Onchain slot controller, deliberately ES5 for the shared Safari 12 terminal. */
 (function () {
   'use strict';
-  var currentSession = null, revision = 0, snapshot = null, fetching = false, sending = false, timer, online = true, shownResult = '', settleTimer;
+  var currentSession = null, revision = 0, snapshot = null, fetching = false, sending = false, timer, online = true, shownResult = '', settleTimer, hardwareState = '', observedPending = false, configuredState = null;
   var lines = [[5,6,7,8,9], [0,1,7,13,14], [10,11,7,3,4]];
   var labels = ['MAGNETE','FREE SPIN','NVIDIA','GADGET','SPACEX','APPLE','ALPHABET','AMAZON','ENS','URBE PASS','T-SHIRT','GOLD','SYMBOL 12','SYMBOL 13','SYMBOL 14','SYMBOL 15'];
   function el(id) {return document.getElementById(id);}
   function show(id, value) {el(id).hidden = !value;}
   function xhr(path, body, callback) {
-    var request = new XMLHttpRequest(), generation = revision;
+    var generation = revision;
+    if (window.slotDemo) {window.slotDemo.request(path, body, function (error, data, code) {if (generation === revision) callback(error, data, code);}); return;}
+    var request = new XMLHttpRequest();
     request.open(body ? 'POST' : 'GET', path, true); request.timeout = 25000;
     if (body) {request.setRequestHeader('Content-Type', 'application/json'); request.setRequestHeader('X-Slot-Request', '1');}
     request.onload = function () {if (generation !== revision) return; var data; try {data = JSON.parse(request.responseText);} catch (ignore) {callback('Risposta onchain non disponibile.', null, request.status); return;} callback(request.status >= 200 && request.status < 300 ? null : data.error || 'Operazione non disponibile.', data, request.status);};
@@ -21,6 +23,7 @@
   }
   function atLeast(left, right) {left = String(left).replace(/^0+/, '') || '0'; right = String(right).replace(/^0+/, '') || '0'; return left.length > right.length || left.length === right.length && left >= right;}
   function status(phase, title, detail) {el('game-phase').textContent = phase; el('game-title').textContent = title; el('game-detail').textContent = detail || '';}
+  function feedback(data) {var key = JSON.stringify(data); if (key === hardwareState) return; hardwareState = key; var event = document.createEvent('CustomEvent'); event.initCustomEvent('slot-game', false, false, data); window.dispatchEvent(event);}
   function spin(value) {document.querySelector('.machine').classList.toggle('is-spinning', value); document.querySelector('.reels').setAttribute('aria-busy', value ? 'true' : 'false');}
   function resetGrid() {
     var cells = document.querySelectorAll('.cell');
@@ -35,6 +38,7 @@
     }
   }
   function clear() {
+    observedPending = false; configuredState = null; feedback({phase: 'idle', ready: false});
     revision++; snapshot = null; fetching = false; sending = false; shownResult = ''; window.clearTimeout(timer); timer = null; window.clearTimeout(settleTimer);
     spin(false); resetGrid(); show('game-controls', false); show('game-unconfigured', true); show('play-consent-status', false);
     document.body.classList.remove('game-enabled');
@@ -70,18 +74,22 @@
     var hasBudget = atLeast(player.allowance, snapshot.settings.ticketPrice);
     el('play-consent-title').textContent = hasFreeSpins && !(grant && grant.active) ? 'Puoi già giocare gratis.' : grant && grant.active ? hasBudget ? 'Giocate autorizzate.' : 'Budget da rinnovare.' : 'Autorizza il budget sul telefono.';
     el('play-consent-copy').textContent = hasFreeSpins && !(grant && grant.active) ? 'Tira la leva o premi USA FREE SPIN. Non serve ricaricare né autorizzare USDC.' : grant && grant.active ? hasBudget ? 'Budget USDC residuo: ' + amount(player.allowance) + '. Il telefono può restare chiuso.' : 'Budget residuo: ' + amount(player.allowance) + ' USDC. Per sceglierne uno nuovo, esci e ricollegati dal telefono. I free spin restano disponibili.' : 'Scegli quanto autorizzare per giocare dall’iPad. I free spin non usano USDC.';
+    if (window.slotDemo) {el('play-consent-title').textContent = 'Solo crediti di prova.'; el('play-consent-copy').textContent = '5 cent + 1 cent di gas simulato. Nessun fondo reale.';}
     if (inFlight || pending && game.status !== 'expired' || waitingConfirmation) {
+      observedPending = true; feedback({phase: 'spin', ready: false});
       spin(true); resetGrid(); shownResult = '';
       if (!online) status('ATTESA ONCHAIN', 'Cerchiamo il segnale.', 'La giocata continua sul contratto. Non inviare una nuova richiesta.');
       else if (inFlight) status('01 / INVIO GIOCATA', operation && operation.stage === 'uncertain' ? 'Verifica della transazione…' : 'Si parte. Buona fortuna!', operation && operation.error || 'Attendiamo la conferma della prima transazione.');
       else if (waitingConfirmation) status('03 / CONFERMA RISULTATO', 'Ci siamo quasi…', 'Aspettiamo le conferme del reveal su Base.');
       else if (game.status === 'waiting') status('02 / ATTESA BLOCCO', 'Lascia girare la fortuna.', 'Giocata #' + game.id + ' · blocco ' + snapshot.block + ' / ' + (Number(game.targetBlock) + 1));
       else status('03 / REVEAL', 'Un ultimo giro…', 'Il backend sta rivelando la giocata #' + game.id + '.');
+      if (window.slotDemo) {el('game-phase').textContent = 'DEMO · ' + el('game-phase').textContent; el('game-detail').textContent = 'Simulazione delle due transazioni. Nessun invio su Base.';}
       return;
     }
     if (game && game.hasResult && game.confirmed) {
-      if (shownResult !== game.id) {shownResult = game.id; finalGrid(game); spin(false);}
+      if (shownResult !== game.id) {shownResult = game.id; finalGrid(game); spin(false); if (observedPending) {observedPending = false; feedback({phase: 'result', id: game.id, tier: game.won ? Math.max(0, Math.min(3, game.matchCount - 2)) : 0, hub: !!game.won && game.winningSymbol === 9, ready: !el('spin-free').disabled || !el('spin-paid').disabled});}}
       resultText(game);
+      if (window.slotDemo) {el('game-phase').textContent = 'DEMO · RISULTATO SIMULATO'; el('game-detail').textContent = 'Nessuna transazione, nessun premio reale.';}
     } else {
       spin(false);
       if (game && (game.status === 'expired' || game.status === 'invalidated')) {resetGrid(); status('GIOCATA #' + game.id + ' · SCADUTA', 'Il reveal non è arrivato in tempo.', game.invalidated ? 'Giocata invalidata. Il contratto non rimborsa il biglietto.' : 'Attendiamo la chiusura onchain della giocata.');}
@@ -89,6 +97,7 @@
       else if (operation && operation.stage === 'failed') status('GIOCATA NON APERTA', 'Riprova quando sei pronto.', operation.error);
       else status('IL TUO TURNO', 'Un tiro. Un po’ di fortuna.', 'Gioca con USDC o usa un free spin disponibile.');
     }
+    feedback({phase: 'ready', ready: !el('spin-free').disabled || !el('spin-paid').disabled});
     if (!online) status('CONNESSIONE INTERROTTA', 'Cerchiamo il segnale.', 'Le nuove giocate saranno disponibili al ritorno della rete.');
     else if (snapshot.settings.paused) status('MACCHINA IN PAUSA', 'Una piccola pausa.', 'Le giocate già aperte continuano fino al reveal.');
     else if (!snapshot.keeper.configured || snapshot.keeper.balanceWei === '0') status('SERVIZIO DA CONFIGURARE', 'Il tuo posto ti aspetta.', 'Il wallet backend deve essere configurato e avere ETH per il reveal.');
@@ -100,13 +109,13 @@
       fetching = false;
       if (code === 401) {var event = document.createEvent('Event'); event.initEvent('slot-expired', false, false); window.dispatchEvent(event); return;}
       if (error) {online = false; if (snapshot) render();}
-      else if (data.configured && data.sessionId === currentSession.id) {online = true; snapshot = data; render();}
-      else if (!data.configured) {show('free-spin-summary', true); el('free-spin-note').textContent = 'La slot non è ancora attiva.';}
+      else if (data.configured && data.sessionId === currentSession.id) {online = true; configuredState = true; snapshot = data; render();}
+      else if (!data.configured) {configuredState = false; show('free-spin-summary', true); el('free-spin-note').textContent = 'La slot non è ancora attiva.';}
       timer = window.setTimeout(poll, 2000);
     });
   }
   function start(mode) {
-    if (!currentSession || !snapshot || sending || el(mode === 'free' ? 'spin-free' : 'spin-paid').disabled) return;
+    if (document.hidden || !currentSession || !snapshot || sending || el(mode === 'free' ? 'spin-free' : 'spin-paid').disabled) return;
     sending = true; render();
     xhr('/api/relay/tablet/spin', {mode: mode, afterGameId: snapshot.player.latestGameId}, function (error, data, code) {
       sending = false;
@@ -126,9 +135,11 @@
     if (snapshot) render();
     if (changed || !timer) poll();
   });
+  document.addEventListener('visibilitychange', function () {if (!document.hidden) {hardwareState = ''; window.clearTimeout(timer); poll();}});
   window.addEventListener('offline', function () {online = false; render();});
   window.addEventListener('online', function () {window.clearTimeout(timer); poll();});
   el('spin-paid').onclick = function () {start('paid');}; el('spin-free').onclick = function () {start('free');};
-  // Future Arduino adapter can call this after validating its physical lever input.
+  window.slotCanSwitchMode = function () {return !sending && !fetching && (!currentSession || currentSession.state !== 'active' || configuredState === false || !!snapshot && online && !document.querySelector('.machine').classList.contains('is-spinning'));};
+  // Hardware and touch share exactly the same eligibility and submission lock.
   window.slotPullLever = function () {start(snapshot && snapshot.player.freeSpins !== '0' ? 'free' : 'paid');};
 }());

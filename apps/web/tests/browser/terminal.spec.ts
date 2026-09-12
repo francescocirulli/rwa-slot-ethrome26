@@ -3,6 +3,7 @@ import {pairingSecret} from '../fixtures';
 
 async function link(page: Page, phone: BrowserContext) {
   await page.goto('/');
+  await page.locator('#attract-wake').click();
   await expect(page.locator('#login-qr')).toBeVisible();
   const secret = pairingSecret((await page.locator('#login-qr').getAttribute('src'))!);
   const code = (await page.locator('#pair-code').textContent())!.replace(/ /g, '');
@@ -187,5 +188,16 @@ test('free-spin counter waits for the welcome grant, tracks spending and hides s
   await context.setOffline(true);
   await expect(page.locator('#free-spin-balance')).toHaveText('—');
   await expect(page.locator('#free-spin-note')).toHaveText('Saldo da aggiornare.');
+  await phone.close();
+});
+
+
+test('a paired wallet can enter demo when the contract is not configured', async ({page, browser}) => {
+  const phone = await phoneContext(browser);
+  await link(page, phone);
+  await expect(page.locator('#free-spin-note')).toHaveText('La slot non è ancora attiva.');
+  await page.locator('#mode-switch').click();
+  await expect(page).toHaveURL(/demo=1/);
+  await expect(page.locator('body')).toHaveAttribute('data-mode', 'demo');
   await phone.close();
 });

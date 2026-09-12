@@ -1,6 +1,7 @@
 /* Safari 12 / ES5. No React, Privy SDK, wallet key, or phone auth token here. */
 (function () {
   'use strict';
+  if (window.slotDemo) return;
   var session = null, generation = 0, deadline = 0, lastServerTime = 0;
   var polling = false, pairing = false, leaving = false, signing = false, connected = true, timer, balanceTimer;
   var lastActivity = 0, feedback = '', needsPair = false;

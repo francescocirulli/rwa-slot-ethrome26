@@ -10,14 +10,17 @@
   <title>Lucky Signal — il prossimo colpo è tuo</title>
   <link rel="icon" href="/symbols/star.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/terminal/style.css">
+  <script src="/terminal/demo.js" defer></script>
   <script src="/terminal/client.js" defer></script>
   <script src="/terminal/game.js" defer></script>
+  <script src="/terminal/kiosk.js" defer></script>
 </head>
-<body data-wallet-state="restoring">
+<body data-wallet-state="restoring" data-mode="real">
+  <div id="attract-screen" class="attract-screen"><span class="overline">LUCKY SIGNAL · THE WALLET ARCADE</span><div class="attract-stars" aria-hidden="true">✦ ✳ ✦</div><h2>LA FORTUNA<br>TI ASPETTA.</h2><p>Avvicinati. Il prossimo colpo è tuo.</p><button id="attract-wake" class="primary-button" type="button">TOCCA PER INIZIARE ↗</button><small>Free spin e premi su Base</small></div>
   <div class="app-shell">
     <header class="topbar">
       <div class="brand"><span class="brand-mark" aria-hidden="true">✳</span><div>LUCKY<span>SIGNAL<span class="brand-dot">®</span></span></div></div>
-      <div class="header-center">GOOD ENERGY. <span>YOUR LUCK.</span></div>
+      <div class="kiosk-tools"><button id="mode-switch" type="button">REALE · passa a demo</button><button id="audio-enable" type="button">Attiva audio</button><button id="hardware-open" type="button">Hardware</button></div>
       <div class="network"><i></i> BASE <span>NETWORK</span></div>
     </header>
     <main class="main-layout">
@@ -81,6 +84,7 @@
   <div id="deposit-panel" class="overlay" role="dialog" aria-modal="true" aria-labelledby="deposit-title" hidden><div class="dialog receive-dialog"><span class="overline">IL TUO WALLET · BASE</span><h2 id="deposit-title">Fai il pieno.</h2><p>Ricevi USDC sulla rete Base.</p><img id="deposit-qr" alt="QR dell’indirizzo per ricevere USDC su Base"><p id="full-address"></p><small>Il deposito arriva al tuo wallet anche se esci dall’iPad.</small><button id="deposit-close" class="primary-button" type="button">FATTO <span>✓</span></button></div></div>
   <div id="idle-warning" class="overlay" role="dialog" aria-modal="true" aria-labelledby="idle-title" hidden><div class="dialog"><span class="overline">IL TUO POSTO STA PER LIBERARSI</span><h2 id="idle-title">Ci sei ancora?</h2><p>La sessione termina tra <strong id="idle-seconds">30</strong> secondi.<br>Il tuo wallet e i tuoi fondi restano tuoi.</p><button id="stay" class="primary-button" type="button">SONO QUI <span>↗</span></button><button id="idle-logout" class="text-button" type="button">Ho finito, esci</button></div></div>
   <div id="proof-dialog" class="overlay" role="dialog" aria-modal="true" aria-labelledby="proof-title" hidden><div class="dialog proof-dialog"><span class="overline">COLLEGAMENTO VERIFICATO</span><h2 id="proof-title">La firma è autentica.</h2><p>Il server ha firmato il messaggio autorizzato e verificato la firma rispetto al tuo wallet.</p><label>MESSAGGIO</label><pre id="proof-message"></pre><label>FIRMA</label><pre id="proof-value"></pre><button id="proof-close" class="primary-button" type="button">FATTO <span>✓</span></button></div></div>
+  <div id="hardware-dialog" class="overlay" role="dialog" aria-modal="true" aria-labelledby="hardware-title" hidden><div class="dialog"><span class="overline">POSTAZIONE ARCADE</span><h2 id="hardware-title">Collega Arduino.</h2><p>Inserisci il codice di 8 cifre mostrato dal bridge sul Mac.</p><label for="hardware-code">Codice hardware</label><input id="hardware-code" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" autocomplete="off"><p id="hardware-status" role="status">Hardware non collegato.</p><button id="hardware-pair" class="primary-button" type="button">COLLEGA</button><button id="hardware-motion" class="text-button" type="button" hidden>Simula arrivo (demo)</button><button id="hardware-close" class="text-button" type="button">Chiudi</button></div></div>
   <noscript>Attiva JavaScript in Safari per collegare il tuo wallet.</noscript>
 </body>
 </html>

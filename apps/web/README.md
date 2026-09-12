@@ -161,8 +161,11 @@ Monorepo deployment procedures and variables:
 [`../../.railway/README.md`](../../.railway/README.md).
 The contract has not been deployed yet. `SLOT_BACKEND_PRIVATE_KEY=REPLACE_ME`
 keeps the keeper disabled until a real key is supplied.
-Arduino is not connected yet: `window.slotPullLever()` is the terminal entry
-point for the future lever adapter.
+Arduino input now reaches `window.slotPullLever()` through the authenticated
+hardware relay and a local WebSocket bridge. The real mode remains default;
+the terminal can switch to an isolated demo without wallet or onchain requests.
+Motion reveals the QR from an idle screensaver; iPad audio requires one initial
+touch. See [cabinet wiring, firmware, pairing and demo setup](../../arduino/README.md).
 
 ## Validation
 
@@ -184,7 +187,7 @@ Terminal browser tests use test pairing APIs and controlled onchain snapshots.
 They verify both transaction stages, confirmations, the row-major grid, winning
 line, logout and 1024×768 / 1024×650 layouts. Backend tests cover authentication,
 exact budgets, isolation and revocation during asynchronous operations.
-Both terminal bundles are checked for ES5 compatibility.
+All terminal bundles are checked for ES5 compatibility.
 
 Manual checks in `scripts/live-privy-check.mjs` and `scripts/live-admin-check.mjs`
 create test Privy accounts with virtual passkeys and empty wallets. They neither

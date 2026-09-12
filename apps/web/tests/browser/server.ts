@@ -1,16 +1,18 @@
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
+import {createHardware} from '../../lib/hardware';
 import {createRelay} from '../../lib/relay';
 import {walletFixture} from '../fixtures';
 const relay = createRelay({origin: 'http://localhost:3101', walletService: walletFixture().service,
   readBalance: async () => ({amount: '128.50', updatedAt: Date.now(), stale: false})});
+const hardware = createHardware({origin: 'http://localhost:3101', token: 'browser-hardware-test-token-32-characters'});
 const server = createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://localhost:3101');
   if (url.pathname === '/api/health') {res.end('ok'); return;}
-  if (url.pathname.startsWith('/api/relay/')) {
+  if (url.pathname.startsWith('/api/relay/') || url.pathname.startsWith('/api/hardware/')) {
     const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
-    const result = await relay.handle(new Request(url, {method: req.method, headers: req.headers as Record<string, string>,
+    const result = await (url.pathname.startsWith('/api/hardware/') ? hardware : relay).handle(new Request(url, {method: req.method, headers: req.headers as Record<string, string>,
       body: req.method === 'POST' ? Buffer.concat(chunks) : undefined}));
     res.writeHead(result.status, Object.fromEntries(result.headers)); res.end(await result.text()); return;
   }
