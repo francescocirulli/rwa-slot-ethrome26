@@ -161,3 +161,43 @@ onchain information and are not authenticated wallet/write endpoints.
   `node --env-file=.env.local --import tsx scripts/arkiv-evidence.ts`.
 
 See [setup and evidence](README.md) and [friction report](../friction.md).
+
+## Game Explorer and personal summaries
+
+`GET /api/explorer` exposes a public read view over the same creator/project/schema/
+Base-contract scope. It accepts typed, validated filters: `period` (`season`, `day`,
+`week`, `month`), `player`, `won`, `matches` (3 or 5), winning `symbol` (0–15), and
+`prize` (0 none, 1 ERC20, 2 ERC1155, 3 free spins). Selecting a winning symbol also
+requires a win. No arbitrary query expressions or caller-selected creator are accepted.
+
+The season view reads `season-spin`, including schedule, season ID, shared expiry,
+and the actual season-start timestamp. Its totals therefore follow the leaderboard,
+including its late-ingestion rules. Other windows read retained `spin` history using
+inclusive `played_at` bounds. These are recorded results within retention, not lifetime
+statistics, monetary return, or predictions. Paid and free spins are not separately
+filterable in schema v1.
+
+`mode=summary` requires a player and includes all outcomes in the selected window.
+It returns spins, wins, points, observed win percentage, three/five-match counts,
+losses and winning-symbol distribution. Outcome/symbol/prize filters are rejected in
+summary mode, preventing a filtered wins-only set from masquerading as a personal
+win rate. Explorer metrics summarize the current filter selection.
+
+Queries walk every SDK page at one Arkiv block, validate records, deduplicate game
+IDs, sort by Base reveal timestamp and game ID, then return 25 rows per UI page.
+Totals include all matching records. A 5,000-entity ceiling fails explicitly rather
+than returning partial statistics. Four concurrent scans and a bounded 24-entry,
+60-second cache limit work. Pagination carries the snapshot block; snapshots older
+than 15 minutes require a refresh. A snapshot can show a season that has since
+expired: the UI labels it as a snapshot and never claims it is a live ranking.
+
+The `game` filter retrieves a retained history record for receipt details, independent
+of the selected time window. All 15 symbols come from its JSON payload; the Base
+transaction link remains available if the grid has expired. No historical entity is
+extended or recreated by reading. There are no new writes or schema migrations.
+
+The shared HTML/CSS/ES5 workspace is embedded on demand in iPad and phone overlays.
+Only a public wallet address is passed to the frame, never session or Privy credentials.
+Personal views close when the account/session wallet changes. Queries run on opening,
+filter submission, pagination or explicit refresh; they do not refresh session activity
+or add a timer-driven read loop. The existing subscription-driven ranking is unchanged.

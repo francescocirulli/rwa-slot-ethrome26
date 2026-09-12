@@ -5,6 +5,7 @@ import {PrivyProvider, useCreateWallet, useLoginWithEmail, useLoginWithPasskey, 
 import {base} from 'viem/chains';
 import {PhoneGame} from './game';
 import {SeasonLeaderboard} from './leaderboard';
+import {PhoneExplorer} from './explorer';
 import {PhoneWallet} from './wallet';
 import {WelcomeBonus} from './welcome';
 import {PairingScanner} from './scanner';
@@ -13,8 +14,8 @@ import {useContractTransaction} from '@/lib/slot/use-transaction';
 import {TransactionConfirmation} from '@/lib/slot/transaction-review';
 import type {SessionView} from '@/lib/types';
 
-function Shell({children}: {children: React.ReactNode}) {
-  return <div className="phone-shell"><header className="phone-header"><span className="phone-mark">$</span><span>WALL STREET<br/>SLOT<span className="registered">™</span></span><span className="phone-network">● BASE</span></header><nav className="phone-sections" aria-label="Phone sections"><a href="#phone-wallet">Wallet</a><a href="#season-leaderboard">Leaderboard ↗</a></nav><main><div id="phone-wallet">{children}</div><SeasonLeaderboard/></main><footer>YOUR WALLET. YOUR SESSION. ONCHAIN. <span>★</span></footer></div>;
+function Shell({children,player}: {children: React.ReactNode;player?:string}) {
+  return <div className="phone-shell"><header className="phone-header"><span className="phone-mark">$</span><span>WALL STREET<br/>SLOT<span className="registered">™</span></span><span className="phone-network">● BASE</span></header><nav className="phone-sections" aria-label="Phone sections"><a href="#phone-wallet">Wallet</a><a href="#season-leaderboard">Leaderboard ↗</a><a href="#game-explorer">Explorer ↗</a></nav><main><div id="phone-wallet">{children}</div><SeasonLeaderboard/><PhoneExplorer player={player}/></main><footer>YOUR WALLET. YOUR SESSION. ONCHAIN. <span>★</span></footer></div>;
 }
 export function PhoneProvider({appId, configured}: {appId: string; configured: boolean}) {
   if (!appId || !configured) return <Shell><div className="phone-card"><span className="eyebrow">ALMOST READY</span><h1>Your seat<br/>is waiting<span>.</span></h1><p>We are setting up the link. Try again shortly from the QR code on the iPad.</p></div></Shell>;
@@ -229,7 +230,7 @@ function Phone() {
   const connectedSession = authenticated && session;
   const linkReady = !!session?.grant?.active;
   const checking = !ready || !loaded || recovering;
-  return <Shell>
+  return <Shell player={ready&&authenticated?account?.wallet?.address:undefined}>
     <div className="intro"><span className="eyebrow">YOUR WALLET, ALWAYS WITH YOU</span><h1>{connectedSession ? linkReady ? <>Nice pull.<br/>You are in<span>.</span></> : <>Nice pull.<br/>One last step<span>.</span></> : authenticated ? <>Your wallet.<br/>Your winnings<span>.</span></> : <>One phone.<br/>A little luck<span>.</span></>}</h1><p>{connectedSession ? session.state === 'approved' ? 'The iPad is finishing the link.' : linkReady ? 'Your wallet is linked to the iPad.' : 'Approve the signature proof below to finish linking the iPad.' : authenticated ? 'Manage your tokens and prizes. Scan a QR code whenever you want to play on the iPad.' : 'Sign in to your wallet to see tokens and prizes, even without an iPad.'}</p></div>
     {checking && <div className="phone-progress" role="status">Checking your access and the link to the iPad…</div>}
     {ready&&authenticated&&walletsReady&&welcomeWallet&&<WelcomeBonus key={`${user?.id}:${welcomeWallet.address}`} getAccessToken={getAccessToken} onGranted={reloadAccount}/>}
