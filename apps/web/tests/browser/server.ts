@@ -2,6 +2,8 @@ import {buildSync} from 'esbuild';
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
+import {parseUnits} from 'viem';
+import {PAYMENT_ASSET,RWA_ASSETS} from '../../lib/assets';
 import {createHardware} from '../../lib/hardware';
 import {createRelay} from '../../lib/relay';
 import {walletFixture} from '../fixtures';
@@ -10,6 +12,13 @@ const relay = createRelay({origin: 'http://localhost:3101', walletService: walle
 const hardware = createHardware({origin: 'http://localhost:3101', token: 'browser-hardware-test-token-32-characters'});
 const bundle=buildSync({entryPoints:['tests/browser/inventory-fixture.tsx'],bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',define:{'process.env.NODE_ENV':'"test"'}});
 const phoneBundle=buildSync({entryPoints:['tests/browser/phone-fixture.tsx'],bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',outfile:'phone.js',alias:{'@privy-io/react-auth':'./tests/browser/phone-privy-fixture.tsx','@/lib/slot/use-transaction':'./tests/browser/phone-transaction-fixture.ts'},define:{'process.env.NODE_ENV':'"test"'}});
+const quickBundle=buildSync({entryPoints:['tests/browser/quick-fund-fixture.tsx'],bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',alias:{'@privy-io/react-auth':'./tests/browser/quick-fund-privy-fixture.ts','@/lib/wallet-authorization-client':'./tests/browser/quick-fund-wallet-fixture.ts'},define:{'process.env.NODE_ENV':'"test"'}});
+const wallet='0x0000000000000000000000000000000000000011';
+const quickBalances:Record<string,bigint>={nvidia:0n,spacex:5000000000n};
+const quickOps=new Map<string,{id:string;assetId:string;input:bigint;estimated:bigint;minimum:bigint;sent:boolean;credited:boolean;step:'approval'|'swap'}>();
+let quickSeq=0,quickApproved=false;
+function quickInventory(){return {address:wallet,contract:null,block:'100',updatedAt:Date.now(),eth:'0.1',contractEth:null,catalogAvailable:true,freeSpins:'0',mintEnabled:false,swapEnabled:true,canManageOwnership:false,collection:{address:'0x0000000000000000000000000000000000000000',owner:null,pendingOwner:null,canMint:false,canAcceptOwnership:false},assets:[PAYMENT_ASSET,...RWA_ASSETS].map(asset=>{const value=asset.id==='nvidia'?quickBalances.nvidia:asset.id==='spacex'?quickBalances.spacex:100000000000n;return {...asset,balance:String(value),formatted:null,verified:true,canDeposit:asset.id!=='usdc',reserve:{balance:'0',reserved:'0',available:'0'}};}),nfts:[]};}
+function quickView(op:{id:string;assetId:string;input:bigint;estimated:bigint;minimum:bigint;sent:boolean;step:'approval'|'swap'},stage:string){return {id:op.id,address:wallet,assetId:op.assetId,inputAssetId:'usdc',expiresAt:Date.now()+30000,stage,step:op.step,input:String(op.input),estimated:String(op.estimated),minimum:String(op.minimum),gasEstimate:'100000',feeAmount:'0',route:'mock',gasToken:'USDC',actionId:'transaction_'+op.id.slice(0,8),userOperationHash:null,fromBlock:null,output:stage==='succeeded'?String(op.estimated):null,hashes:[],error:null};}
 const server = createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://localhost:3101');
   if(url.pathname==='/phone-fixture'){res.setHeader('Content-Type','text/html; charset=utf-8');res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/phone-fixture.css"></head><body><div id="root"></div><script src="/phone-fixture.js"></script></body></html>');return;}
@@ -17,6 +26,8 @@ const server = createServer(async (req, res) => {
   if(url.pathname==='/phone-fixture.css'){res.setHeader('Content-Type','text/css');res.end((await readFile(join(process.cwd(),'app/phone/style.css'),'utf8'))+'\n'+(await readFile(join(process.cwd(),'lib/slot/transaction-review.css'),'utf8')));return;}
   if(url.pathname==='/inventory-fixture'){res.setHeader('Content-Type','text/html');res.end('<html><head><link rel="stylesheet" href="/admin-fixture.css"></head><body><div id="root"></div><script src="/inventory-fixture.js"></script></body></html>');return;}
   if(url.pathname==='/inventory-fixture.js'){res.setHeader('Content-Type','text/javascript');res.end(bundle.outputFiles[0].text);return;}
+  if(url.pathname==='/quick-fund-fixture'){res.setHeader('Content-Type','text/html');res.end('<html><head><link rel="stylesheet" href="/admin-fixture.css"></head><body><div id="root"></div><script src="/quick-fund-fixture.js"></script></body></html>');return;}
+  if(url.pathname==='/quick-fund-fixture.js'){res.setHeader('Content-Type','text/javascript');res.end(quickBundle.outputFiles[0].text);return;}
   if(url.pathname==='/admin-fixture.css'){res.setHeader('Content-Type','text/css');res.end(await readFile(join(process.cwd(),'app/admin/style.css')));return;}
   if(url.pathname.startsWith('/brands/')&&/^\/brands\/[a-z-]+\.(svg|png)$/.test(url.pathname)){res.setHeader('Content-Type',url.pathname.endsWith('.svg')?'image/svg+xml':'image/png');res.end(await readFile(join(process.cwd(),'public',url.pathname)));return;}
   if (url.pathname === '/api/health') {res.end('ok'); return;}
@@ -25,6 +36,27 @@ const server = createServer(async (req, res) => {
     const result = await (url.pathname.startsWith('/api/hardware/') ? hardware : relay).handle(new Request(url, {method: req.method, headers: req.headers as Record<string, string>,
       body: req.method === 'POST' ? Buffer.concat(chunks) : undefined}));
     res.writeHead(result.status, Object.fromEntries(result.headers)); res.end(await result.text()); return;
+  }
+  if (url.pathname.startsWith('/api/admin/assets/')) {
+    res.setHeader('Content-Type','application/json');
+    const action=url.pathname.split('/').pop();
+    if(action==='inventory'){res.end(JSON.stringify(quickInventory()));return;}
+    const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk));
+    const body:Record<string,unknown>=chunks.length?JSON.parse(Buffer.concat(chunks).toString()):{};
+    if(action==='quote'){
+      const input=parseUnits(String(body.amount),6),estimated=input*100n,minimum=estimated*995n/1000n;
+      const id=(++quickSeq).toString(16).padStart(64,'0');
+      const op={id,assetId:String(body.assetId),input,estimated,minimum,sent:false,credited:false,step:(quickApproved?'swap':'approval') as 'approval'|'swap'};
+      quickOps.set(id,op);res.end(JSON.stringify(quickView(op,'quoted')));return;
+    }
+    const op=quickOps.get(String(body.id||url.searchParams.get('id')||''));
+    if(!op){res.statusCode=404;res.end(JSON.stringify({error:'Operazione non trovata.'}));return;}
+    if(action==='execute'){op.sent=true;res.end(JSON.stringify(quickView(op,'pending')));return;}
+    if(action==='status'){
+      if(op.sent&&op.step==='approval'){quickApproved=true;res.end(JSON.stringify(quickView(op,'approved')));return;}
+      if(op.sent&&!op.credited){quickBalances[op.assetId]=(quickBalances[op.assetId]||0n)+op.estimated;op.credited=true;}
+      res.end(JSON.stringify(quickView(op,op.sent?'succeeded':'pending')));return;
+    }
   }
   const path = url.pathname === '/' ? '/terminal/index.html' : url.pathname;
   if (!/^\/(terminal|symbols)\/[a-z0-9-]+\.(html|js|css|svg)$/.test(path)) {res.writeHead(404); res.end(); return;}

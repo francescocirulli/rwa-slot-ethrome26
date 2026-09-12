@@ -252,7 +252,10 @@ deployment. Physical iPad and email OTP checks also remain outstanding.
 
 The admin panel includes **Swap** (LI.FI API, USDC or native ETH → six supported
 Base RWA tokens) and **Inventory** (shared wallet balances, NFT placeholders,
-free-spin counter and reviewed contract deposits). See
+free-spin counter and reviewed contract deposits). The Swap tab also offers a
+quick-fund action that computes the missing reserve for a chosen number of rounds,
+buys the shortfall of the six RWA tokens with USDC and prepares the deposit
+transactions in sequence. See
 [assets and swap setup](docs/assets-and-swaps.md) for token addresses, decimal
 precision, deployment mapping, Privy gas setup, collaborator permission
 upgrades and recovery behavior. Both owner and authorized collaborators can

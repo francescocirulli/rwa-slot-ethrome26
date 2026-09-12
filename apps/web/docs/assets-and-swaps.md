@@ -40,6 +40,24 @@ button requires a matching ID/address in the onchain catalog. An address mismatc
 never gets displayed as a reserve for the supported token. Contract ABI changes are
 not needed. Swap and inventory reads work before slot deployment; funding requires it.
 
+## Quick funding for N rounds
+
+The Swap tab prepares a whole round's reserves automatically. `readFunding` already
+reports, per prize asset, the per-round `required`, the slot's `available` and the
+`missing` amounts. The quick-fund panel multiplies `required` by the selected number
+of rounds (1–99) and, for the six ERC20 RWA tokens only, splits each shortfall into
+an amount to buy and an amount to deposit:
+
+- Buy with USDC when the shared wallet balance is below the target. The panel probes
+  a 1 USDC quote, scales the input until the quote's guaranteed minimum covers the
+  shortfall, requests one exact USDC approval when the allowance is insufficient, and
+  never accepts a minimum below the reviewed amount.
+- Deposit into the slot with the existing reviewed `fundERC20` action.
+
+Swaps and deposits remain separate Privy confirmations executed in sequence. A
+failure stops the sequence and the table shows the last status for each prize.
+ERC1155 prizes are not covered and stay manual.
+
 ## Inventory and ERC1155 minting
 
 Inventory reads the shared Privy wallet and slot reserves at one block. Each token
@@ -165,10 +183,13 @@ recovery across every crash require durable coordination.
 - `npm test`: both roles, legacy permission migration, native value preservation,
   USDC gas/fallback, approval-vs-swap status, immutable inputs, malformed quotes,
   duplicate confirms, revocation, expiry, price changes, receipt and wallet scope.
+  `tests/quick-fund.test.ts` covers the per-round shortfall split, the six-token
+  scope and unverified balances.
 - `node scripts/check-assets-ui.mjs`: real components with mocked network/Privy;
   USDC approval then swap, collaborator ETH swap, eight balances, images, iPad
   layout, native input precision and separate reviewed contract deposit.
-- `npm run test:browser`: terminal/phone regression.
+- `npm run test:browser`: quick-fund sequence (buy the RWA shortfall with USDC and
+  deposit every prize), terminal/phone regression and admin inventory.
 - `node --import tsx scripts/check-lifi-quotes.ts`: live read-only quotes through
   the production validator; all 12 USDC/ETH-to-RWA pairs passed.
 - Privy accepted and returned matching policies both without a slot (six rules)

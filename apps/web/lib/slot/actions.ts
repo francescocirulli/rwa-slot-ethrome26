@@ -4,30 +4,35 @@ import type {SlotReader} from './reader';
 import {SlotError} from './errors';
 import {BASE_PRIZE_COLLECTION,BASE_PRIZE_IDS,prizeCollectionAbi} from '../prize-collection';
 import {assetByAddress} from '../assets';
+export type AdminTarget = 'slot' | 'collection';
+export const ADMIN_TARGETS: {id: AdminTarget; label: string; note: string}[] = [
+  {id: 'slot', label: 'Contratto slot', note: 'Regole di gioco, cassa, ruoli e proprietà della slot.'},
+  {id: 'collection', label: 'Collezione ERC1155', note: 'Creazione e proprietà dei premi della collezione 1155.'},
+];
 export const ADMIN_ACTIONS = [
-  {name: 'pause', label: 'Metti in pausa', role: 'pauser', fields: []},
-  {name: 'unpause', label: 'Riattiva la macchina', role: 'pauser', fields: []},
-  {name: 'setTicketPrice', label: 'Prezzo biglietto', role: 'manager', fields: ['Prezzo in unità USDC (1 USDC = 1000000)']},
-  {name: 'setRevealSettings', label: 'Tempi di reveal', role: 'manager', fields: ['Blocchi di attesa', 'Finestra reveal in blocchi (max 256)']},
-  {name: 'setNoWinWeight', label: 'Probabilità senza premio', role: 'manager', fields: ['Peso (1 unità = 0,1%)']},
-  {name: 'configurePrize', label: 'Configura premio', role: 'manager', fields: ['ID simbolo (0–15)', 'Tipo: 0 disabilitato, 1 ERC20, 2 ERC1155, 3 free spin', 'Indirizzo token (zero address per free spin)', 'Token ID (0 per ERC20/free spin)', 'Importo 5/5 nelle unità minime del token', 'Peso 3/5 (1 unità = 0,1%)', 'Peso 5/5 (1 unità = 0,1%)']},
-  {name: 'grantFreeSpins', label: 'Aggiungi free spin', role: 'manager', fields: ['Wallet player', 'Free spin da aggiungere']},
-  {name: 'setFreeSpins', label: 'Imposta saldo free spin', role: 'manager', fields: ['Wallet player', 'Nuovo saldo free spin']},
-  {name: 'fundERC20', label: 'Deposita token ERC20', role: 'any', fields: ['Token di pagamento o premio configurato', 'Importo nelle unità minime del token']},
-  {name: 'fundERC1155', label: 'Deposita premi ERC1155', role: 'any', fields: ['Token premio configurato', 'Token ID', 'Quantità']},
-  {name: 'mintERC1155', label: 'Crea premi ERC1155', role: 'any', fields: ['Collezione premi', 'Token ID esistente', 'Quantità', 'Destinazione: wallet oppure slot']},
-  {name: 'acceptPrizeOwnership', label: 'Accetta proprietà collezione ERC1155', role: 'any', fields: ['Collezione premi']},
-  {name: 'withdrawERC20', label: 'Preleva token ERC20', role: 'treasurer', fields: ['Indirizzo token', 'Wallet destinatario', 'Importo nelle unità minime del token']},
-  {name: 'withdrawERC1155', label: 'Preleva premi ERC1155', role: 'treasurer', fields: ['Indirizzo token', 'Token ID', 'Wallet destinatario', 'Quantità']},
-  {name: 'withdrawNative', label: 'Preleva ETH', role: 'treasurer', fields: ['Wallet destinatario', 'Importo in wei']},
-  {name: 'grantRole', label: 'Assegna ruolo', role: 'owner', fields: ['Ruolo bytes32', 'Wallet destinatario']},
-  {name: 'revokeRole', label: 'Revoca ruolo', role: 'owner', fields: ['Ruolo bytes32', 'Wallet destinatario']},
-  {name: 'renounceRole', label: 'Rinuncia a un ruolo', role: 'any', fields: ['Ruolo bytes32', 'Conferma il tuo wallet']},
-  {name: 'beginDefaultAdminTransfer', label: 'Avvia trasferimento proprietà', role: 'owner', fields: ['Nuovo owner']},
-  {name: 'acceptDefaultAdminTransfer', label: 'Accetta proprietà', role: 'any', fields: []},
-  {name: 'cancelDefaultAdminTransfer', label: 'Annulla trasferimento proprietà', role: 'owner', fields: []},
-  {name: 'changeDefaultAdminDelay', label: 'Modifica ritardo proprietà', role: 'owner', fields: ['Ritardo in secondi']},
-  {name: 'rollbackDefaultAdminDelay', label: 'Annulla modifica ritardo', role: 'owner', fields: []},
+  {name: 'pause', label: 'Metti in pausa', role: 'pauser', target: 'slot', fields: []},
+  {name: 'unpause', label: 'Riattiva la macchina', role: 'pauser', target: 'slot', fields: []},
+  {name: 'setTicketPrice', label: 'Prezzo biglietto', role: 'manager', target: 'slot', fields: ['Prezzo in unità USDC (1 USDC = 1000000)']},
+  {name: 'setRevealSettings', label: 'Tempi di reveal', role: 'manager', target: 'slot', fields: ['Blocchi di attesa', 'Finestra reveal in blocchi (max 256)']},
+  {name: 'setNoWinWeight', label: 'Probabilità senza premio', role: 'manager', target: 'slot', fields: ['Peso (1 unità = 0,1%)']},
+  {name: 'configurePrize', label: 'Configura premio', role: 'manager', target: 'slot', fields: ['ID simbolo (0–15)', 'Tipo: 0 disabilitato, 1 ERC20, 2 ERC1155, 3 free spin', 'Indirizzo token (zero address per free spin)', 'Token ID (0 per ERC20/free spin)', 'Importo 5/5 nelle unità minime del token', 'Peso 3/5 (1 unità = 0,1%)', 'Peso 5/5 (1 unità = 0,1%)']},
+  {name: 'grantFreeSpins', label: 'Aggiungi free spin', role: 'manager', target: 'slot', fields: ['Wallet player', 'Free spin da aggiungere']},
+  {name: 'setFreeSpins', label: 'Imposta saldo free spin', role: 'manager', target: 'slot', fields: ['Wallet player', 'Nuovo saldo free spin']},
+  {name: 'fundERC20', label: 'Deposita token ERC20', role: 'any', target: 'slot', fields: ['Token di pagamento o premio configurato', 'Importo nelle unità minime del token']},
+  {name: 'fundERC1155', label: 'Deposita premi ERC1155', role: 'any', target: 'collection', fields: ['Token premio configurato', 'Token ID', 'Quantità']},
+  {name: 'mintERC1155', label: 'Crea premi ERC1155', role: 'any', target: 'collection', fields: ['Collezione premi', 'Token ID esistente', 'Quantità', 'Destinazione: wallet oppure slot']},
+  {name: 'acceptPrizeOwnership', label: 'Accetta proprietà collezione ERC1155', role: 'any', target: 'collection', fields: ['Collezione premi']},
+  {name: 'withdrawERC20', label: 'Preleva token ERC20', role: 'treasurer', target: 'slot', fields: ['Indirizzo token', 'Wallet destinatario', 'Importo nelle unità minime del token']},
+  {name: 'withdrawERC1155', label: 'Preleva premi ERC1155', role: 'treasurer', target: 'slot', fields: ['Indirizzo token', 'Token ID', 'Wallet destinatario', 'Quantità']},
+  {name: 'withdrawNative', label: 'Preleva ETH', role: 'treasurer', target: 'slot', fields: ['Wallet destinatario', 'Importo in wei']},
+  {name: 'grantRole', label: 'Assegna ruolo', role: 'owner', target: 'slot', fields: ['Ruolo bytes32', 'Wallet destinatario']},
+  {name: 'revokeRole', label: 'Revoca ruolo', role: 'owner', target: 'slot', fields: ['Ruolo bytes32', 'Wallet destinatario']},
+  {name: 'renounceRole', label: 'Rinuncia a un ruolo', role: 'any', target: 'slot', fields: ['Ruolo bytes32', 'Conferma il tuo wallet']},
+  {name: 'beginDefaultAdminTransfer', label: 'Avvia trasferimento proprietà', role: 'owner', target: 'slot', fields: ['Nuovo owner']},
+  {name: 'acceptDefaultAdminTransfer', label: 'Accetta proprietà', role: 'any', target: 'slot', fields: []},
+  {name: 'cancelDefaultAdminTransfer', label: 'Annulla trasferimento proprietà', role: 'owner', target: 'slot', fields: []},
+  {name: 'changeDefaultAdminDelay', label: 'Modifica ritardo proprietà', role: 'owner', target: 'slot', fields: ['Ritardo in secondi']},
+  {name: 'rollbackDefaultAdminDelay', label: 'Annulla modifica ritardo', role: 'owner', target: 'slot', fields: []},
 ] as const;
 export type AdminAction = typeof ADMIN_ACTIONS[number]['name'];
 const nftAbi = parseAbi(['function safeTransferFrom(address from,address to,uint256 id,uint256 amount,bytes data)']);
