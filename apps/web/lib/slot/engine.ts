@@ -37,19 +37,19 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
     await client.sendRawTransaction({serializedTransaction: sent.raw}).catch(() => {});
   }
   async function sendBackend(functionName: 'revealRound' | 'expireRound' | 'startFreeSpin' | 'grantFreeSpins', arg: bigint | Address, onHash?: (hash: Hash) => void, assertSession?: () => void) {
-    if (!wallet || !backend) throw new SlotError('KeeperMissing', 'Il wallet backend non è ancora configurato.', 503);
+    if (!wallet || !backend) throw new SlotError('KeeperMissing', 'The keeper wallet is not configured yet.', 503);
     const task = backendQueue.catch(() => {}).then(async () => {
       await flushBackend();
       const [pendingNonce, latestNonce] = await Promise.all([client.getTransactionCount({address: backend.address, blockTag: 'pending'}), client.getTransactionCount({address: backend.address, blockTag: 'latest'})]);
-      if (pendingBackend || pendingNonce !== latestNonce) throw new SlotError('KeeperBusy', 'Il wallet backend sta confermando un’altra operazione. Riprova tra poco.');
+      if (pendingBackend || pendingNonce !== latestNonce) throw new SlotError('KeeperBusy', 'The keeper wallet is confirming another operation. Try again shortly.');
       let checked: WelcomeHistory | undefined;
       if (functionName === 'grantFreeSpins') {
         // Read again inside the nonce queue: an earlier eligibility check cannot authorize a send.
         checked = await welcomeHistory.read(arg as Address);
-        if (checked.granted) throw new SlotError('WelcomeAlreadyGranted', 'Bonus già accreditato.');
-        if (!checked.complete) throw new SlotError('WelcomeHistorySyncing', 'Verifichiamo lo storico del bonus.');
+        if (checked.granted) throw new SlotError('WelcomeAlreadyGranted', 'Bonus already credited.');
+        if (!checked.complete) throw new SlotError('WelcomeHistorySyncing', 'Checking the bonus history.');
         if (await client.getTransactionCount({address: backend.address, blockNumber: checked.blockNumber}) !== pendingNonce) {
-          throw new SlotError('KeeperBusy', 'Verifichiamo la precedente operazione del wallet backend.');
+          throw new SlotError('KeeperBusy', 'Checking the previous keeper wallet operation.');
         }
       }
       const data = functionName === 'grantFreeSpins' ? welcomeGrantData(arg as Address) : functionName === 'startFreeSpin'
@@ -58,7 +58,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
       const prepared = await wallet.prepareTransactionRequest({account: backend, chain, to: config.address, data, value: 0n, nonce: pendingNonce});
       const balance = await client.getBalance({address: backend.address, blockTag: 'pending'});
       const fee = prepared.maxFeePerGas ?? prepared.gasPrice ?? 0n;
-      if (balance < (prepared.gas || 0n) * fee) throw new SlotError('KeeperGas', 'Il wallet backend non ha ETH sufficiente per questa operazione.', 503);
+      if (balance < (prepared.gas || 0n) * fee) throw new SlotError('KeeperGas', 'The keeper wallet does not have enough ETH for this operation.', 503);
       assertSession?.();
       if (checked) {
         const [pending, latest, anchor] = await Promise.all([
@@ -67,7 +67,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
           client.getBlock({blockNumber: checked.blockNumber}),
         ]);
         if (pending !== pendingNonce || latest !== pendingNonce || anchor.hash !== checked.blockHash) {
-          throw new SlotError('KeeperBusy', 'Lo stato del wallet backend è cambiato. Verifichiamo prima di inviare.');
+          throw new SlotError('KeeperBusy', 'The keeper wallet state changed. Checking before sending.');
         }
       }
       const raw = await wallet.signTransaction(prepared), hash = keccak256(raw);
@@ -80,14 +80,14 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
   function startEvent(receipt: TransactionReceipt, player: Address) {
     const [event] = parseEventLogs({abi: slotAbi, eventName: 'SpinStarted', logs: receipt.logs.filter(log => log.address.toLowerCase() === config.address.toLowerCase()), strict: true})
       .filter(event => event.args.player.toLowerCase() === player.toLowerCase());
-    if (!event) throw new SlotError('MissingSpinEvent', 'La transazione non contiene una giocata per questo wallet.');
+    if (!event) throw new SlotError('MissingSpinEvent', 'The transaction does not contain a spin for this wallet.');
     return event;
   }
   async function reconcile(operation: SpinOperation) {
     if (!operation.hash || operation.stage === 'started' || operation.stage === 'failed') return;
     const receipt = await client.getTransactionReceipt({hash: operation.hash}).catch(() => null);
     if (!receipt) return;
-    if (receipt.status === 'reverted') {operation.stage = 'failed'; operation.error = 'Transazione annullata dal contratto. Nessuna giocata aperta.'; return;}
+    if (receipt.status === 'reverted') {operation.stage = 'failed'; operation.error = 'Transaction reverted by the contract. No spin opened.'; return;}
     try {operation.gameId = startEvent(receipt, operation.player).args.gameId.toString(); operation.stage = 'started'; operation.error = undefined;}
     catch (error) {operation.stage = 'failed'; operation.error = slotError(error).message;}
   }
@@ -114,34 +114,34 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
       });
       try {
         const state = await reader.player(player);
-        if (!state.historyReady) throw new SlotError('HistorySyncing', 'Recuperiamo lo storico onchain. Attendi prima di iniziare.');
-        if (afterGameId > state.latestGameId) throw new SlotError('StaleGame', 'Aggiorna la sessione prima di iniziare.');
+        if (!state.historyReady) throw new SlotError('HistorySyncing', 'Recovering the onchain history. Wait before starting.');
+        if (afterGameId > state.latestGameId) throw new SlotError('StaleGame', 'Refresh the session before starting.');
         if (state.game?.pending || state.latestGameId !== afterGameId) {
           writes.release(player.toLowerCase(), leaseId);
           return {key, attempt: 0, player, afterGameId: afterGameId.toString(), stage: 'started' as const, gameId: state.latestGameId.toString()};
         }
         const settings = await reader.settings();
-        if (settings.paused) throw new SlotError('Paused', 'La macchina è in pausa.');
-        if (settings.totalOutcomeWeight !== 1000 || settings.configuredPrizeCount < 3) throw new SlotError('Paytable', 'La tabella premi non è pronta.');
-        if (!(await reader.funding()).ready) throw new SlotError('InsufficientPrizeInventory', 'La slot sta rifornendo i premi. Attendi prima di giocare: il tuo saldo e i free spin restano disponibili.');
-        if (!backend || !health.configured) throw new SlotError('KeeperMissing', 'Il servizio di reveal non è ancora configurato.', 503);
-        if (!health.lastTick || Date.now() - health.lastTick > 30000 || health.balanceWei === '0' || health.error) throw new SlotError('KeeperNotReady', 'Il servizio di reveal deve essere online e avere ETH per il gas.', 503);
+        if (settings.paused) throw new SlotError('Paused', 'The machine is paused.');
+        if (settings.totalOutcomeWeight !== 1000 || settings.configuredPrizeCount < 3) throw new SlotError('Paytable', 'The prize table is not ready.');
+        if (!(await reader.funding()).ready) throw new SlotError('InsufficientPrizeInventory', 'The slot is restocking prizes. Wait before you spin: your balance and free spins stay available.');
+        if (!backend || !health.configured) throw new SlotError('KeeperMissing', 'The reveal service is not configured yet.', 503);
+        if (!health.lastTick || Date.now() - health.lastTick > 30000 || health.balanceWei === '0' || health.error) throw new SlotError('KeeperNotReady', 'The reveal service must be online and hold ETH for gas.', 503);
         if (mode === 'free') {
-          if (!state.freeSpins) throw new SlotError('NoFreeSpins', 'Non ci sono free spin disponibili.');
+          if (!state.freeSpins) throw new SlotError('NoFreeSpins', 'No free spins available.');
           const permissions = await reader.roles(backend.address);
-          if (!permissions.manager) throw new SlotError('KeeperRole', 'Assegna GAME_MANAGER_ROLE al wallet backend per utilizzare i free spin.', 503);
+          if (!permissions.manager) throw new SlotError('KeeperRole', 'Grant GAME_MANAGER_ROLE to the keeper wallet to use free spins.', 503);
         } else {
-          if (!options.sendPaid) throw new SlotError('ConsentRequired', 'Autorizza le giocate dal telefono.');
-          if (options.maxPrice === undefined || settings.ticketPrice > options.maxPrice) throw new SlotError('BudgetExceeded', 'Il budget autorizzato non basta per questa giocata.');
-          if (state.allowance < settings.ticketPrice) throw new SlotError('Allowance', 'Autorizza un budget USDC dal telefono.');
-          if (state.balance < settings.ticketPrice) throw new SlotError('Balance', 'Saldo USDC insufficiente.');
+          if (!options.sendPaid) throw new SlotError('ConsentRequired', 'Approve spins from your phone.');
+          if (options.maxPrice === undefined || settings.ticketPrice > options.maxPrice) throw new SlotError('BudgetExceeded', 'The approved budget is not enough for this spin.');
+          if (state.allowance < settings.ticketPrice) throw new SlotError('Allowance', 'Approve a USDC budget from your phone.');
+          if (state.balance < settings.ticketPrice) throw new SlotError('Balance', 'Insufficient USDC balance.');
           await client.simulateContract({...contract, account: player, functionName: 'startSpin', gasPrice: 0n});
         }
         options.assertSession();
         const operation: SpinOperation = {key, attempt: existing?.stage === 'failed' ? existing.attempt + 1 : existing?.attempt || 0, player, afterGameId: afterGameId.toString(), stage: 'submitting'};
         if (operations.size >= 512) {
           const old = [...operations.entries()].find(([, value]) => value.stage === 'started' || value.stage === 'failed');
-          if (!old) throw new SlotError('Busy', 'Troppe richieste in conferma. Riprova tra poco.', 503);
+          if (!old) throw new SlotError('Busy', 'Too many requests awaiting confirmation. Try again shortly.', 503);
           operations.delete(old[0]);
         }
         tracked = operation;
@@ -161,7 +161,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
                   if (!operation.hash) await new Promise(resolve => setTimeout(resolve, 2000));
                 }
               }
-              if (!operation.hash) throw new SlotError('TransactionPending', 'Privy sta ancora elaborando la transazione. Non avviare una seconda richiesta.');
+              if (!operation.hash) throw new SlotError('TransactionPending', 'Privy is still processing the transaction. Do not start a second request.');
             }
             operation.stage = 'confirming';
             await client.waitForTransactionReceipt({hash: operation.hash, confirmations: 1, timeout: 180000});
@@ -193,10 +193,10 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
       if (history.granted) {
         welcome.delete(player.toLowerCase()); return {status: 'granted', amount: '2'};
       }
-      if (!backend) return {status: 'unavailable', amount: '2', error: 'Il bonus sarà accreditato quando il servizio sarà pronto.'};
+      if (!backend) return {status: 'unavailable', amount: '2', error: 'The bonus will be credited once the service is ready.'};
       const existing = welcome.get(player.toLowerCase());
       if (!existing) {
-        if (welcome.size >= 256) throw new SlotError('Busy', 'Troppi bonus in attesa. Riprova tra poco.', 503);
+        if (welcome.size >= 256) throw new SlotError('Busy', 'Too many pending bonuses. Try again shortly.', 503);
         welcome.set(player.toLowerCase(), {player, nextAttempt: 0, checking: !history.complete});
       }
       return {status: history.complete ? 'pending' : 'checking', amount: '2', error: existing?.error};
@@ -219,7 +219,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
     } catch (error) {
       if (error instanceof SlotError && error.code === 'WelcomeAlreadyGranted') {welcome.delete(entry.player.toLowerCase()); return;}
       entry.checking = error instanceof SlotError && error.code === 'WelcomeHistorySyncing';
-      entry.error = 'Il bonus di benvenuto è in attesa. Riproviamo automaticamente.';
+      entry.error = 'The welcome bonus is pending. We retry automatically.';
     }
   }
   async function tick() {

@@ -58,7 +58,7 @@ test('known assets, verified decimals, current balances and whole NFT quantities
 test('wallet review blocks a lever pull; a pending round blocks prepare and a new external round blocks send',async()=>{
   const f=fixture(),prepared=await f.call('prepare',transfer);
   const engine=createSlotEngine(f.reader,undefined,f.writes);
-  await assert.rejects(engine.start(address,0n,'free',{assertSession:()=>{}}),/operazione in corso/);
+  await assert.rejects(engine.start(address,0n,'free',{assertSession:()=>{}}),/operation in progress/);
   await f.call('cancel',{id:prepared.body.id});f.pending(true);
   assert.equal((await f.call('prepare',transfer)).status,409);
   f.pending(false);f.unconfirmed(true);assert.equal((await f.call('prepare',transfer)).status,409);f.unconfirmed(false);const next=await f.call('prepare',transfer);f.pending(true);

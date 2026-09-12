@@ -17,7 +17,7 @@ export type SwapIntent={address:Address;inputAsset:Asset;outputAsset:Asset;amoun
 export type LifiQuote={input:string;estimated:string;minimum:string;gasEstimate:string;feeAmount:string;route:string;transactionId:Hex;transaction:{to:Address;data:Hex;value:Hex}};
 const same=(a:unknown,b:string)=>typeof a==='string'&&a.toLowerCase()===b.toLowerCase();
 const uint=(x:unknown):x is string=>typeof x==='string'&&/^\d{1,78}$/.test(x)&&BigInt(x)<2n**256n;
-function requireQuote(condition:unknown):asserts condition {if(!condition)throw new SlotError('SwapQuote','La quotazione LI.FI non corrisponde allo scambio richiesto.',502);}
+function requireQuote(condition:unknown):asserts condition {if(!condition)throw new SlotError('SwapQuote','The LI.FI quote does not match the requested swap.',502);}
 
 export function validateLifiQuote(raw:unknown,intent:SwapIntent):LifiQuote {
   try {
@@ -64,17 +64,17 @@ export function validateLifiQuote(raw:unknown,intent:SwapIntent):LifiQuote {
     const feeAmount=e.feeCosts.reduce((sum:bigint,f:any)=>sum+BigInt(f.amount),0n).toString();
     requireQuote(BigInt(feeAmount)<BigInt(intent.amount));
     return {input:intent.amount,estimated:e.toAmount,minimum:e.toAmountMin,gasEstimate,feeAmount,route:typeof q.tool==='string'?q.tool.slice(0,64):'LI.FI',transactionId,transaction:{to:LIFI_ROUTER,data:t.data as Hex,value:t.value as Hex}};
-  }catch(error){if(error instanceof SlotError)throw error;throw new SlotError('SwapQuote','Quotazione LI.FI non verificabile. Richiedine una nuova.',502);}
+  }catch(error){if(error instanceof SlotError)throw error;throw new SlotError('SwapQuote','LI.FI quote cannot be verified. Request a new one.',502);}
 }
 
 export function createLifiClient(fetcher:typeof fetch=fetch,apiKey?:string){
   return async (intent:SwapIntent)=>{
     const params=new URLSearchParams({fromChain:'8453',toChain:'8453',fromToken:intent.inputAsset.address,toToken:intent.outputAsset.address,fromAmount:intent.amount,fromAddress:intent.address,toAddress:intent.address,slippage:'0.005',integrator:LIFI_INTEGRATOR});
     let response:Response;
-    try{response=await fetcher('https://li.quest/v1/quote?'+params,{headers:apiKey?{'x-lifi-api-key':apiKey}:{},signal:AbortSignal.timeout(25000),cache:'no-store',redirect:'error'});}catch{throw new SlotError('SwapProvider','LI.FI non risponde. Riprova a richiedere la quotazione.',503);}
-    if(!response.ok)throw new SlotError('SwapUnavailable',response.status===429?'LI.FI ha ricevuto troppe richieste. Attendi qualche secondo.':'Nessun percorso LI.FI disponibile per questo importo e questa coppia. Prova un altro importo.',response.status===429?429:400);
+    try{response=await fetcher('https://li.quest/v1/quote?'+params,{headers:apiKey?{'x-lifi-api-key':apiKey}:{},signal:AbortSignal.timeout(25000),cache:'no-store',redirect:'error'});}catch{throw new SlotError('SwapProvider','LI.FI is not responding. Try requesting the quote again.',503);}
+    if(!response.ok)throw new SlotError('SwapUnavailable',response.status===429?'LI.FI received too many requests. Wait a few seconds.':'No LI.FI route available for this amount and pair. Try another amount.',response.status===429?429:400);
     const text=await response.text();requireQuote(text.length<=500000);
-    let raw:unknown;try{raw=JSON.parse(text);}catch{throw new SlotError('SwapQuote','Risposta LI.FI non valida.',502);}
+    let raw:unknown;try{raw=JSON.parse(text);}catch{throw new SlotError('SwapQuote','Invalid LI.FI response.',502);}
     return validateLifiQuote(raw,intent);
   };
 }

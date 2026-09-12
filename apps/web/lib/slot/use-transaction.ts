@@ -25,7 +25,7 @@ export function useContractTransaction(address:string,adminUserId?:string) {
   async function api(path:string,body?:unknown){
     valid();const token=await getAccessToken();valid();if(!token)throw new Error('Accedi di nuovo per verificare il wallet.');
     const response=await (path==='send'?walletRequest:fetch)(endpoint+path,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${token}`,...(body===undefined?{}:{'Content-Type':'application/json','X-Slot-Request':'1'})},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(25000)});
-    const value=await response.json();valid();if(!response.ok)throw new TransactionApiError(value.error||'Operazione non disponibile.',value.pending);return value;
+    const value=await response.json();valid();if(!response.ok)throw new TransactionApiError(value.error||'Operation unavailable.',value.pending);return value;
   }
   function remember(value:Pending){
     // Only public identifiers, never credentials. Persist BEFORE the send can start.
@@ -36,36 +36,36 @@ export function useContractTransaction(address:string,adminUserId?:string) {
     for(let attempt=0;attempt<90;attempt++){
       valid();
       // Once the hash is known, recovery only needs the chain, even after a server restart.
-      const state=value.hash?await fetch('/api/contract/receipt?hash='+value.hash,{cache:'no-store',signal:AbortSignal.timeout(15000)}).then(async response=>{if(!response.ok)throw new Error('Verifica non disponibile.');return response.json();}):await api('status?id='+value.id);
+      const state=value.hash?await fetch('/api/contract/receipt?hash='+value.hash,{cache:'no-store',signal:AbortSignal.timeout(15000)}).then(async response=>{if(!response.ok)throw new Error('Verification unavailable.');return response.json();}):await api('status?id='+value.id);
       valid();if(state.gasToken)setGasToken(state.gasToken);
       if(state.hash&&state.hash!==value.hash){value={...value,hash:state.hash};remember(value);}
       const stage=state.stage||state.status;
       if(stage==='confirmed'){clear();setConfirmed(count=>count+1);return;}
       if(['failed','cancelled','reverted'].includes(stage)||stage==='prepared'&&state.canConfirm!==false){
         if(stage==='prepared'&&value.id)await api('cancel',{id:value.id});
-        clear();throw new Error(state.error||(stage==='prepared'?'La transazione non è stata inviata. Puoi riprovare.':'Operazione non completata.'));
+        clear();throw new Error(state.error||(stage==='prepared'?'The transaction was not sent. You can try again.':'Operation not completed.'));
       }
-      if(stage==='uncertain'&&!state.hash){setError(state.error||'Invio in verifica. Non inviare una seconda richiesta.');}
+      if(stage==='uncertain'&&!state.hash){setError(state.error||'Send under verification. Do not send a second request.');}
       await new Promise(resolve=>setTimeout(resolve,2000));
     }
-    throw new Error('Transazione ancora in verifica. Usa “Verifica” senza inviarla di nuovo.');
+    throw new Error('Transaction still under verification. Use “Check” without sending it again.');
   }
   async function check(){
     if(!pending||lock.current)return;lock.current=true;setBusy(true);setError('');
-    try{await wait(pending);}catch(cause){if(alive.current)setError(cause instanceof Error?cause.message:'Verifica non disponibile.');}
+    try{await wait(pending);}catch(cause){if(alive.current)setError(cause instanceof Error?cause.message:'Verification unavailable.');}
     finally{lock.current=false;if(alive.current)setBusy(false);}
   }
   async function execute(action:string,args:string[]){
-    if(lock.current||pending)throw new Error('Verifica prima la transazione già inviata.');
+    if(lock.current||pending)throw new Error('Check the transaction already sent first.');
     lock.current=true;setBusy(true);setError('');setGasToken(null);
     let prepared:TransactionReview|undefined,submitted=false;
     try{
       prepared=await api('prepare',{action,args});
-      if(!prepared||prepared.address.toLowerCase()!==address.toLowerCase())throw new Error('Wallet non corrispondente.');
+      if(!prepared||prepared.address.toLowerCase()!==address.toLowerCase())throw new Error('Wallet mismatch.');
       setReview(prepared);
       const accepted=await new Promise<boolean>(resolve=>{decision.current=resolve;});
       decision.current=null;setReview(null);
-      if(!accepted)throw new Error('Operazione annullata.');
+      if(!accepted)throw new Error('Operation cancelled.');
       valid();
       const value={id:prepared.id};remember(value);submitted=true;
       await api('send',{id:prepared.id,confirm:true});
@@ -73,7 +73,7 @@ export function useContractTransaction(address:string,adminUserId?:string) {
     }catch(cause){
       if(cause instanceof TransactionApiError&&cause.pending?.id){valid();remember(cause.pending);}
       if(prepared&&!submitted&&alive.current)await api('cancel',{id:prepared.id}).catch(()=>{});
-      const message=cause instanceof Error?cause.message:'Operazione non disponibile.';
+      const message=cause instanceof Error?cause.message:'Operation unavailable.';
       if(alive.current)setError(message);throw new Error(message);
     }finally{decision.current=null;lock.current=false;if(alive.current){setBusy(false);setReview(null);}}
   }

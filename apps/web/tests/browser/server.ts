@@ -7,9 +7,11 @@ import {PAYMENT_ASSET,RWA_ASSETS} from '../../lib/assets';
 import {createHardware} from '../../lib/hardware';
 import {createRelay} from '../../lib/relay';
 import {walletFixture} from '../fixtures';
-const relay = createRelay({origin: 'http://localhost:3101', walletService: walletFixture().service,
+// FIXTURE_ORIGIN / FIXTURE_HOST let the same fixture server be opened from another device on the LAN (for example an iPad).
+const origin = process.env.FIXTURE_ORIGIN || 'http://localhost:3101', host = process.env.FIXTURE_HOST || '127.0.0.1';
+const relay = createRelay({origin, walletService: walletFixture().service,
   readBalance: async () => ({amount: '128.50', updatedAt: Date.now(), stale: false})});
-const hardware = createHardware({origin: 'http://localhost:3101', token: 'browser-hardware-test-token-32-characters'});
+const hardware = createHardware({origin, token: 'browser-hardware-test-token-32-characters'});
 const bundle=buildSync({entryPoints:['tests/browser/inventory-fixture.tsx'],bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',define:{'process.env.NODE_ENV':'"test"'}});
 const phoneBundle=buildSync({entryPoints:['tests/browser/phone-fixture.tsx'],bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',outfile:'phone.js',alias:{'@privy-io/react-auth':'./tests/browser/phone-privy-fixture.tsx','@/lib/slot/use-transaction':'./tests/browser/phone-transaction-fixture.ts'},define:{'process.env.NODE_ENV':'"test"'}});
 const quickBundle=buildSync({entryPoints:['tests/browser/quick-fund-fixture.tsx'],bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',alias:{'@privy-io/react-auth':'./tests/browser/quick-fund-privy-fixture.ts','@/lib/wallet-authorization-client':'./tests/browser/quick-fund-wallet-fixture.ts'},define:{'process.env.NODE_ENV':'"test"'}});
@@ -59,9 +61,9 @@ const server = createServer(async (req, res) => {
     }
   }
   const path = url.pathname === '/' ? '/terminal/index.html' : url.pathname;
-  if (!/^\/(terminal|symbols)\/[a-z0-9-]+\.(html|js|css|svg)$/.test(path)) {res.writeHead(404); res.end(); return;}
+  if (!/^\/(terminal|symbols|decor)\/[a-z0-9-]+\.(html|js|css|svg)$/.test(path)) {res.writeHead(404); res.end(); return;}
   const types: Record<string, string> = {html: 'text/html', js: 'text/javascript', css: 'text/css', svg: 'image/svg+xml'};
   res.setHeader('Content-Type', types[path.split('.').pop()!]); res.end(await readFile(join(process.cwd(), 'public', path)));
 });
-server.listen(3101, '127.0.0.1');
+server.listen(3101, host);
 process.on('SIGTERM', () => {relay.close(); server.close();});

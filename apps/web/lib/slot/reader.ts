@@ -26,7 +26,7 @@ export function createSlotReader(config: SlotConfig) {
     const [chainId, code, token] = await Promise.all([client.getChainId(), client.getCode({address: config.address}),
       client.readContract({...contract, functionName: 'paymentToken'})]);
     if (chainId !== config.chainId || !code || code === '0x' || token.toLowerCase() !== config.paymentToken.toLowerCase()) {
-      throw new SlotError('WrongDeployment', 'Contratto, rete o token di pagamento non corrispondono alla configurazione.', 503);
+      throw new SlotError('WrongDeployment', 'Contract, network or payment token do not match the configuration.', 503);
     }
     checkedAt = Date.now();
   }
