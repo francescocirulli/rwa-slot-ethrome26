@@ -23,6 +23,8 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
   try {
     await until(async()=>client.getChainId().catch(()=>null),'Anvil did not start');
     const fixtures=JSON.parse(await readFile(new URL('./contracts/artifacts.json',import.meta.url),'utf8'));
+    assert.equal(fixtures.sourceHash, keccak256(toHex(await readFile(new URL('../../../contracts/src/DigitalSlotMachine.sol', import.meta.url), 'utf8'))));
+    assert.deepEqual(slotAbi, JSON.parse(await readFile(new URL('../../../contracts/abi/DigitalSlotMachine.json', import.meta.url), 'utf8')));
     async function deploy(abi: Abi, bytecode: Hex, args: unknown[]) {const hash=await adminWallet.deployContract({abi,bytecode,args});const receipt=await client.waitForTransactionReceipt({hash});return receipt.contractAddress!;}
     const payment=await deploy(fixtures.MockERC20.abi,fixtures.MockERC20.bytecode,['USDC test','USDC',6]);
     const prize=await deploy(fixtures.MockERC20.abi,fixtures.MockERC20.bytecode,['Stock test','STOCK',18]);

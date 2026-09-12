@@ -1,5 +1,5 @@
 // Generated from contracts/src/DigitalSlotMachine.sol, Solidity 0.8.30. Do not edit by hand.
-// Source keccak256: 0x32197c536bb2f31bcd73e0edc722ff7521dc04446fcefb48e799242995fa5ccc
+// Source keccak256: 0xf74a2981b822f88642162df10118c2c68081ddfa8f75d4e69e70c2dd0efba46d
 export const slotAbi = [
   {
     "type": "constructor",
