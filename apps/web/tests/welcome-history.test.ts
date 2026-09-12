@@ -72,12 +72,23 @@ test('a reorg invalidates both positive and negative history caches', async () =
   f.state.fork++; f.grant(7n);
   assert.equal((await reader.read(player)).granted, true);
 });
-test('a range-capped page size and history floor bound every log request', async () => {
+test('a verified wallet creation bound limits capped requests independently of the player-history floor', async () => {
   const f = fixture(25000n);
   f.reader.config.logPageBlocks = 5n;
   f.reader.config.historyFromBlock = 24990n;  const tx = f.grant(24995n);
-  const result = await createWelcomeHistory(f.reader).read(player);
+  const result = await createWelcomeHistory(f.reader).read(player,24990n);
   assert.equal(result.granted, true); assert.equal(result.transactionHash, tx);
   assert.ok(f.ranges.length > 0);
   assert.ok(f.ranges.every(([start, end]) => start >= 24990n && end - start < 5n));
+});
+
+test('raising the player history floor never hides an earlier welcome grant',async()=>{
+  const f=fixture();f.grant(2n);f.reader.config.historyFromBlock=9n;
+  assert.equal((await createWelcomeHistory(f.reader).read(player)).granted,true);
+});
+
+test('an earlier creation bound invalidates a negative cache before permitting a grant',async()=>{
+  const f=fixture();f.grant(2n);const history=createWelcomeHistory(f.reader);
+  assert.equal((await history.read(player,8n)).granted,false);
+  assert.equal((await history.read(player,1n)).granted,true);
 });

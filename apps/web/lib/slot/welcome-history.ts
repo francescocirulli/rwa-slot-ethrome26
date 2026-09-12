@@ -10,21 +10,21 @@ export function welcomeGrantData(player: Address): Hex {
   // The deployed Solidity decoder accepts this trailing word after its two static arguments.
   return concatHex([encodeFunctionData({abi: slotAbi, functionName: 'grantFreeSpins', args: [player, WELCOME_AMOUNT]}), WELCOME_MARKER]);
 }
-type Scan = {through: bigint; hash: Hash; transactionHash?: Hash};
+type Scan = {floor:bigint; through: bigint; hash: Hash; transactionHash?: Hash};
 export type WelcomeHistory = {granted: boolean; complete: boolean; blockNumber: bigint; blockHash: Hash; transactionHash?: Hash};
 const MAX_PAGES = 12;
 
 export function createWelcomeHistory(reader: SlotReader) {
   const {client, contract, config} = reader;
   const pageBlocks = config.logPageBlocks && config.logPageBlocks > 0n ? config.logPageBlocks : 2000n;
-  const historyFloor = config.historyFromBlock && config.historyFromBlock >= config.deploymentBlock ? config.historyFromBlock : config.deploymentBlock;
   const scans = new Map<string, Scan>(), locks = new Map<string, Promise<unknown>>();
-  async function scan(player: Address): Promise<WelcomeHistory> {
+  async function scan(player: Address, requestedFloor:bigint): Promise<WelcomeHistory> {
+    const historyFloor=requestedFloor>config.deploymentBlock?requestedFloor:config.deploymentBlock;
     const key = player.toLowerCase();
     const head = await client.getBlock({blockTag: 'latest'});
     if (head.number < historyFloor) throw new SlotError('WrongDeployment', 'The contract history is unavailable.', 503);
     let cached = scans.get(key);
-    if (cached && (cached.through > head.number || (await client.getBlock({blockNumber: cached.through})).hash !== cached.hash)) {
+    if (cached && (cached.floor>historyFloor || cached.through > head.number || (await client.getBlock({blockNumber: cached.through})).hash !== cached.hash)) {
       scans.delete(key); cached = undefined;
     }
     if (cached?.transactionHash) return {granted: true, complete: true, blockNumber: head.number, blockHash: head.hash, transactionHash: cached.transactionHash};
@@ -55,12 +55,12 @@ export function createWelcomeHistory(reader: SlotReader) {
       throw new SlotError('WelcomeHistoryChanged', 'Checking the bonus history. Try again shortly.', 503);
     }
     if (scans.size >= 512 && !scans.has(key)) scans.delete(scans.keys().next().value!);
-    scans.set(key, {through, hash: checkpoint.hash, transactionHash});
+    scans.set(key, {floor:cached?.floor??historyFloor,through, hash: checkpoint.hash, transactionHash});
     return {granted: !!transactionHash, complete: !!transactionHash || through === head.number, blockNumber: head.number, blockHash: head.hash, transactionHash};
   }
-  function read(player: Address): Promise<WelcomeHistory> {
+  function read(player: Address, fromBlock=config.deploymentBlock): Promise<WelcomeHistory> {
     const key = player.toLowerCase();
-    const task = (locks.get(key) || Promise.resolve()).catch(() => {}).then(() => scan(player));
+    const task = (locks.get(key) || Promise.resolve()).catch(() => {}).then(() => scan(player,fromBlock));
     locks.set(key, task);
     void task.finally(() => {if (locks.get(key) === task) locks.delete(key);}).catch(() => {});
     return task;

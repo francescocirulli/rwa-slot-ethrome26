@@ -381,6 +381,26 @@ The phone header includes a **Leaderboard** shortcut, so standings are reachable
 without scrolling past wallet assets. Season timers show days and hours for the
 default 30-day schedule; history retention is configured separately.
 
+### First-wallet welcome spins
+
+The phone requests two welcome spins as soon as Privy exposes its authenticated
+embedded wallet, independently of pairing and balance RPCs. The POST
+`/api/account/welcome` endpoint enforces same-origin access and verified Privy
+identity; it accepts no destination from the caller. Only the first generated,
+non-imported Ethereum wallet created since the slot deployment is eligible.
+Missing or temporarily unavailable metadata remains retryable. The phone retries
+and resumes after reload/login; once queued, the keeper continues if the phone closes.
+After a server restart, returning to the wallet requeues an unfinished claim.
+
+The backend verifies wallet creation time with Privy's wallet API and searches
+from five minutes before creation (never before slot deployment). This avoids
+scanning unrelated blocks for each new wallet on range-capped RPCs. The separate
+player-history floor must not truncate bonus history. Marked onchain grant
+transactions remain the deduplication source even after credits are spent, a
+restart or keeper rotation. Claims share the keeper nonce queue, check history
+again before signing and rotate fairly between pending wallets. Uncertain sends
+retain the original transaction; a balance of zero never authorizes another bonus.
+
 ## ENSv2 on the phone
 
 Optional ENS voucher redemption registers `*.wallstreetslot.eth` on Sepolia
