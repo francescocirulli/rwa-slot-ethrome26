@@ -10,6 +10,7 @@ export const prizeCollectionAbi = parseAbi([
   'function tokenExists(uint256 tokenId) view returns(bool)',
   'function mint(address recipient,uint256 tokenId,uint256 amount)',
   'function acceptOwnership()',
+  'function transferOwnership(address newOwner)',
   'function safeTransferFrom(address from,address to,uint256 id,uint256 amount,bytes data)',
 ]);
 export function prizeCollectionAddress(value?:string): Address {

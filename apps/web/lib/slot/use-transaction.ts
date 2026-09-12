@@ -3,8 +3,8 @@ import {useEffect, useRef, useState} from 'react';
 import {usePrivy} from '@privy-io/react-auth';
 import type {Hex} from 'viem';
 import type {GasMode, GasToken} from './gas';
-import {useWalletRequest} from '../wallet-authorization-client';
-export type TransactionReview = {id:string;address:string;action:string;args:string[];expiresAt:number;transaction:{to:string;data:Hex;chainId:number;gasMode:GasMode}};
+import {useWalletRequest} from '@/lib/wallet-authorization-client';
+export type TransactionReview = {id:string;address:string;signerAddress?:string;signer?:'privy'|'backend';action:string;args:string[];expiresAt:number;transaction:{to:string;data:Hex;chainId:number;gasMode:GasMode}};
 type Pending = {id?:string;hash?:Hex};
 class TransactionApiError extends Error {constructor(message:string,public pending?:Pending,public code?:string){super(message);}}
 export function useContractTransaction(address:string,adminUserId?:string) {
@@ -23,9 +23,9 @@ export function useContractTransaction(address:string,adminUserId?:string) {
     return()=>{alive.current=false;decision.current?.(false);decision.current=null;};
   },[storageKey]);
   function valid(){if(!alive.current||owner.current!==address)throw new Error('Account cambiato. Operazione interrotta.');}
-  async function api(path:string,body?:unknown){
+  async function api(path:string,body?:unknown,backend=false){
     valid();const token=await getAccessToken();valid();if(!token)throw new Error('Accedi di nuovo per verificare il wallet.');
-    const response=await (path==='send'?walletRequest:fetch)(endpoint+path,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${token}`,...(body===undefined?{}:{'Content-Type':'application/json','X-Slot-Request':'1'})},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(25000)});
+    const response=await (path==='send'&&!backend?walletRequest:fetch)(endpoint+path,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${token}`,...(body===undefined?{}:{'Content-Type':'application/json','X-Slot-Request':'1'})},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(25000)});
     const value=await response.json();valid();if(!response.ok)throw new TransactionApiError(value.error||'Operation unavailable.',value.pending,value.code);return value;
   }
   function remember(value:Pending){
@@ -80,7 +80,7 @@ export function useContractTransaction(address:string,adminUserId?:string) {
       if(!accepted)throw new Error('Operation cancelled.');
       valid();
       const value={id:prepared.id};remember(value);submitted=true;
-      await api('send',{id:prepared.id,confirm:true});
+      await api('send',{id:prepared.id,confirm:true},prepared.signer==='backend');
       await wait(value);
     }catch(cause){
       if(cause instanceof TransactionApiError&&cause.pending?.id){valid();remember(cause.pending);}

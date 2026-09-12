@@ -151,5 +151,8 @@ The owner can explicitly update collaborator permissions to enable minting exist
 IDs from the configured prize collection to the shared wallet or slot. Previous
 exact policies continue to allow their existing operations without gaining mint.
 The shared address must also be the collection's onchain owner. Only the wallet
-owner account can accept a pending collection ownership transfer through the app.
+owner account can nominate or accept collection ownership through the app. Operations
+can also accept a pending transfer to the configured backend wallet: the owner explicitly
+confirms a separate transaction signed by that EOA, with ETH gas and the keeper nonce
+queue. This does not grant collaborators backend signing access.
 See [inventory and minting](assets-and-swaps.md#inventory-and-erc1155-minting).

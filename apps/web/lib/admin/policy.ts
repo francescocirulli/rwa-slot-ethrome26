@@ -6,7 +6,7 @@ import {adminProofMessage} from './model';
 import {PAYMENT_ASSET} from '../assets';
 import {LIFI_ROUTER,lifiSwapAbi} from './lifi';
 import {BASE_PRIZE_COLLECTION,prizeCollectionAbi} from '../prize-collection';
-export const OPERATOR_ACTIONS:readonly string[] = ADMIN_ACTIONS.filter(action=>action.role!=='owner'&&action.name!=='renounceRole'&&action.name!=='acceptDefaultAdminTransfer'&&action.name!=='acceptPrizeOwnership').map(action=>action.name);
+export const OPERATOR_ACTIONS:readonly string[] = ADMIN_ACTIONS.filter(action=>action.role!=='owner'&&action.name!=='renounceRole'&&action.name!=='acceptDefaultAdminTransfer'&&action.name!=='acceptPrizeOwnership'&&action.name!=='transferPrizeOwnership'&&action.name!=='acceptPrizeOwnershipBackend').map(action=>action.name);
 type Rules=Parameters<ReturnType<PrivyClient['policies']>['create']>[0]['rules'];
 export function legacyOperatorPolicy(wallet:Address,contract:Address|null):Rules {
   const rules:Rules=[{name:'Shared wallet access proof',method:'personal_sign',action:'ALLOW',conditions:[{field_source:'message',field:'content',operator:'eq',value:adminProofMessage(wallet)}]}];

@@ -203,10 +203,24 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
         assert.equal((await fundingReader.game(pending.latestGameId)).confirmed,true);
         assert.equal((await fundingReader.funding()).assets[0].reserved,0n);
         await assert.rejects(prepareAction(fundingReader,player.address,'mintERC1155',[collection,'1','1','wallet']),/must own the ERC1155 collection/);
-        const transfer=await adminWallet.writeContract({address:collection,abi:artifact.abi,functionName:'transferOwnership',args:[player.address]});await client.waitForTransactionReceipt({hash:transfer});
+        await reviewed('transferPrizeOwnership',[collection,player.address]);
+        assert.equal(await client.readContract({address:collection,abi:prizeCollectionAbi,functionName:'owner'}),owner.address);
+        assert.equal(await client.readContract({address:collection,abi:prizeCollectionAbi,functionName:'pendingOwner'}),player.address);
         const accept=await prepareAction(fundingReader,player.address,'acceptPrizeOwnership',[collection]);const accepted=await userWallet.sendTransaction({to:accept.to,data:accept.data});await client.waitForTransactionReceipt({hash:accepted});
         assert.equal(await client.readContract({address:collection,abi:prizeCollectionAbi,functionName:'owner'}),player.address);
         await assert.rejects(prepareAction(fundingReader,owner.address,'mintERC1155',[collection,'1','1','wallet']),/must own the ERC1155 collection/);
+        const back=await prepareAction(fundingReader,player.address,'transferPrizeOwnership',[collection,keeper.address]);
+        const nomination=await userWallet.sendTransaction({to:back.to,data:back.data});await client.waitForTransactionReceipt({hash:nomination});
+        await assert.rejects(fundingEngine.sendBackend('acceptPrizeOwnership',collection),/explicit admin authorization/);
+        let checks=0;
+        const backendAccept=await fundingEngine.sendBackend('acceptPrizeOwnership',collection,undefined,async()=>{checks++;});
+        const backendReceipt=await client.waitForTransactionReceipt({hash:backendAccept});
+        assert.equal(backendReceipt.status,'success');assert.equal(backendReceipt.from.toLowerCase(),keeper.address.toLowerCase());assert.equal(backendReceipt.to?.toLowerCase(),collection.toLowerCase());assert.equal(checks,2);
+        assert.equal(await client.readContract({address:collection,abi:prizeCollectionAbi,functionName:'owner'}),keeper.address);
+        const mint=await prepareAction(fundingReader,keeper.address,'mintERC1155',[collection,'1','1','wallet']);
+        assert.equal(mint.to.toLowerCase(),collection.toLowerCase());
+        await assert.rejects(fundingEngine.sendBackend('acceptPrizeOwnership',collection,undefined,async()=>{}),/must be the pending collection owner/);
+
       }finally{fundingEngine.stop();}
     });
     await t.test('the deployed contract receives the welcome bonus once without replacing manual credits', async legacyTest => {
