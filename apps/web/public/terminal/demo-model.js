@@ -16,11 +16,14 @@
     {label:'ENS', kind:2, token:collection, tokenId:'2', three:0, five:100},
     {label:'URBE PASS', kind:2, token:collection, tokenId:'3', three:0, five:67},
     {label:'T-SHIRT', kind:2, token:collection, tokenId:'4', three:0, five:45},
-    {label:'GOLD', kind:1, token:'0xe908475f8Beb7A138B0dc6eb5A05cb27068ffB9A', decimals:18, three:0, five:13}
+    {label:'GOLD', kind:1, token:'0xe908475f8Beb7A138B0dc6eb5A05cb27068ffB9A', decimals:18, three:0, five:13},
+    {label:'BOOKS', kind:2, token:collection, tokenId:'6', three:0, five:20},
+    {label:'WATER BOTTLE', kind:2, token:collection, tokenId:'7', three:0, five:21},
+    {label:'CAPS', kind:2, token:collection, tokenId:'8', three:0, five:50}
   ];
   function outcomeForRoll(roll) {
     if (roll !== Math.floor(roll) || roll < 0 || roll >= 1000) throw new Error('Invalid demo roll');
-    var cursor = 101;
+    var cursor = 10;
     if (roll < cursor) return {symbol:255, match:0};
     for (var symbol = 0; symbol < prizes.length; symbol++) {
       cursor += prizes[symbol].three; if (roll < cursor) return {symbol:symbol, match:3};

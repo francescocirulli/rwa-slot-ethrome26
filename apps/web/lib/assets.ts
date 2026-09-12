@@ -14,8 +14,8 @@ export const PAYMENT_ASSET:Asset={id:'usdc',name:'USDC',ticker:'USDC',address:US
 export const ETH_ASSET:Asset={id:'eth',name:'Ethereum',ticker:'ETH',address:'0x0000000000000000000000000000000000000000',decimals:18,symbol:null,logo:'/brands/eth.png'};
 export const SWAP_INPUTS=[PAYMENT_ASSET,ETH_ASSET] as const;
 export const WALLET_ASSETS=[PAYMENT_ASSET,...RWA_ASSETS];
-export const NFT_PRIZES=[{symbol:0,name:'Magnet',key:'MAGNET'},{symbol:3,name:'Hopera',key:'GADGET'},{symbol:8,name:'ENS Registration',key:'ENS_REGISTRATION'},{symbol:9,name:'Urbe Hub Day Pass',key:'URBE_HUB_DAY_PASS'},{symbol:10,name:'T-shirt',key:'SHIRT'}] as const;
-export const PRIZE_LABELS=['MAGNET','FREE SPIN','NVIDIA','HOPERA','SPACEX','APPLE','ALPHABET','AMAZON','ENS','URBE PASS','T-SHIRT','GOLD','SYMBOL 12','SYMBOL 13','SYMBOL 14','SYMBOL 15'] as const;
+export const NFT_PRIZES=[{symbol:0,name:'Magnet',key:'MAGNET'},{symbol:3,name:'Hopera',key:'GADGET'},{symbol:8,name:'ENS Registration',key:'ENS_REGISTRATION'},{symbol:9,name:'Urbe Hub Day Pass',key:'URBE_HUB_DAY_PASS'},{symbol:10,name:'T-shirt',key:'SHIRT'},{symbol:12,name:'Books',key:'BOOKS'},{symbol:13,name:'Water Bottle',key:'WATER_BOTTLE'},{symbol:14,name:'Caps',key:'CAPS'}] as const;
+export const PRIZE_LABELS=['MAGNET','FREE SPIN','NVIDIA','HOPERA','SPACEX','APPLE','ALPHABET','AMAZON','ENS','URBE PASS','T-SHIRT','GOLD','BOOKS','WATER BOTTLE','CAPS','SYMBOL 15'] as const;
 export function assetByAddress(address:string){return WALLET_ASSETS.find(asset=>asset.address.toLowerCase()===address.toLowerCase());}
 export function assetUnits(value:unknown,decimals:number):bigint {
   if(typeof value!=='string'||!new RegExp('^(0|[1-9][0-9]{0,30})(\\.[0-9]{1,'+decimals+'})?$').test(value))throw new Error('Enter a positive amount with at most '+decimals+' decimals.');

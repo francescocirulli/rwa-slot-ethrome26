@@ -14,14 +14,15 @@ be verified. Token amounts use integer arithmetic; excess decimals are rejected,
 | 7 | Amazon | AMZNc | 8 | `0xb200000000000000000000d9192b6B456483C2E8` |
 | 11 | Gold | DGLD | 18 | `0xe908475f8beb7a138b0dc6eb5a05cb27068ffb9a` |
 
-NFT placeholders keep the existing contract IDs: 0 magnet, 3 gadget, 8
-ENS_REGISTRATION, 9 URBE_HUB_DAY_PASS, 10 shirt. NFT token addresses and token IDs
-are read from the deployed catalog. Placeholder artwork does not imply a mock NFT
-balance. ID 1 is free spin, read from `freeSpins(wallet)`; it has no token contract.
+ERC1155 prizes use stable symbol IDs: 0 Magnet, 3 Hopera, 8 ENS, 9 Urbe Hub Day Pass,
+10 T-shirt, 12 Books, 13 Water Bottle and 14 Caps. Collection addresses and token IDs
+are read from the deployed catalog, with known Base IDs as the pre-configuration
+fallback. Balances always come from onchain reads. Symbol 1 is free spin, read
+from `freeSpins(wallet)`; it has no token contract.
 
 `lib/assets.ts` is the app catalog. The terminal's ES5 labels and bundled artwork
-use the same stable IDs. `scripts/build-prize-symbols.mjs` regenerates the 12 tile SVGs
-from downloaded local brand assets and code-drawn placeholders. The initial idle grid,
+use the same stable IDs. `scripts/build-prize-symbols.mjs` regenerates the 15 tile SVGs
+from downloaded local brand assets and vector prize illustrations. The initial idle grid,
 reveal results, admin inventory and prize cards use these tiles. Symbol 11 uses a
 separate `jackpot.svg` only on the terminal reels; the Gold tile and actual DGLD
 amount remain visible in confirmed payout details and admin balances.
@@ -98,8 +99,8 @@ keep both balances visible and reject quantities above the verified wallet balan
 The default prize collection is `0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`.
 `SLOT_PRIZE1155_ADDRESS` optionally overrides it server-side; keep its value aligned
 with the configured prize catalog and update collaborator permissions after a change.
-The deployed collection IDs are Gadget 1, ENS 2, Urbe pass 3, Shirt 4 and Magnet 5
-(the latter verified on Base on 2026-09-12). These balances remain visible before
+The deployed collection IDs are Gadget 1, ENS 2, Urbe pass 3, Shirt 4, Magnet 5,
+Books 6, Water Bottle 7 and Caps 8 (physical prize expansion, 2026-09-12). These balances remain visible before
 catalog configuration. Other collections use the explicit catalog mapping.
 
 - **Deposit NFT** uses `safeTransferFrom(sharedWallet, slot, id, quantity, '0x')`.

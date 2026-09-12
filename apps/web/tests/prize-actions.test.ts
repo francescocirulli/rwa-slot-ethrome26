@@ -42,3 +42,15 @@ test('slot deposits and direct mint require the exact configured ERC1155 ID; own
   const tx=await prepareAction(f.reader,account,'acceptPrizeOwnership',[BASE_PRIZE_COLLECTION]);assert.equal(decodeFunctionData({abi:prizeCollectionAbi,data:tx.data}).functionName,'acceptOwnership');
   f.state.pendingOwner=slot;await assert.rejects(prepareAction(f.reader,account,'acceptPrizeOwnership',[BASE_PRIZE_COLLECTION]),/Start the collection transfer/);
 });
+
+test('expanded prize deposits and mint preserve each token ID and destination',async()=>{
+  const f=fixture();f.reader.catalog=async()=>[6n,7n,8n].map((tokenId,i)=>({symbol:12+i,kind:2,token:BASE_PRIZE_COLLECTION,tokenId,fiveMatchAmount:1n,threeMatchWeight:0,fiveMatchWeight:20}));
+  for(const id of ['6','7','8']){
+    const deposit=await prepareAction(f.reader,account,'fundERC1155',[BASE_PRIZE_COLLECTION,id,'3']);
+    assert.deepEqual(decodeFunctionData({abi:prizeCollectionAbi,data:deposit.data}).args,[account,slot,BigInt(id),3n,'0x']);
+    for(const destination of ['wallet','slot']){
+      const mint=await prepareAction(f.reader,account,'mintERC1155',[BASE_PRIZE_COLLECTION,id,'4',destination]);
+      assert.deepEqual(decodeFunctionData({abi:prizeCollectionAbi,data:mint.data}).args,[destination==='wallet'?account:slot,BigInt(id),4n]);
+    }
+  }
+});
