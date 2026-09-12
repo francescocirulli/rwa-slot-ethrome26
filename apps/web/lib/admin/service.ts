@@ -3,16 +3,17 @@ import type {PrivyClient} from '@privy-io/node';
 import type {Wallet as PrivyWallet, KeyQuorum} from '@privy-io/node/resources';
 import {verifyMessage, type Address} from 'viem';
 import type {Identity, Wallet, WalletAuthorization} from '../types';
+import {BASE_PRIZE_COLLECTION} from '../prize-collection';
 import {SlotError} from '../slot/errors';
 import {ADMIN_WALLET_EXTERNAL_ID,adminProofMessage,type AdminRole} from './model';
-import {OPERATOR_ACTIONS,operatorPolicy,legacyOperatorPolicy,policyMatches} from './policy';
+import {OPERATOR_ACTIONS,operatorPolicy,swapOperatorPolicy,legacyOperatorPolicy,policyMatches} from './policy';
 
-export type AdminAccess={wallet:Wallet;role:AdminRole;operationsEnabled:boolean;swapEnabled?:boolean};
+export type AdminAccess={wallet:Wallet;role:AdminRole;operationsEnabled:boolean;swapEnabled?:boolean;mintEnabled?:boolean};
 export interface AdminAccessService {
   resolve(user:Identity):Promise<AdminAccess>;
   assertAction(user:Identity,action:string):Promise<AdminAccess>;
 }
-export function createAdminService(client:PrivyClient,ownerId:string|undefined,contract:()=>Address|null,externalId=ADMIN_WALLET_EXTERNAL_ID) {
+export function createAdminService(client:PrivyClient,ownerId:string|undefined,contract:()=>Address|null,externalId=ADMIN_WALLET_EXTERNAL_ID,collection:Address=BASE_PRIZE_COLLECTION) {
   let walletId:string|undefined,mutating=false;
   function requireOwner(user:Identity) {if(!ownerId||user.userId!==ownerId)throw new SlotError('AdminOwner','Solo il proprietario può gestire il wallet condiviso.',403);}
   function singleUser(quorum:KeyQuorum):string|null {
@@ -37,25 +38,26 @@ export function createAdminService(client:PrivyClient,ownerId:string|undefined,c
     return Promise.all(value.additional_signers.map(async signer=>{
       const userId=singleUser(await client.keyQuorums().get(signer.signer_id));
       const policy=signer.override_policy_ids?.length===1?await client.policies().get(signer.override_policy_ids[0]):null;
-      const expected=operatorPolicy(value.address as Address,contract());
+      const expected=operatorPolicy(value.address as Address,contract(),collection);
       const controlled=policy?.owner_id===value.owner_id;
       const enabled=!!controlled&&!!policy&&policyMatches(policy.rules,expected);
       // Recognize previous exact policies without silently broadening their permissions.
       const matches=(rules:ReturnType<typeof operatorPolicy>)=>!!controlled&&!!policy&&policyMatches(policy.rules,rules);
-      const swapEnabled=enabled||matches(operatorPolicy(value.address as Address,null));
+      const previousEnabled=matches(swapOperatorPolicy(value.address as Address,contract()));
+      const swapEnabled=enabled||previousEnabled||matches(swapOperatorPolicy(value.address as Address,null));
       const legacyEnabled=matches(legacyOperatorPolicy(value.address as Address,contract()));
       const proofOnly=matches(legacyOperatorPolicy(value.address as Address,null));
-      return {userId,signer,policy,enabled,swapEnabled,contractEnabled:enabled||legacyEnabled,recognized:swapEnabled||legacyEnabled||proofOnly};
+      return {userId,signer,policy,enabled,swapEnabled,contractEnabled:enabled||previousEnabled||legacyEnabled,recognized:swapEnabled||legacyEnabled||proofOnly};
     }));
   }
   async function resolve(user:Identity):Promise<AdminAccess> {
     const value=await wallet();
     if(!value)throw new SlotError('AdminNotReady','Il wallet condiviso non è ancora stato creato.',403);
     const selected={id:value.id,address:value.address};
-    if(user.userId===ownerId)return {wallet:selected,role:'owner',operationsEnabled:true,swapEnabled:true};
+    if(user.userId===ownerId)return {wallet:selected,role:'owner',operationsEnabled:true,swapEnabled:true,mintEnabled:true};
     const member=(await members(value)).find(item=>item.userId===user.userId&&item.recognized);
     if(!member)throw new SlotError('AdminAccess','Il tuo account non è autorizzato al wallet condiviso.',403);
-    return {wallet:selected,role:'operator',operationsEnabled:!!contract()&&member.contractEnabled,swapEnabled:member.swapEnabled};
+    return {wallet:selected,role:'operator',operationsEnabled:!!contract()&&member.contractEnabled,swapEnabled:member.swapEnabled,mintEnabled:!!contract()&&member.enabled};
   }
   async function exclusive<T>(work:()=>Promise<T>) {
     if(mutating)throw new SlotError('AdminBusy','Una modifica agli accessi è già in corso. Aggiorna tra poco.');
@@ -65,7 +67,7 @@ export function createAdminService(client:PrivyClient,ownerId:string|undefined,c
     resolve,
     async assertAction(user:Identity,action:string) {
       const access=await resolve(user);
-      if(action==='approveBudget'||!access.operationsEnabled||access.role==='operator'&&!OPERATOR_ACTIONS.includes(action))throw new SlotError('AdminAction','Questa operazione richiede il proprietario o l’aggiornamento dei permessi.',403);
+      if(action==='approveBudget'||action==='mintERC1155'&&!access.mintEnabled||!access.operationsEnabled||access.role==='operator'&&!OPERATOR_ACTIONS.includes(action))throw new SlotError('AdminAction','Questa operazione richiede il proprietario o l’aggiornamento dei permessi.',403);
       return access;
     },
     async status(user:Identity) {
@@ -103,7 +105,7 @@ export function createAdminService(client:PrivyClient,ownerId:string|undefined,c
         if(matches[0]?.enabled)return;
         if(value.additional_signers.length>=4&&!matches.length)throw new SlotError('AdminMembers','Sono già presenti quattro collaboratori.');
         const member=await client.users()._get(memberId);if(member.id!==memberId)throw new SlotError('AdminMember','Account non trovato in questa app.',400);
-        const rules=operatorPolicy(value.address as Address,contract());
+        const rules=operatorPolicy(value.address as Address,contract(),collection);
         const policy=await client.policies().create({name:'Lucky Signal admin operator',version:'1.0',chain_type:'ethereum',owner_id:value.owner_id!,rules});
         // A fresh policy is attached by the owner; collaborators never own their policy.
         const signerId=matches[0]?.signer.signer_id||(await client.keyQuorums().create({display_name:'Lucky Signal admin operator',user_ids:[memberId],authorization_threshold:1})).id;

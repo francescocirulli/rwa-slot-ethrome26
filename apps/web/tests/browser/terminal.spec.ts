@@ -124,8 +124,8 @@ test('onchain slot spins through both transactions, waits for finality, maps row
   await page.route('**/api/relay/tablet/game', async route => {
     const response = await page.request.get('http://localhost:3101/api/relay/tablet');
     const session = await response.json(); sessionId = session.id;
-    const game = phase === 'idle' ? null : {id:'1',player:session.address,pending:phase==='waiting'||phase==='revealable',hasResult:phase==='confirming'||phase==='complete',confirmed:phase==='complete',won:true,status:phase==='waiting'?'waiting':phase==='revealable'?'revealable':'won',targetBlock:'105',revealDeadline:'361',symbols,matchCount:5,winningLine:1,winningSymbol:1,payout:{kind:3,formattedAmount:'2',tokenSymbol:null}};
-    await route.fulfill({json:{configured:true,sessionId:session.id,block:phase==='waiting'?'103':'107',settings:{ticketPrice:'1000000',paused:false,totalOutcomeWeight:1000,configuredPrizeCount:3},keeper:{configured:true,canStartFreeSpin:true,balanceWei:'1000000000000000'},player:{address:session.address,freeSpins:'2',allowance:'0',balance:'128500000',latestGameId:phase==='idle'?'0':'1',historyReady:true,game,operation:null}}});
+    const game = phase === 'idle' ? null : {id:'1',player:session.address,pending:phase==='waiting'||phase==='revealable',hasResult:phase==='confirming'||phase==='complete',confirmed:phase==='complete',won:true,status:phase==='waiting'?'waiting':phase==='revealable'?'revealable':'won',targetBlock:'105',revealDeadline:'361',symbols,matchCount:5,winningLine:1,winningSymbol:1,payout:{kind:3,formattedAmount:'2',tokenSymbol:null},transactionHash:'0x'+'a'.repeat(64)};
+    await route.fulfill({json:{configured:true,funding:{ready:true,assets:[]},sessionId:session.id,block:phase==='waiting'?'103':'107',settings:{ticketPrice:'1000000',paused:false,totalOutcomeWeight:1000,configuredPrizeCount:3},keeper:{configured:true,canStartFreeSpin:true,balanceWei:'1000000000000000'},player:{address:session.address,freeSpins:'2',allowance:'0',balance:'128500000',latestGameId:phase==='idle'?'0':'1',historyReady:true,game,operation:null}}});
   });
   await page.route('**/api/relay/tablet/spin',async route=>{
     const body=route.request().postDataJSON();expect(body).toEqual({mode:'free',afterGameId:'0'});phase='waiting';
@@ -145,9 +145,11 @@ test('onchain slot spins through both transactions, waits for finality, maps row
   await expect(page.locator('.machine')).toHaveClass(/is-spinning/);
   phase='confirming';await expect(page.locator('#game-phase')).toContainText('CONFERMA RISULTATO');
   await expect(page.locator('.cell[data-result-symbol]')).toHaveCount(0);
+  await expect(page.locator('#game-tx')).toBeHidden();
   phase='complete';await expect(page.locator('#game-title')).toContainText('Hai vinto 2 free spin');
   await expect(page.locator('.machine')).not.toHaveClass(/is-spinning/);
   await expect(page.locator('.cell.winner')).toHaveCount(5);
+  await expect(page.locator('#game-tx')).toHaveAttribute('href','https://basescan.org/tx/0x'+'a'.repeat(64));
   for(let row=0;row<3;row++)for(let column=0;column<5;column++)await expect(page.locator('.reel').nth(column).locator('.cell').nth(row)).toHaveAttribute('data-result-symbol',String(symbols[row*5+column]));
   for(const height of [768,650]){
     await page.setViewportSize({width:1024,height});
@@ -157,6 +159,7 @@ test('onchain slot spins through both transactions, waits for finality, maps row
   await page.locator('#logout').click();
   await expect(page.locator('#login-qr')).toBeVisible();
   await expect(page.locator('#game-controls')).toBeHidden();
+  await expect(page.locator('#game-tx')).not.toHaveAttribute('href');
   await expect(page.locator('#free-spin-summary')).toBeHidden();
   await expect(page.locator('#free-spin-balance')).toHaveText('—');
   await expect(page.locator('.cell[data-result-symbol]')).toHaveCount(0);
@@ -169,7 +172,7 @@ test('free-spin counter waits for the welcome grant, tracks spending and hides s
   await page.route('**/api/relay/tablet/game', async route => {
     const response = await page.request.get('http://localhost:3101/api/relay/tablet');
     const session = await response.json();
-    await route.fulfill({json: {configured: true, sessionId: session.id, block: '107', settings: {ticketPrice: '1000000', paused: false, totalOutcomeWeight: 1000, configuredPrizeCount: 3}, keeper: {configured: true, canStartFreeSpin: true, balanceWei: '1000000'}, player: {address: session.address, freeSpins: credits, allowance: '0', balance: '0', latestGameId: '0', historyReady: true, game: null, operation: null, welcome: {status: granted ? 'granted' : 'pending', amount: '2'}}}});
+    await route.fulfill({json: {configured: true, funding:{ready:true,assets:[]}, sessionId: session.id, block: '107', settings: {ticketPrice: '1000000', paused: false, totalOutcomeWeight: 1000, configuredPrizeCount: 3}, keeper: {configured: true, canStartFreeSpin: true, balanceWei: '1000000'}, player: {address: session.address, freeSpins: credits, allowance: '0', balance: '0', latestGameId: '0', historyReady: true, game: null, operation: null, welcome: {status: granted ? 'granted' : 'pending', amount: '2'}}}});
   });
   await link(page, phone);
   await expect(page.locator('#free-spin-balance')).toHaveText('0');
@@ -187,5 +190,31 @@ test('free-spin counter waits for the welcome grant, tracks spending and hides s
   await context.setOffline(true);
   await expect(page.locator('#free-spin-balance')).toHaveText('—');
   await expect(page.locator('#free-spin-note')).toHaveText('Saldo da aggiornare.');
+  await phone.close();
+});
+
+
+test('funding blocks both spin types, recovers after replenishment and keeps Gold payout distinct from jackpot reels',async({page,browser})=>{
+  const phone=await phoneContext(browser);
+  let funding:boolean|null=false,won=false;
+  await page.route('**/api/relay/tablet/game',async route=>{
+    const response=await page.request.get('http://localhost:3101/api/relay/tablet');const session=await response.json();
+    const game=won?{id:'2',pending:false,hasResult:true,confirmed:true,won:true,status:'won',symbols:Array(15).fill(11),matchCount:5,winningLine:0,winningSymbol:11,payout:{kind:1,token:'0xe908475f8beb7a138b0dc6eb5a05cb27068ffb9a',formattedAmount:'0.01',tokenSymbol:'DGLD'},transactionHash:'0x'+'b'.repeat(64)}:null;
+    await route.fulfill({json:{configured:true,sessionId:session.id,block:'120',funding:funding===null?null:{ready:funding,assets:[]},settings:{ticketPrice:'1000000',paused:false,totalOutcomeWeight:1000,configuredPrizeCount:3},keeper:{configured:true,canStartFreeSpin:true,balanceWei:'1000000'},player:{freeSpins:'2',allowance:'10000000',balance:'20000000',latestGameId:won?'2':'0',historyReady:true,game,operation:null}}});
+  });
+  await link(page,phone);
+  await expect(page.locator('.reels img[src="/symbols/jackpot.svg"]')).toHaveCount(2);
+  await expect(page.locator('#game-availability')).toContainText('Rifornimento premi');
+  await expect(page.locator('#play-consent-title')).toHaveText('Attendiamo la macchina.');
+  await expect(page.locator('#spin-free')).toBeDisabled();await expect(page.locator('#spin-paid')).toBeDisabled();
+  await page.screenshot({path:'artifacts/terminal-funding.png'});
+  funding=true;await expect(page.locator('#spin-free')).toBeEnabled();await expect(page.locator('#game-availability')).toBeHidden();
+  funding=null;await expect(page.locator('#spin-free')).toBeDisabled();await expect(page.locator('#game-availability')).toContainText('Verifichiamo le riserve');
+  funding=false;won=true;await expect(page.locator('#game-title')).toHaveText('Hai vinto 0.01 Gold (DGLD)!');
+  await expect(page.locator('.reels img[src="/symbols/jackpot.svg"]')).toHaveCount(15);
+  await expect(page.locator('#won-prize')).toHaveAttribute('src','/symbols/symbol-11.svg');
+  await expect(page.locator('#game-tx')).toHaveAttribute('href','https://basescan.org/tx/0x'+'b'.repeat(64));
+  await expect(page.locator('#game-availability')).toContainText('Rifornimento premi');
+  for(const height of [768,650]){await page.setViewportSize({width:1024,height});await page.screenshot({path:`artifacts/terminal-gold-${height}.png`});expect(await page.evaluate(()=>document.documentElement.scrollHeight)).toBeLessThanOrEqual(height);}
   await phone.close();
 });

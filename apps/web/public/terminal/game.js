@@ -26,30 +26,38 @@
     var cells = document.querySelectorAll('.cell');
     for (var index = 0; index < cells.length; index++) {cells[index].classList.remove('winner'); cells[index].removeAttribute('data-result-symbol');}
   }
+  function reelSource(symbol) {return symbol === 11 ? '/symbols/jackpot.svg' : '/symbols/symbol-' + symbol + '.svg';}
+  function hideResult() {show('game-tx', false); el('game-tx').removeAttribute('href'); el('game-tx').removeAttribute('title'); el('game-tx').textContent = ''; show('won-prize', false); document.querySelector('.game-progress').classList.remove('game-won');}
   function finalGrid(game) {
     var reels = document.querySelectorAll('.reel'), winning = game.won && lines[game.winningLine] ? lines[game.winningLine].slice(0, game.matchCount) : [];
     for (var column = 0; column < 5; column++) for (var row = 0; row < 3; row++) {
       var index = row * 5 + column, symbol = game.symbols[index], cell = reels[column].children[row], picture = cell.querySelector('img');
-      picture.src = '/symbols/symbol-' + symbol + '.svg'; picture.alt = labels[symbol] || 'Simbolo ' + symbol;
+      picture.src = reelSource(symbol); picture.alt = symbol === 11 ? 'JACKPOT' : labels[symbol] || 'Simbolo ' + symbol;
       cell.setAttribute('data-result-symbol', String(symbol)); cell.classList.toggle('winner', winning.indexOf(index) !== -1);
     }
   }
   function clear() {
     revision++; snapshot = null; fetching = false; sending = false; shownResult = ''; window.clearTimeout(timer); timer = null; window.clearTimeout(settleTimer);
-    spin(false); resetGrid(); show('game-controls', false); show('game-unconfigured', true); show('play-consent-status', false);
+    spin(false); resetGrid(); hideResult(); show('game-availability', false); show('game-controls', false); show('game-unconfigured', true); show('play-consent-status', false);
     document.body.classList.remove('game-enabled');
     document.body.classList.remove('has-free-spins'); show('free-spin-summary', false);
     el('free-spin-balance').textContent = '—'; el('free-spin-count').textContent = '—'; el('free-spin-note').textContent = '';
     el('spin-paid').disabled = true; el('spin-free').disabled = true;
     var originals = [2, 1, 0, 4, 3, 5, 6, 11, 8, 7, 9, 10, 11, 2, 1];
     var images = document.querySelectorAll('.cell img');
-    for (var i = 0; i < images.length; i++) {images[i].src = '/symbols/symbol-' + originals[i] + '.svg'; images[i].alt = labels[originals[i]];}
+    for (var i = 0; i < images.length; i++) {images[i].src = reelSource(originals[i]); images[i].alt = originals[i] === 11 ? 'JACKPOT' : labels[originals[i]];}
   }
   function resultText(game) {
+    var hash = game.transactionHash;
+    if (/^0x[0-9a-fA-F]{64}$/.test(hash || '')) {el('game-tx').href = 'https://basescan.org/tx/' + hash; el('game-tx').title = hash; el('game-tx').textContent = 'Transazione ' + hash.slice(0, 8) + '…' + hash.slice(-6) + ' ↗'; show('game-tx', true);} else {show('game-tx', false); el('game-tx').removeAttribute('href'); el('game-tx').removeAttribute('title');}
+    show('won-prize', !!game.won && !!game.payout);
+    document.querySelector('.game-progress').classList.toggle('game-won', !!game.won);
+    if (game.won && game.payout) {el('won-prize').src = '/symbols/symbol-' + game.winningSymbol + '.svg'; el('won-prize').alt = labels[game.winningSymbol] || 'Premio'; show('won-prize', true);}
     if (!game.won) {status('GIOCATA #' + game.id + ' · CONCLUSA', 'Questa volta, nessun premio.', 'Il risultato è stato confermato su Base.'); return;}
     var prize = game.payout;
     if (!prize) {status('GIOCATA #' + game.id + ' · VINTA', 'Hai vinto!', 'Premio confermato. Recuperiamo i dettagli dal contratto.'); return;}
-    var name = prize.kind === 3 ? 'free spin' : prize.kind === 2 ? labels[game.winningSymbol] : prize.tokenSymbol || 'unità token';
+    var isGold = prize.kind === 1 && String(prize.token || '').toLowerCase() === '0xe908475f8beb7a138b0dc6eb5a05cb27068ffb9a';
+    var name = prize.kind === 1 && prize.decimals === null ? 'unità minime di ' + (isGold ? 'Gold (DGLD)' : prize.tokenSymbol || 'token') : isGold ? 'Gold (DGLD)' : prize.kind === 3 ? 'free spin' : prize.kind === 2 ? labels[game.winningSymbol] : prize.tokenSymbol || 'unità token';
     status('GIOCATA #' + game.id + ' · ' + game.matchCount + '/5', 'Hai vinto ' + prize.formattedAmount + ' ' + name + '!', prize.kind === 3 ? 'I crediti sono già disponibili per questo wallet.' : 'Il premio è già stato inviato al tuo wallet.');
   }
   function render() {
@@ -58,7 +66,9 @@
     var player = snapshot.player, game = player.game, operation = player.operation, grant = currentSession.playGrant;
     var inFlight = sending || operation && ['submitting','confirming','uncertain'].indexOf(operation.stage) !== -1 && operation.afterGameId === player.latestGameId;
     var pending = game && game.pending, waitingConfirmation = game && game.hasResult && !game.confirmed;
-    var unavailable = !online || inFlight || pending || waitingConfirmation || !player.historyReady || snapshot.settings.paused || snapshot.settings.totalOutcomeWeight !== 1000 || snapshot.settings.configuredPrizeCount < 3 || !snapshot.keeper.configured || snapshot.keeper.balanceWei === '0';
+    var unavailable = !online || inFlight || pending || waitingConfirmation || !player.historyReady || snapshot.settings.paused || snapshot.settings.totalOutcomeWeight !== 1000 || snapshot.settings.configuredPrizeCount < 3 || !snapshot.funding || !snapshot.funding.ready || !snapshot.keeper.configured || snapshot.keeper.balanceWei === '0';
+    var availability = !online ? 'Connessione interrotta. Le nuove giocate riprenderanno al ritorno della rete.' : snapshot.settings.paused ? 'Macchina in pausa. Le giocate già aperte continuano.' : snapshot.settings.totalOutcomeWeight !== 1000 || snapshot.settings.configuredPrizeCount < 3 ? 'La slot si sta preparando. Il catalogo premi non è ancora pronto.' : !snapshot.funding ? 'Verifichiamo le riserve dei premi. Attendi prima di giocare.' : !snapshot.funding.ready ? 'Rifornimento premi in corso. Le nuove giocate sono sospese; saldo e free spin restano disponibili.' : !snapshot.keeper.configured || snapshot.keeper.balanceWei === '0' ? 'Il servizio di gioco non è pronto. Attendi l’operatore.' : '';
+    el('game-availability').textContent = availability; show('game-availability', !!availability);
     var hasFreeSpins = atLeast(player.freeSpins, '1'), welcome = player.welcome || currentSession.welcome;
     show('free-spin-summary', true); document.body.classList.toggle('has-free-spins', hasFreeSpins && online);
     el('free-spin-summary').classList.toggle('bonus-pending', !!welcome && (welcome.status === 'checking' || welcome.status === 'pending'));
@@ -70,8 +80,9 @@
     var hasBudget = atLeast(player.allowance, snapshot.settings.ticketPrice);
     el('play-consent-title').textContent = hasFreeSpins && !(grant && grant.active) ? 'Puoi già giocare gratis.' : grant && grant.active ? hasBudget ? 'Giocate autorizzate.' : 'Budget da rinnovare.' : 'Autorizza il budget sul telefono.';
     el('play-consent-copy').textContent = hasFreeSpins && !(grant && grant.active) ? 'Tira la leva o premi USA FREE SPIN. Non serve ricaricare né autorizzare USDC.' : grant && grant.active ? hasBudget ? 'Budget USDC residuo: ' + amount(player.allowance) + '. Il telefono può restare chiuso.' : 'Budget residuo: ' + amount(player.allowance) + ' USDC. Per sceglierne uno nuovo, esci e ricollegati dal telefono. I free spin restano disponibili.' : 'Scegli quanto autorizzare per giocare dall’iPad. I free spin non usano USDC.';
+    if (availability) {el('play-consent-title').textContent = 'Attendiamo la macchina.'; el('play-consent-copy').textContent = 'Le nuove giocate riprendono quando il servizio è pronto. Conservi il saldo e i tuoi free spin.';}
     if (inFlight || pending && game.status !== 'expired' || waitingConfirmation) {
-      spin(true); resetGrid(); shownResult = '';
+      spin(true); resetGrid(); hideResult(); shownResult = '';
       if (!online) status('ATTESA ONCHAIN', 'Cerchiamo il segnale.', 'La giocata continua sul contratto. Non inviare una nuova richiesta.');
       else if (inFlight) status('01 / INVIO GIOCATA', operation && operation.stage === 'uncertain' ? 'Verifica della transazione…' : 'Si parte. Buona fortuna!', operation && operation.error || 'Attendiamo la conferma della prima transazione.');
       else if (waitingConfirmation) status('03 / CONFERMA RISULTATO', 'Ci siamo quasi…', 'Aspettiamo le conferme del reveal su Base.');
@@ -83,15 +94,13 @@
       if (shownResult !== game.id) {shownResult = game.id; finalGrid(game); spin(false);}
       resultText(game);
     } else {
-      spin(false);
+      spin(false); hideResult();
       if (game && (game.status === 'expired' || game.status === 'invalidated')) {resetGrid(); status('GIOCATA #' + game.id + ' · SCADUTA', 'Il reveal non è arrivato in tempo.', game.invalidated ? 'Giocata invalidata. Il contratto non rimborsa il biglietto.' : 'Attendiamo la chiusura onchain della giocata.');}
       else if (!player.historyReady) status('RECUPERO SESSIONE', 'Ritroviamo le tue giocate.', 'Stiamo leggendo lo storico onchain.');
       else if (operation && operation.stage === 'failed') status('GIOCATA NON APERTA', 'Riprova quando sei pronto.', operation.error);
       else status('IL TUO TURNO', 'Un tiro. Un po’ di fortuna.', 'Gioca con USDC o usa un free spin disponibile.');
     }
-    if (!online) status('CONNESSIONE INTERROTTA', 'Cerchiamo il segnale.', 'Le nuove giocate saranno disponibili al ritorno della rete.');
-    else if (snapshot.settings.paused) status('MACCHINA IN PAUSA', 'Una piccola pausa.', 'Le giocate già aperte continuano fino al reveal.');
-    else if (!snapshot.keeper.configured || snapshot.keeper.balanceWei === '0') status('SERVIZIO DA CONFIGURARE', 'Il tuo posto ti aspetta.', 'Il wallet backend deve essere configurato e avere ETH per il reveal.');
+    if (availability && !(game && game.hasResult && game.confirmed)) status('NUOVE GIOCATE IN ATTESA', 'Il tuo posto ti aspetta.', 'Riprendiamo appena la macchina è pronta.');
   }
   function poll() {
     if (!currentSession || currentSession.state !== 'active' || fetching) return;

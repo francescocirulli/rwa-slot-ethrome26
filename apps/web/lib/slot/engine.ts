@@ -84,6 +84,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex) {
       const settings = await reader.settings();
       if (settings.paused) throw new SlotError('Paused', 'La macchina è in pausa.');
       if (settings.totalOutcomeWeight !== 1000 || settings.configuredPrizeCount < 3) throw new SlotError('Paytable', 'La tabella premi non è pronta.');
+      if (!(await reader.funding()).ready) throw new SlotError('InsufficientPrizeInventory', 'La slot sta rifornendo i premi. Attendi prima di giocare: il tuo saldo e i free spin restano disponibili.');
       if (!backend || !health.configured) throw new SlotError('KeeperMissing', 'Il servizio di reveal non è ancora configurato.', 503);
       if (!health.lastTick || Date.now() - health.lastTick > 30000 || health.balanceWei === '0' || health.error) throw new SlotError('KeeperNotReady', 'Il servizio di reveal deve essere online e avere ETH per il gas.', 503);
       if (mode === 'free') {

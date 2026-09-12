@@ -2,6 +2,7 @@ import {BaseError, ContractFunctionRevertedError, createPublicClient, formatUnit
 import {slotAbi} from './abi';
 import {GAME_STATES, serializable, type SlotConfig} from './config';
 import {SlotError} from './errors';
+import {readFunding} from './funding';
 const PAGE_BLOCKS = 2000n;
 const roleNames = ['GAME_MANAGER_ROLE', 'TREASURER_ROLE', 'PAUSER_ROLE'] as const;
 export function createSlotReader(config: SlotConfig) {
@@ -138,6 +139,10 @@ export function createSlotReader(config: SlotConfig) {
     const ids = Array.from({length: Number(end > 20n ? 20n : end - 1n)}, (_, index) => end - 1n - BigInt(index));
     return {games: await Promise.all(ids.map(id => game(id, block))), next: ids.length ? ids[ids.length - 1] : 0n};
   }
+  async function funding(blockNumber?: bigint) {
+    const block = blockNumber ?? await client.getBlockNumber({cacheTime:0});
+    return readFunding({client,contract},await catalog(block),block);
+  }
   async function snapshot(address?: Address, admin = false) {
     const block = await client.getBlockNumber({cacheTime: 0});
     const [values, prizes, permissions, state] = await Promise.all([settings(block), catalog(block), address ? roles(address, block) : null, address ? player(address, block) : null]);
@@ -147,12 +152,15 @@ export function createSlotReader(config: SlotConfig) {
         : await client.readContract({...contract, functionName: 'getERC1155Inventory', args: [prize.token, prize.tokenId], blockNumber: block});
       return {symbol: prize.symbol, token: prize.token, tokenId: prize.tokenId, kind: prize.kind, balance, reserved, available};
     })) : [];
-    const pendingOwner = admin ? await client.readContract({...contract, functionName: 'pendingDefaultAdmin', blockNumber: block}) : null;
+    const [pendingOwner, reserves] = await Promise.all([
+      admin ? client.readContract({...contract, functionName: 'pendingDefaultAdmin', blockNumber: block}) : null,
+      readFunding({client,contract},prizes,block).catch(()=>null),
+    ]);
     return serializable({configured: true as const, address: config.address, chainId: config.chainId, paymentToken: config.paymentToken,
-      gasMode: config.gasMode, confirmations: config.confirmations, block, settings: values, catalog: prizes, permissions, player: state, inventory,
+      gasMode: config.gasMode, confirmations: config.confirmations, block, settings: values, catalog: prizes, permissions, player: state, inventory, funding:reserves,
       pendingOwner: pendingOwner ? {address: pendingOwner[0], schedule: pendingOwner[1]} : null});
   }
-  return {config, chain, client, contract, validate, settings, catalog, roles, lastGame, player, welcomeGranted, game, activeGames, history, snapshot};
+  return {config, chain, client, contract, validate, settings, catalog, roles, lastGame, player, welcomeGranted, game, activeGames, history, snapshot, funding};
 }
 export type SlotReader = ReturnType<typeof createSlotReader>;
 export type SlotSnapshot = Awaited<ReturnType<SlotReader['snapshot']>>;

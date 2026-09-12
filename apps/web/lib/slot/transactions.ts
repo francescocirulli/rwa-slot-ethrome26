@@ -73,6 +73,7 @@ export function createContractApi({walletService, getSlot, origin, admin, coordi
       if(kind==='prepare') {
         if(typeof input.action!=='string'||!Array.isArray(input.args)||input.args.length>8||!input.args.every((arg:unknown)=>typeof arg==='string'&&arg.length<=100))throw new SlotError('Input','Parametri non validi.',400);
         if(scope==='admin')await admin!.assertAction(user,input.action);
+        else if(['mintERC1155','acceptPrizeOwnership'].includes(input.action))throw new SlotError('AdminAction','Accedi al wallet admin condiviso per questa operazione.',403);
         if(preparing.has(wallet.id))throw new SlotError('Busy','Preparazione già in corso.');
         preparing.add(wallet.id);
         try {
