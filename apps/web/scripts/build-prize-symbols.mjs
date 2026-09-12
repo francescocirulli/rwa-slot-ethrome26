@@ -2,14 +2,14 @@ import {readFile,writeFile} from 'node:fs/promises';
 // Retro slot tiles: cream card, brass double frame, coloured plaque per symbol.
 const brands=[['nvidia',2,'NVIDIA','#9ccb7e'],['spacex',4,'SPACEX','#a9c3de'],['apple',5,'APPLE','#d9d4cb'],['alphabet',6,'ALPHABET','#f0b9a0'],['amazon',7,'AMAZON','#f3c46b'],['gold',11,'GOLD','#f2cf6e']];
 function tile(name,color,body){return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 80 80"><rect x="4" y="2" width="72" height="76" rx="9" fill="#fbf1d8" stroke="#8a5f16" stroke-width="2"/><rect x="7.5" y="5.5" width="65" height="69" rx="7" fill="none" stroke="#d9a73a" stroke-width="1.5"/><rect x="12" y="10" width="56" height="52" rx="8" fill="${color}" stroke="#2a1a12" stroke-width="2.5"/><rect x="14" y="13" width="52" height="46" rx="6" fill="#fffaf0" opacity=".55"/>${body}<circle cx="9" cy="7" r="1.6" fill="#8a5f16"/><circle cx="71" cy="7" r="1.6" fill="#8a5f16"/><circle cx="9" cy="73" r="1.6" fill="#8a5f16"/><circle cx="71" cy="73" r="1.6" fill="#8a5f16"/><text x="40" y="71.5" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="7.5" font-weight="700" letter-spacing=".8" fill="#7d1418">${name}</text></svg>`;}
-// Logo placement: the plaque is a 52x46 window at (14,13). Drop a replacement as
+// Logo placement: the logo sits in a 44x40 window at (18,16) inside the 56x52 plaque. Drop a replacement as
 // public/brands/<name>.png (preferred, any aspect ratio, transparent background)
 // or public/brands/<name>.svg, then rerun this script. PNG wins when both exist.
 import {access} from 'node:fs/promises';
 const exists=async path=>{try{await access(path);return true;}catch{return false;}};
 for(const [name,id,label,color]of brands){let body;
-  if(await exists('public/brands/'+name+'.png')){const data=await readFile('public/brands/'+name+'.png');body=`<image x="14" y="13" width="52" height="46" preserveAspectRatio="xMidYMid meet" xlink:href="data:image/png;base64,${data.toString('base64')}"/>`;}
-  else{const svg=await readFile('public/brands/'+name+'.svg','utf8');if(/<script|onload=|<foreignObject/i.test(svg))throw new Error('Unexpected active SVG');const vb=svg.match(/viewBox="([^"]+)"/)[1],inner=svg.slice(svg.indexOf('>',svg.indexOf('<svg'))+1,svg.lastIndexOf('</svg>'));body=`<svg x="15" y="13" width="50" height="46" viewBox="${vb}" preserveAspectRatio="xMidYMid meet" fill="#2a1a12">${inner}</svg>`;}
+  if(await exists('public/brands/'+name+'.png')){const data=await readFile('public/brands/'+name+'.png');body=`<image x="18" y="16" width="44" height="40" preserveAspectRatio="xMidYMid meet" xlink:href="data:image/png;base64,${data.toString('base64')}"/>`;}
+  else{const svg=await readFile('public/brands/'+name+'.svg','utf8');if(/<script|onload=|<foreignObject/i.test(svg))throw new Error('Unexpected active SVG');const vb=svg.match(/viewBox="([^"]+)"/)[1],inner=svg.slice(svg.indexOf('>',svg.indexOf('<svg'))+1,svg.lastIndexOf('</svg>'));body=`<svg x="19" y="16" width="42" height="40" viewBox="${vb}" preserveAspectRatio="xMidYMid meet" fill="#2a1a12">${inner}</svg>`;}
   await writeFile('public/symbols/symbol-'+id+'.svg',tile(label,color,body));}
 const placeholders=[
  [0,'MAGNET','#f0a094','<path d="M24 22v14a16 16 0 0 0 32 0V22H46v14a6 6 0 0 1-12 0V22Z" fill="#b8262b" stroke="#2a1a12" stroke-width="2.5"/><path d="M24 22h10v9H24zm22 0h10v9H46z" fill="#fff9e7" stroke="#2a1a12" stroke-width="2"/>'],
