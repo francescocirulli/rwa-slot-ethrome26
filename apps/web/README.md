@@ -328,6 +328,14 @@ polling. Confirmed wins include the exact award and BaseScan link when the keepe
 receipt is available; otherwise they show the confirmed grid and win/loss without
 inventing a payout amount. Gold uses jackpot artwork only on the reels.
 
+While the server checks a requested spin, the terminal keeps the reels still and
+locks repeated input. Animation starts when submission is reported or a current
+round is observed. A rejected request keeps its explanation visible across polls,
+without hiding the remaining free-spin balance. Railway receives structured
+`slot.spin_rejected` and `slot.spin_submission_failed` records containing the
+public wallet, mode, previous round and normalized error code; request payloads,
+credentials and raw SDK errors are never logged.
+
 ### Phone approval and funding
 
 During paired play setup, the phone shows one USDC approval form. Once play is

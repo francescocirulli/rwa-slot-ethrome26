@@ -3,6 +3,7 @@ import {privateKeyToAccount} from 'viem/accounts';
 import type {SlotReader} from './reader';
 import {serializable} from './config';
 import {SlotError, slotError} from './errors';
+import {logSpinFailure} from './diagnostics';
 import {slotAbi} from './abi';
 import {definiteSendFailure, transactionError, type GasToken} from './gas';
 import type {WelcomeView} from '../welcome';
@@ -182,6 +183,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
             const rejected = operation.hash || operation.transactionId ? error instanceof SlotError && error.code === 'TransactionFailed' : definiteSendFailure(error);
             operation.stage = !rejected && (operation.hash || mode === 'paid') ? 'uncertain' : 'failed';
             operation.error = mode === 'paid' ? transactionError(error) : slotError(error).message;
+            logSpinFailure('slot.spin_submission_failed',player,mode,operation.afterGameId,error,operation.stage);
           }
         })();
         return {...operation};

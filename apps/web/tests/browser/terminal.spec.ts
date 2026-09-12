@@ -230,3 +230,37 @@ test('minimal polling needs no reserves or history and keeps confirmed Gold resu
   for(const height of [768,650]){await page.setViewportSize({width:1024,height});await page.screenshot({path:`artifacts/terminal-gold-${height}.png`});expect(await page.evaluate(()=>document.documentElement.scrollHeight)).toBeLessThanOrEqual(height);}
   await phone.close();
 });
+
+test('a rejected preflight never spins the reels and its error survives polling',async({page,browser})=>{
+  const phone=await phoneContext(browser);
+  let polls=0,submissions=0,sessionId='',operation:unknown=null;
+  let release!:()=>void;
+  const gate=new Promise<void>(resolve=>{release=resolve;});
+  await page.route('**/api/relay/tablet/game',async route=>{
+    const response=await page.request.get('http://localhost:3101/api/relay/tablet');const session=await response.json();sessionId=session.id;polls++;
+    await route.fulfill({json:{configured:true,sessionId,block:'100',settings:{ticketPrice:'50000',paused:false,totalOutcomeWeight:1000,configuredPrizeCount:15},keeper:{configured:true,canStartFreeSpin:true,balanceWei:'1000000'},player:{freeSpins:'4',allowance:'0',balance:'0',latestGameId:'0',busy:false,game:null,operation}}});
+  });
+  await page.route('**/api/relay/tablet/spin',async route=>{
+    submissions++;
+    if(submissions===1){await gate;await route.fulfill({status:409,json:{code:'InsufficientPrizeInventory',error:'The slot is restocking prizes. Your free spins stay available.'}});}
+    else {operation={stage:'submitting',afterGameId:'0'};await route.fulfill({status:202,json:{sessionId,operation}});}
+  });
+  try{
+    await link(page,phone);await expect(page.locator('#spin-free')).toBeEnabled();
+    await page.locator('#spin-free').click();
+    await expect(page.locator('#game-title')).toHaveText('Checking your spin.');
+    await expect(page.locator('.machine')).not.toHaveClass(/is-spinning/);
+    await expect(page.locator('#spin-free')).toBeDisabled();
+    release();await expect(page.locator('#game-title')).toHaveText('Spin not started.');
+    const previous=polls;await expect.poll(()=>polls).toBeGreaterThan(previous+1);
+    await expect(page.locator('#game-detail')).toContainText('restocking prizes');
+    await expect(page.locator('.machine')).not.toHaveClass(/is-spinning/);
+    await expect(page.locator('#free-spin-balance')).toHaveText('4');expect(submissions).toBe(1);
+    await page.locator('#spin-free').click();await expect(page.locator('#game-title')).toHaveText('Checking your spin.');
+    await expect(page.locator('.machine')).not.toHaveClass(/is-spinning/);
+    expect(await page.evaluate(()=>(window as any).slotCanSwitchMode())).toBe(false);
+    operation={stage:'confirming',afterGameId:'0',hash:'0x'+'a'.repeat(64)};
+    await expect(page.locator('.machine')).toHaveClass(/is-spinning/);
+    expect(submissions).toBe(2);
+  }finally{release();await phone.close();}
+});
