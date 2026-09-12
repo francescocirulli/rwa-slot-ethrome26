@@ -34,6 +34,8 @@ export default defineRailway(() => {
       BASE_RPC_URL: preserve(),
       SLOT_CONTRACT_ADDRESS: preserve(),
       SLOT_DEPLOYMENT_BLOCK: preserve(),
+      SLOT_LOG_PAGE_BLOCKS: preserve(),
+      SLOT_HISTORY_FROM_BLOCK: preserve(),
       SLOT_BACKEND_PRIVATE_KEY: preserve(),
       LIFI_API_KEY: preserve(),
       SLOT_HARDWARE_TOKEN: preserve(),

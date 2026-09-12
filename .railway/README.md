@@ -50,6 +50,13 @@ Use Railway service variables. The full list, with explanations, is in
 - `BASE_RPC_URL`: Base mainnet endpoint; prefer a dedicated RPC in production.
 - `SLOT_CONTRACT_ADDRESS` and `SLOT_DEPLOYMENT_BLOCK`: leave empty until the
   contract is deployed. Login, wallets and swaps work without the contract.
+- `SLOT_LOG_PAGE_BLOCKS`: maximum blocks per `eth_getLogs` call; set it to the
+  RPC provider's range limit (10 on Alchemy Free, 5 on QuickNode Discover).
+  Default 2000. Bounded scans resume across polls, so a small page makes player
+  history recovery slower but keeps it working on a capped endpoint.
+- `SLOT_HISTORY_FROM_BLOCK`: earliest block scanned for a player's spins and
+  welcome grants. Defaults to `SLOT_DEPLOYMENT_BLOCK`. Raise it on a range-capped
+  RPC to skip old history; rounds older than this block are not recovered.
 - `SLOT_BACKEND_PRIVATE_KEY=REPLACE_ME`: disabled placeholder. Replace it with
   `0x` plus 64 hexadecimal digits for a dedicated EOA funded with ETH on Base.
   Free spins require `GAME_MANAGER_ROLE`. This is not the Privy admin wallet's

@@ -36,7 +36,7 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
   async function reload(){try{await loadInventory();}catch(e){if(alive.current)setLoadError((e as Error).message);}}
   refreshRef.current=reload;
   useEffect(()=>{alive.current=true;try{const saved=JSON.parse(sessionStorage.getItem(storageKey)||'null');if(saved&&typeof saved.id==='string'&&saved.address?.toLowerCase()===address.toLowerCase())setOperation(saved);}catch{}return()=>{alive.current=false;};},[storageKey,address]);
-  useEffect(()=>{if(!['swap','inventory'].includes(tab))return;let stopped=false,timer:ReturnType<typeof setTimeout>;async function poll(){await refreshRef.current!();if(!stopped)timer=setTimeout(poll,15000);}void poll();return()=>{stopped=true;clearTimeout(timer);};},[tab]);
+  useEffect(()=>{if(!['swap','inventory'].includes(tab)||inventory)return;void refreshRef.current!();},[tab,inventory]);
   useEffect(()=>{if(!quote)return;const timer=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[quote]);
   useEffect(()=>{onSwapBusy(pending||busy);},[pending,busy,onSwapBusy]);
   function remember(value:SwapView){sessionStorage.setItem(storageKey,JSON.stringify(value));setOperation(value);}
@@ -140,6 +140,7 @@ export function AdminAssets({tab,address,userId,slot,contractBusy,canDeposit,onD
   const quickPending=quickPlan.filter(item=>item.toFund>0n);
   const quickAllowed=!!inventory&&!loadError&&!pending&&!contractBusy&&!busy&&canDeposit&&quickPending.length>0&&quickPlan.every(item=>item.verified&&item.wallet!==null)&&(quickPending.every(item=>item.toBuy===0n)||!!inventory.swapEnabled);
   return <div hidden={!['swap','inventory'].includes(tab)}>
+    {tab==='swap'&&<div className="admin-toolbar"><button className="admin-text" disabled={busy||pending} onClick={()=>void run(reload)}>{busy?'Refreshing…':'Refresh balances ↻'}</button></div>}
     {loadError&&<p className="admin-error" role="alert">{loadError}<button className="admin-text" onClick={()=>void reload()}>Refresh</button></p>}
     {error&&<p className="admin-error" role="alert">{error}</p>}
     {operation&&<section className={'admin-card swap-status '+(['succeeded','approved'].includes(operation.stage)?'swap-success':'')} aria-live="polite">

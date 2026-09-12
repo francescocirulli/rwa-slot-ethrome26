@@ -42,12 +42,11 @@ function Admin() {
   useEffect(() => {
     setAccount(null); setCopied(false); setError('');
     if (!userId || leaving) return;
-    let cancelled = false, timer: ReturnType<typeof setTimeout>;
-    async function poll() {
+    let cancelled = false;
+    async function load() {
       try {await refresh();} catch (cause) {if (!cancelled) setError(cause instanceof Error ? cause.message : 'Connection lost. Try again.');}
-      if (!cancelled) timer = setTimeout(poll, 15000);
     }
-    void poll(); return () => {cancelled = true; clearTimeout(timer);};
+    void load(); return () => {cancelled = true;};
   }, [userId, refresh, leaving]);
   async function run(label: string, action: () => Promise<unknown>) {
     if (inFlight.current) return;
