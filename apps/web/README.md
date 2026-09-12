@@ -320,3 +320,8 @@ check for USDC gas funds or ETH on Base (ETH only in ETH gas mode), including a
 fresh server check before review and submission. These checks do not quote fees;
 Privy determines the actual fee. Missing required balance reads block approval. The wallet
 receive section provides the Base address and QR code; refresh after funding.
+
+RPC reads and backend transaction preparation use the configured fallback endpoints
+when QuickNode reports its daily request quota through JSON-RPC error `-32003`.
+Genuine transaction rejections and contract reverts keep their existing behavior;
+ambiguous backend submissions retain the same signed transaction and nonce.
