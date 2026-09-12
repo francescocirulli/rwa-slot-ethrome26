@@ -67,6 +67,14 @@ Use Railway service variables. The full list, with explanations, is in
   Free spins require `GAME_MANAGER_ROLE`. This is not the Privy admin wallet's
   key. Do not use a `NEXT_PUBLIC_` prefix for this secret.
 - `LIFI_API_KEY`: optional; may remain empty.
+- Arkiv seasons: set `ARKIV_ENABLED=true`, `ARKIV_USE_SLOT_BACKEND_KEY=true`,
+  `ARKIV_API_KEY`, and the expected public `ARKIV_WRITER_ADDRESS`. Keep the sealed
+  `SLOT_BACKEND_PRIVATE_KEY` unchanged. Set a fixed `ARKIV_SEASON_ANCHOR_BLOCK`
+  on Tiramisu and `ARKIV_BASE_FROM_BLOCK` on Base at activation; preserve both
+  across restarts. `ARKIV_SEASON_BLOCKS=60` gives roughly two-minute demo seasons,
+  with `ARKIV_HISTORY_DAYS=30` for spin history. The writer needs GLM on Tiramisu.
+  Base ingestion drains bounded pages serially while catching up, then checks
+  every eight seconds. See [Arkiv setup](../arkiv/README.md).
 - `SLOT_HARDWARE_TOKEN`: dedicated random hardware secret shared with the UNO R4
   WiFi firmware; server-only, at least 32 characters. The board calls
   `/api/hardware/device` directly over verified HTTPS, without a Mac bridge.

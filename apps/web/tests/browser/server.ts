@@ -1,5 +1,6 @@
 import {buildSync} from 'esbuild';
-import {createServer} from 'node:http';
+import {createServer,type ServerResponse} from 'node:http';
+import {emptyView,type LeaderboardView} from '../../lib/arkiv/model';
 import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {parseUnits} from 'viem';
@@ -28,8 +29,17 @@ function quickInventory(){
   return {address:wallet,contract:null,block:String(100+quickInventoryCalls),updatedAt:Date.now(),eth:'0.1',contractEth:null,catalogAvailable:true,scope:'funding',funding:{assets:Object.entries(quickRequired()).map(([id,required])=>({kind:1,token:RWA_ASSETS.find(a=>a.id===id)!.address,required:String(required),available:String(quickReserves[id])}))},freeSpins:'0',mintEnabled:false,swapEnabled:true,canManageOwnership:false,collection:{address:'0x0000000000000000000000000000000000000000',owner:null,pendingOwner:null,canMint:false,canAcceptOwnership:false},assets:[PAYMENT_ASSET,...RWA_ASSETS].map(asset=>{const value=asset.id==='nvidia'?(lagging?0n:quickBalances.nvidia):asset.id==='spacex'?quickBalances.spacex:100000000000n;return {...asset,balance:String(value),formatted:null,verified:true,canDeposit:asset.id!=='usdc',reserve:{balance:String(quickReserves[asset.id]||0n),reserved:'0',available:String(quickReserves[asset.id]||0n)}};}),nfts:[]};
 }
 function quickView(op:{id:string;assetId:string;input:bigint;estimated:bigint;minimum:bigint;sent:boolean;step:'approval'|'swap'},stage:string){return {id:op.id,address:wallet,assetId:op.assetId,inputAssetId:'usdc',expiresAt:Date.now()+30000,stage,step:op.step,input:String(op.input),estimated:String(op.estimated),minimum:String(op.minimum),gasEstimate:'100000',feeAmount:'0',route:'mock',gasToken:'USDC',actionId:'transaction_'+op.id.slice(0,8),userOperationHash:null,fromBlock:null,output:stage==='succeeded'?String(op.estimated):null,hashes:[],error:null};}
+let seasonView:LeaderboardView=emptyView();
+const seasonClients=new Set<ServerResponse>();
+const sendSeason=(res:ServerResponse)=>res.write('event: standings\ndata: '+JSON.stringify(seasonView)+'\n\n');
 const server = createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://localhost:3101');
+  if(url.pathname==='/api/leaderboard/stream') {
+    res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store'});sendSeason(res);seasonClients.add(res);req.on('close',()=>seasonClients.delete(res));return;
+  }
+  if(url.pathname==='/fixture/season'&&req.method==='POST') {
+    const chunks:Buffer[]=[];for await(const chunk of req) chunks.push(Buffer.from(chunk));seasonView=JSON.parse(Buffer.concat(chunks).toString());for(const client of seasonClients) sendSeason(client);res.end('{}');return;
+  }
   if(url.pathname==='/ownership-fixture'){res.setHeader('Content-Type','text/html');res.end('<!doctype html><html><head><link rel="stylesheet" href="/admin-fixture.css"></head><body><div id="root"></div><script src="/ownership-fixture.js"></script></body></html>');return;}
   if(url.pathname==='/ownership-fixture.js'){res.setHeader('Content-Type','text/javascript');res.end(ownershipBundle.outputFiles.find(file=>file.path.endsWith('.js'))!.text);return;}
   if(url.pathname==='/phone-fixture'){res.setHeader('Content-Type','text/html; charset=utf-8');res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/phone-fixture.css"></head><body><div id="root"></div><script src="/phone-fixture.js"></script></body></html>');return;}
