@@ -14,7 +14,14 @@
         "GADGET": 1,
         "ENS_REGISTRATION": 2,
         "URBE_HUB_DAY_PASS": 3,
-        "SHIRT": 4
+        "SHIRT": 4,
+        "MAGNET": 5
+      },
+      "magnetCreation": {
+        "transactionHash": "0xf6aaf91fe53da3788061f7dcaffb10b8012e5c04405b91df7981e5dda22b3753",
+        "blockNumber": 51212168,
+        "recipient": "0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c",
+        "amount": 1
       }
     },
     "DigitalSlotMachine": {
