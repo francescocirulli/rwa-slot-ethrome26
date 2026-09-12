@@ -14,6 +14,7 @@ function fixture(){
  const service={names:async(owner:Address)=>{assert.equal(owner,testAccount.address);return [];},claims:async()=>[c],getClaim:async()=>c,
  available:async()=>({available:true}),reserve:async(owner:Address)=>{assert.equal(owner,testAccount.address);reserves++;return c;},
  prepareVoucher:async()=>{if(c.stage!=='voucher')throw Error('Already consumed');return {to:zeroAddress,data:'0x1234',chainId:8453};},fulfill:async()=>{completed++;return c;}} as unknown as EnsService;
+ service.prepareReview=async(owner,id)=>({claim:await service.getClaim(id,owner),transaction:await service.prepareVoucher(owner,id)});
  const walletService={...f.service,sendOwned:async(_wallet:unknown,authorization:any,transaction:any,_key:string,mode:string)=>{assert.equal(transaction.chainId,8453);assert.equal(mode,'usdc');sends++;await authorization.sign_fns[0](new Uint8Array([1,2,3]));return {transactionId:'test-transaction'};}};
  const api=createEnsApi({service,walletService,origin,writes});
  async function call(body?:unknown,token='player-a',headers:Record<string,string>={}){
@@ -21,7 +22,7 @@ function fixture(){
    const response=(body as any)?.action==='send'?await authorizedTestRequest(req,'did:privy:'+token,api):await api(req);
    return {status:response.status,body:await response.json()};
  }
- return {call,writes,c,counts:()=>({sends,reserves,completed}),api};
+ return {call,writes,c,service,walletService,counts:()=>({sends,reserves,completed}),api};
 }
 test('ENS names are scoped to verified personal wallets; auth/origin/consent fail closed',async()=>{
  const f=fixture();assert.equal((await f.call(undefined,'invalid')).status,401);
@@ -35,7 +36,7 @@ test('ENS names are scoped to verified personal wallets; auth/origin/consent fai
 test('ENS review shares the spin/transfer lock by lowercase address and cancellation releases it',async()=>{
  const f=fixture(),p=await f.call({action:'prepare',claimId});assert.equal(p.status,200);assert.equal(p.body.registrationPayer,'backend');assert.equal(p.body.gasMode,'usdc');
  await assert.rejects(f.writes.acquire(testAccount.address.toLowerCase(),'spin',async()=>false),/operation in progress/);
- assert.equal((await f.call({action:'prepare',claimId})).status,409);
+ const recovered=await f.call({action:'prepare',claimId});assert.equal(recovered.status,200);assert.equal(recovered.body.id,p.body.id);
  assert.equal((await f.call({action:'cancel',id:p.body.id})).status,200);
  await f.writes.acquire(testAccount.address.toLowerCase(),'spin',async()=>false);
  assert.equal((await f.call({action:'prepare',claimId})).status,409);
@@ -102,4 +103,54 @@ test('a submission reference survives an unfinalized reorg and cannot prepare a 
  f.c.stage='finalizing-base';await f.call({action:'status',id:p.body.id});f.c.stage='voucher';
  assert.equal((await f.call({action:'prepare',claimId})).status,409);
  assert.equal((await f.call({action:'status',id:p.body.id})).status,200);assert.equal(f.counts().sends,1);
+});
+
+
+test('ENS preparation failures explain that no transfer was submitted and release the lease',async()=>{
+ const f=fixture();f.service.prepareVoucher=async()=>{throw Error('private-rpc-url-and-signature');};
+ const result=await f.call({action:'prepare',claimId});
+ assert.equal(result.status,503);assert.equal(result.body.code,'EnsPrepareUnavailable');
+ assert.match(result.body.error,/did not submit a transfer/);assert.doesNotMatch(JSON.stringify(result.body),/private-rpc|signature/);
+ assert.equal(f.counts().sends,0);await f.writes.acquire(testAccount.address.toLowerCase(),'spin',async()=>false);
+});
+
+test('concurrent Continue requests cannot create two reviews or bypass the wallet lease',async()=>{
+ const f=fixture();let release!:()=>void;
+ const original=f.service.prepareVoucher;
+ f.service.prepareVoucher=async(...args)=>{await new Promise<void>(resolve=>{release=resolve;});return original(...args);};
+ const first=f.call({action:'prepare',claimId});
+ while(!release)await new Promise(resolve=>setImmediate(resolve));
+ const second=await f.call({action:'prepare',claimId});assert.equal(second.status,409);assert.equal(second.body.code,'EnsBusy');
+ await assert.rejects(f.writes.acquire(testAccount.address.toLowerCase(),'spin',async()=>false),/operation in progress/);
+ release();assert.equal((await first).status,200);assert.equal(f.counts().sends,0);
+});
+
+test('expired ENS sends report definite failure so a phone can recover without an endless pending marker',async(t)=>{
+ const f=fixture(),prepared=await f.call({action:'prepare',claimId});
+ t.mock.method(Date,'now',()=>prepared.body.expires+1);
+ const result=await f.call({action:'send',id:prepared.body.id,confirm:true});
+ assert.equal(result.status,409);assert.equal(result.body.stage,'failed');assert.equal(f.counts().sends,0);
+ assert.equal((await f.call({action:'status',id:prepared.body.id})).body.stage,'failed');
+ await f.writes.acquire(testAccount.address.toLowerCase(),'spin',async()=>false);
+});
+
+test('failed preflight is distinguishable from an ambiguous ENS submission',async()=>{
+ const f=fixture(),prepared=await f.call({action:'prepare',claimId});
+ f.service.prepareVoucher=async()=>{throw Error('RPC unavailable');};
+ const result=await f.call({action:'send',id:prepared.body.id,confirm:true});
+ assert.equal(result.body.stage,'failed');assert.equal(f.counts().sends,0);
+ const g=fixture(),second=await g.call({action:'prepare',claimId});
+ g.walletService.sendOwned=async()=>{throw Error('unknown provider result with private payload');};
+ const ambiguous=await g.call({action:'send',id:second.body.id,confirm:true});
+ assert.equal(ambiguous.body.stage,'uncertain');assert.doesNotMatch(JSON.stringify(ambiguous.body),/private payload/);
+ assert.equal((await g.call({action:'prepare',claimId})).body.code,'EnsPending');
+ await assert.rejects(g.writes.acquire(testAccount.address.toLowerCase(),'spin',async()=>false),/operation in progress/);
+});
+
+test('ENS catch-up drains bounded pages promptly and backs off after a read failure',async()=>{
+ const {createEnsWorker}=await import('../lib/ens/worker');let fail=false;
+ const worker=createEnsWorker({fromBlock:0n,pageBlocks:5n,head:async()=>{if(fail)throw Error('RPC');return 199n;},events:async()=>[],complete:async()=>{}});
+ await worker.tick();assert.deepEqual(worker.state(),{cursor:100n,pending:0,catchingUp:true});
+ fail=true;await assert.rejects(worker.tick());assert.equal(worker.state().catchingUp,false);assert.equal(worker.state().cursor,100n);
+ fail=false;await worker.tick();assert.deepEqual(worker.state(),{cursor:200n,pending:0,catchingUp:false});worker.stop();
 });

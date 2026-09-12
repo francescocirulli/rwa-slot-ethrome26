@@ -49,3 +49,4 @@
 .phone-explorer-overlay{padding-bottom:env(safe-area-inset-bottom)}
 @media(max-width:360px){.phone-shell{padding-left:16px;padding-right:16px}.phone-card{padding:18px}.intro h1{font-size:34px}.comparison-code{font-size:34px;letter-spacing:3px}.phone-header{font-size:16px}}
 @media(prefers-reduced-motion:reduce){.phone-shell *{scroll-behavior:auto!important}}
+.explorer-load-state{margin:0;padding:20px;color:#2a1a12;font-size:14px;line-height:1.6}

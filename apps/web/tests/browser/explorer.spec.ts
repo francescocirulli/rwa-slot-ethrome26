@@ -25,7 +25,7 @@ test('query failure clears stale results and missing wallet never shows everyone
   await page.route('**/api/explorer?*',route=>route.fulfill({status:503,json:{error:'Archive unavailable'}}));await page.getByRole('button',{name:'Refresh'}).click();await expect(page.locator('#results')).toBeHidden();await expect(page.getByRole('status').first()).toHaveText('Archive unavailable');
 });
 test('iPad opens workspace with paired wallet and clears it when session ends',async({page})=>{
-  await fixture(page);await page.goto('/terminal/index.html');await expect(page.locator('#pair-code')).not.toHaveText('— — —');
+  await fixture(page);await page.goto('/');await expect(page.locator('#pair-code')).not.toHaveText('— — —');
   await page.evaluate(address=>{window.dispatchEvent(new CustomEvent('slot-session',{detail:{address,state:'active'}}));},player);
   await page.getByRole('button',{name:'Game Explorer',exact:true}).click();const workspace=page.frameLocator('#explorer-frame');await expect(workspace.locator('#spins')).toHaveText('26');
   await workspace.getByRole('button',{name:'My summary'}).click();await expect(workspace.locator('#breakdown')).toBeVisible();
@@ -38,7 +38,36 @@ test('phone launchers open the same explorer with the authenticated wallet',asyn
   await page.route('**/api/account/welcome',route=>route.fulfill({json:{status:'granted',amount:'2'}}));
   await page.route('**/api/relay/**',route=>route.fulfill({status:401,json:{error:'No session'}}));
   await page.setViewportSize({width:390,height:844});await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();await expect(page.getByLabel('Wallet address',{exact:true})).toHaveText(player);
-  await page.getByRole('button',{name:'Activity',exact:true}).click();await page.getByRole('button',{name:'My summary ↗'}).click();
+  await page.getByRole('button',{name:'Activity',exact:true}).click();
+  await page.getByRole('button',{name:'Game Explorer ↗',exact:true}).click();
+  await expect(page.frameLocator('iframe[title="Game archive workspace"]').locator('#spins')).toHaveText('26');
+  await expect(page.getByText('Loading the archive…')).toBeHidden();
+  await page.getByRole('button',{name:'Back to activity'}).click();
+  await page.getByRole('button',{name:'My summary ↗'}).click();
   const frame=page.frameLocator('iframe[title="Game archive workspace"]');await expect(frame.locator('#result-title')).toHaveText('Your record.');expect(requests.at(-1)?.get('player')).toBe(player);
   await frame.locator('#explore-tab').focus();await page.keyboard.press('Shift+Tab');await expect(page.getByRole('button',{name:'Back to activity'})).toBeFocused();await page.keyboard.press('Tab');await expect(frame.locator('#explore-tab')).toBeFocused();await page.keyboard.press('Escape');await expect(page.getByRole('dialog',{name:'Game Explorer and summary'})).toBeHidden();
+});
+
+
+test('production headers permit only same-origin archive embedding',async({request})=>{
+ const archive=await request.get('/terminal/explorer.html');
+ expect(archive.headers()['x-frame-options']).toBe('SAMEORIGIN');
+ expect(archive.headers()['content-security-policy']).toBe("frame-ancestors 'self'");
+ const terminal=await request.get('/');
+ expect(terminal.headers()['content-security-policy']).toContain("frame-src 'self'");
+ for(const path of ['/','/phone-fixture','/ownership-fixture'])expect((await request.get(path)).headers()['x-frame-options']).toBe('DENY');
+});
+
+test('a blocked iframe offers recovery instead of a blank archive',async({page})=>{
+ await page.clock.install();
+ await page.route('**/terminal/explorer.html',route=>route.fulfill({contentType:'text/html',headers:{'X-Frame-Options':'DENY'},body:'<!doctype html><p>Blocked</p>'}));
+ await page.goto('/phone-fixture');await page.getByRole('button',{name:'Activity',exact:true}).click();
+ await page.getByRole('button',{name:'Game Explorer ↗',exact:true}).click();
+ await page.clock.fastForward(13000);
+ await expect(page.getByRole('alert')).toContainText('The archive could not open');
+ await expect(page.getByRole('link',{name:'Open archive'})).toHaveAttribute('href',/view=explore/);
+ await page.unroute('**/terminal/explorer.html');await fixture(page);
+ await page.getByRole('button',{name:'Retry archive'}).click();
+ await expect(page.frameLocator('iframe[title="Game archive workspace"]').locator('#spins')).toHaveText('26');
+ await expect(page.getByText('The archive could not open.',{exact:false})).toBeHidden();
 });

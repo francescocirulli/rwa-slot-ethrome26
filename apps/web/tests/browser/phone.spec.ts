@@ -254,10 +254,12 @@ test('changing views preserves a transfer draft and never submits it', async ({p
 test('session expiry warning remains reachable while viewing the wallet', async ({page}) => {
   await setup(page,{paired:true});await page.clock.install();await page.goto('/phone-fixture');
   await expect(page.getByRole('button',{name:'End the iPad link'})).toBeVisible();
+  // Freeze reads and the navigation activity request before advancing time.
+  // A late activity response would otherwise renew the fixture deadline.
+  await page.route('**/api/relay/phone',route=>route.abort());
+  await page.route('**/api/relay/phone/activity',route=>route.abort());
   await page.getByRole('button',{name:'Wallet',exact:true}).click();
   await expect(page.getByLabel('Wallet address',{exact:true})).toHaveText(address);
-  // Stop session reads from refreshing the fixture timestamps while the clock advances.
-  await page.route('**/api/relay/phone',route=>route.abort());
   await page.clock.fastForward(151000);
   const keepAlive=page.getByRole('button',{name:'I am still here'});
   await expect(keepAlive).toBeInViewport();

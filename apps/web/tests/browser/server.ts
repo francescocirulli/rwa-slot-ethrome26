@@ -8,6 +8,8 @@ import {PAYMENT_ASSET,RWA_ASSETS} from '../../lib/assets';
 import {createHardware} from '../../lib/hardware';
 import {createRelay} from '../../lib/relay';
 import {walletFixture} from '../fixtures';
+import nextConfig from '../../next.config';
+import {terminalCsp} from '../../lib/terminal-security';
 // FIXTURE_ORIGIN / FIXTURE_HOST let the same fixture server be opened from another device on the LAN (for example an iPad).
 const origin = process.env.FIXTURE_ORIGIN || 'http://localhost:3101', host = process.env.FIXTURE_HOST || '127.0.0.1';
 const relay = createRelay({origin, walletService: walletFixture().service,
@@ -31,9 +33,15 @@ function quickInventory(){
 function quickView(op:{id:string;assetId:string;input:bigint;estimated:bigint;minimum:bigint;sent:boolean;step:'approval'|'swap'},stage:string){return {id:op.id,address:wallet,assetId:op.assetId,inputAssetId:'usdc',expiresAt:Date.now()+30000,stage,step:op.step,input:String(op.input),estimated:String(op.estimated),minimum:String(op.minimum),gasEstimate:'100000',feeAmount:'0',route:'mock',gasToken:'USDC',actionId:'transaction_'+op.id.slice(0,8),userOperationHash:null,fromBlock:null,output:stage==='succeeded'?String(op.estimated):null,hashes:[],error:null};}
 let seasonView:LeaderboardView=emptyView();
 const seasonClients=new Set<ServerResponse>();
+const securityHeaders=nextConfig.headers!();
 const sendSeason=(res:ServerResponse)=>res.write('event: standings\ndata: '+JSON.stringify(seasonView)+'\n\n');
 const server = createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://localhost:3101');
+  // Exercise the real production policies, not a permissive HTML-only fixture.
+  for(const rule of await securityHeaders) {
+    if(rule.source==='/:path*'||rule.source===url.pathname)for(const header of rule.headers)res.setHeader(header.key,header.value);
+  }
+  if(url.pathname==='/'||url.pathname==='/terminal/index.html')res.setHeader('Content-Security-Policy',terminalCsp);
   if(url.pathname==='/api/ens'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({configured:false,names:[],claims:[]}));return;}
   if(url.pathname==='/api/leaderboard/stream') {
     res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store'});sendSeason(res);seasonClients.add(res);req.on('close',()=>seasonClients.delete(res));return;
