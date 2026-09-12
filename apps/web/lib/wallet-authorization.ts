@@ -3,7 +3,7 @@ import type {Identity,WalletAuthorization} from './types';
 import {SlotError} from './slot/errors';
 
 const key=()=>randomBytes(32).toString('hex');
-const cancelled=()=>new SlotError('Cancelled','Autorizzazione wallet interrotta o scaduta. Conferma di nuovo l’operazione.',409);
+const cancelled=()=>new SlotError('Cancelled','Wallet authorization interrupted or expired. Confirm the operation again.',409);
 export const authorizationPaths=new Set(['/api/admin/member','/api/admin/proof','/api/admin/assets/execute','/api/admin/contract/send','/api/contract/send']);
 type Challenge={id:string;payload:string;resolve:(signature:string)=>void;reject:(error:Error)=>void};
 type Channel={userId:string;path:string;claimed:boolean;closed:boolean;challenge?:Challenge;wake:Set<()=>void>;timer:ReturnType<typeof setTimeout>};
@@ -18,14 +18,14 @@ export function createWalletAuthorizations(ttl=90000) {
   }
   function owned(id:unknown,userId:string) {
     const channel=typeof id==='string'?channels.get(id):undefined;
-    if(!channel||channel.userId!==userId)throw new SlotError('WalletAuthorization','Autorizzazione wallet non disponibile per questo account.',404);
+    if(!channel||channel.userId!==userId)throw new SlotError('WalletAuthorization','Wallet authorization not available for this account.',404);
     return channel;
   }
   return {
     create(userId:string,path:unknown) {
-      if(typeof path!=='string'||!authorizationPaths.has(path))throw new SlotError('Input','Operazione wallet non valida.',400);
+      if(typeof path!=='string'||!authorizationPaths.has(path))throw new SlotError('Input','Invalid wallet operation.',400);
       const active=[...channels.values()].filter(channel=>!channel.closed);
-      if(active.length>=32||active.filter(channel=>channel.userId===userId).length>=2||channels.size>=256)throw new SlotError('WalletBusy','Attendi la conclusione dell’autorizzazione in corso.',429);
+      if(active.length>=32||active.filter(channel=>channel.userId===userId).length>=2||channels.size>=256)throw new SlotError('WalletBusy','Wait for the current authorization to finish.',429);
       const id=key();
       const timer=setTimeout(()=>{const channel=channels.get(id);if(channel)close(channel);channels.delete(id);},ttl);timer.unref();
       channels.set(id,{userId,path,claimed:false,closed:false,wake:new Set(),timer});
@@ -43,7 +43,7 @@ export function createWalletAuthorizations(ttl=90000) {
     sign(id:unknown,userId:string,challengeId:unknown,signature:unknown) {
       const channel=owned(id,userId),challenge=channel.challenge;
       if(channel.closed||!challenge||challenge.id!==challengeId)throw cancelled();
-      if(typeof signature!=='string'||signature.length>256||!/^[A-Za-z0-9+/]+={0,2}$/.test(signature)||Buffer.from(signature,'base64').length<64)throw new SlotError('Input','Firma di autorizzazione non valida.',400);
+      if(typeof signature!=='string'||signature.length>256||!/^[A-Za-z0-9+/]+={0,2}$/.test(signature)||Buffer.from(signature,'base64').length<64)throw new SlotError('Input','Invalid authorization signature.',400);
       channel.challenge=undefined;challenge.resolve(signature);notify(channel);
     },
     cancel(id:unknown,userId:string){close(owned(id,userId));},

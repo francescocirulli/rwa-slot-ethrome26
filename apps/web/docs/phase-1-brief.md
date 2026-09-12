@@ -1,7 +1,8 @@
-# Lucky Signal — project status
+# Wall Street Slot — project status
 
-Arcade for iPad Air in landscape, iOS 12.5.8 / Safari 12.1.2. Working name:
-Lucky Signal, with an ink/cream/acid-yellow/coral palette and SVG symbols.
+Arcade for iPad Air in landscape, iOS 12.5.8 / Safari 12.1.2. Brand:
+Wall Street Slot, with a retro slot palette (burgundy, cream, brass, enamel red)
+and SVG symbols framed as vintage reel tiles.
 
 - Single-page terminal at `/`, HTML/CSS/ES5 without the Privy runtime on the older iPad.
 - Embedded wallet login and creation at `/phone`, using a passkey or email OTP.

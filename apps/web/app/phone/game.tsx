@@ -27,31 +27,31 @@ export function PhoneGame({session, api, onSession, onConfigured, transaction}: 
     if (working || !consent || transaction.busy || transaction.pending || roundBusy) return;
     setWorking(true); setError('');
     try {
-      if (!/^\d+(\.\d{1,6})?$/.test(amount) || parseUnits(amount, 6) <= 0n) throw new Error('Inserisci un budget USDC valido (massimo 6 decimali).');
+      if (!/^\d+(\.\d{1,6})?$/.test(amount) || parseUnits(amount, 6) <= 0n) throw new Error('Enter a valid USDC budget (up to 6 decimals).');
       const prepared: SessionView = grant ? session : await api('/phone/play/prepare', {budget: parseUnits(amount, 6).toString(), gasConsent: 'usdc-then-eth-v1'});
       onSession(prepared);
-      const permission = prepared.playGrant; if (!permission) throw new Error('Permesso non disponibile.');
+      const permission = prepared.playGrant; if (!permission) throw new Error('Permission unavailable.');
       const latest = await api('/phone/game');
       if (latest.player.allowance !== permission.budget) await transaction.execute('approveBudget', [permission.budget]);
       await addSigners({address: session.address!, signers: [{signerId: permission.signerId, policyIds: [permission.policyId]}]});
       onSession(await api('/phone/play/activate', {}));
-    } catch (cause) {setError(cause instanceof Error ? cause.message : 'Autorizzazione non completata. Riprova.');}
+    } catch (cause) {setError(cause instanceof Error ? cause.message : 'Approval not completed. Try again.');}
     finally {setWorking(false);}
   }
-  return <section className="phone-card phone-play-card"><span className="eyebrow">LA SLOT È COLLEGATA · BASE</span><h2>{active ? 'Tocca alla fortuna.' : 'Scegli il tuo budget.'}</h2>
-    <div className="play-facts"><span>Giocata attuale <b>{formatUnits(BigInt(state.settings.ticketPrice),6)} USDC</b></span><span>Free spin disponibili <b>{player?.freeSpins || '0'}</b></span></div>
-    {player && BigInt(player.freeSpins) > 0n && !active && <div className="permission-note"><b>Puoi già giocare gratis sull’iPad.</b><p>Hai {player.freeSpins} free spin. Tira la leva o premi USA FREE SPIN: non serve ricaricare né approvare USDC. Il gas è incluso.</p></div>}
-    {active ? <><div className="permission-note"><b>Giocate abilitate sull’iPad.</b><p>Budget USDC residuo: {formatUnits(BigInt(player?.allowance || '0'),6)}. Puoi chiudere il telefono e usare la leva o il pulsante sul tablet.</p></div>{player?.game?.pending && <p className="small">Giocata #{player.game.id} in attesa del reveal. Il backend la conclude anche se esci.</p>}</> : <>
-      <p>Autorizza alla slot un importo massimo di USDC. Ogni giocata confermata scala il prezzo corrente da questo budget.</p>
-      <label className="budget-label" htmlFor="play-budget">Budget USDC</label><input id="play-budget" inputMode="decimal" value={amount} disabled={!!grant || working || transaction.busy} onChange={event => setBudget(event.target.value.replace(',', '.'))}/>
-      <div className="permission-note"><b>Solo giocate su questa slot.</b><p>Il signer può avviare giocate senza aumentare il budget autorizzato alla slot. Le commissioni sono gestite da Privy. Il permesso termina al logout o dopo 3 minuti di inattività globale.</p></div>
-      <label className="check-row"><input type="checkbox" checked={consent} disabled={working} onChange={event => setConsent(event.target.checked)}/><span>Autorizzo le giocate entro questo budget, più le commissioni del mio wallet. Con gas USDC autorizzo il fallback in ETH se gli USDC non bastano.</span></label>
-      <button className="phone-primary" disabled={!consent || working || transaction.busy || transaction.pending || roundBusy} onClick={() => void authorize()}>{working ? 'Autorizzazione in corso…' : grant ? 'Completa autorizzazione' : 'Autorizza e gioca'} <span>↗</span></button>
+  return <section className="phone-card phone-play-card"><span className="eyebrow">THE SLOT IS LINKED · BASE</span><h2>{active ? 'Luck is up.' : 'Pick your budget.'}</h2>
+    <div className="play-facts"><span>Current spin <b>{formatUnits(BigInt(state.settings.ticketPrice),6)} USDC</b></span><span>Free spins available <b>{player?.freeSpins || '0'}</b></span></div>
+    {player && BigInt(player.freeSpins) > 0n && !active && <div className="permission-note"><b>You can already play for free on the iPad.</b><p>You have {player.freeSpins} free spins. Pull the lever or press FREE SPIN: no USDC top-up or approval needed. Gas is included.</p></div>}
+    {active ? <><div className="permission-note"><b>Spins enabled on the iPad.</b><p>Remaining USDC budget: {formatUnits(BigInt(player?.allowance || '0'),6)}. You can close your phone and use the lever or the button on the tablet.</p></div>{player?.game?.pending && <p className="small">Spin #{player.game.id} is waiting for the reveal. The keeper settles it even if you leave.</p>}</> : <>
+      <p>Approve a maximum USDC amount for the slot. Each confirmed spin deducts the current price from this budget.</p>
+      <label className="budget-label" htmlFor="play-budget">USDC budget</label><input id="play-budget" inputMode="decimal" value={amount} disabled={!!grant || working || transaction.busy} onChange={event => setBudget(event.target.value.replace(',', '.'))}/>
+      <div className="permission-note"><b>Spins on this slot only.</b><p>The signer can start spins but cannot raise the budget approved for the slot. Fees are handled by Privy. The permission ends at logout or after 3 minutes of global inactivity.</p></div>
+      <label className="check-row"><input type="checkbox" checked={consent} disabled={working} onChange={event => setConsent(event.target.checked)}/><span>I authorize spins within this budget, plus my wallet fees. With USDC gas I also authorize the ETH fallback if USDC is not enough.</span></label>
+      <button className="phone-primary" disabled={!consent || working || transaction.busy || transaction.pending || roundBusy} onClick={() => void authorize()}>{working ? 'Approving…' : grant ? 'Complete the approval' : 'Approve and play'} <span>↗</span></button>
     </>}
-    {transaction.pending && <div className="phone-progress" role="status">Richiesta in verifica. Attendiamo un esito certo.<button className="phone-text" disabled={transaction.busy} onClick={() => void transaction.check()}>Verifica transazione</button></div>}
+    {transaction.pending && <div className="phone-progress" role="status">Request under verification. Waiting for a definite result.<button className="phone-text" disabled={transaction.busy} onClick={() => void transaction.check()}>Check transaction</button></div>}
     {(error || transaction.error) && <p className="phone-error" role="alert">{error || transaction.error}</p>}
-    <p className="small">{state.gasMode === 'usdc' ? 'Commissioni aggiuntive in USDC. Se non bastano, usiamo ETH del tuo wallet su Base dopo un rifiuto prima dell’invio.' : 'Per il gas serve ETH nel tuo wallet su Base.'} I free spin non addebitano USDC.</p>
-    {active && <p className="small">Puoi modificare o revocare l’autorizzazione USDC nella sezione “Il tuo limite USDC” qui sotto, anche dopo aver terminato il collegamento.</p>}
-    {transaction.gasToken && <p className="small">Commissioni dell’ultima richiesta: {transaction.gasToken}.</p>}
+    <p className="small">{state.gasMode === 'usdc' ? 'Extra fees in USDC. If they are not enough, we use ETH from your wallet on Base after a rejection before sending.' : 'Gas needs ETH in your wallet on Base.'} Free spins do not charge USDC.</p>
+    {active && <p className="small">You can change or revoke the USDC approval in the “Your USDC limit” section below, even after ending the link.</p>}
+    {transaction.gasToken && <p className="small">Fees for the last request: {transaction.gasToken}.</p>}
   </section>;
 }

@@ -1,20 +1,20 @@
 import {BaseError, ContractFunctionRevertedError} from 'viem';
 export class SlotError extends Error {constructor(public code: string, message: string, public status = 409) {super(message);}}
 const messages: Record<string, string> = {
-  EnforcedPause: 'La macchina è in pausa.', ExpectedPause: 'Metti prima in pausa la macchina.',
-  PlayerAlreadyHasActiveGame: 'C’è già una giocata in corso per questo wallet.',
-  IncompletePaytable: 'La tabella premi non è completa: il totale deve essere 100%.',
+  EnforcedPause: 'The machine is paused.', ExpectedPause: 'Pause the machine first.',
+  PlayerAlreadyHasActiveGame: 'This wallet already has a spin in progress.',
+  IncompletePaytable: 'The prize table is incomplete: the total must be 100%.',
   InsufficientConfiguredPrizes: 'Servono almeno tre simboli configurati.',
-  InsufficientPrizeInventory: 'Le riserve dei premi non bastano per una nuova giocata.',
-  ActiveRoundsExist: 'Attendi la conclusione delle giocate attive prima di modificare la configurazione.',
-  NoFreeSpins: 'Non ci sono free spin disponibili.', RevealTooEarly: 'Attendiamo il blocco previsto dal contratto.',
-  RevealWindowExpired: 'Il termine per il reveal è scaduto.', RevealWindowStillOpen: 'Il termine per il reveal è ancora aperto.',
-  NoPendingRound: 'La giocata è già stata conclusa.', GameNotFound: 'Giocata non trovata.',
-  AccessControlUnauthorizedAccount: 'Questo wallet non ha il ruolo onchain richiesto.',
-  ERC20InsufficientAllowance: 'Autorizza un budget USDC sufficiente dal telefono.',
-  ERC20InsufficientBalance: 'Saldo del token insufficiente.', ProbabilityTotalExceeded: 'Il totale delle probabilità supera il 100%.',
-  InvalidDividendAmount: 'L’importo ERC-20 deve essere divisibile per due nelle unità minime.',
-  PaymentTokenCannotBePrize: 'USDC è il token di pagamento e non può essere un premio.',
+  InsufficientPrizeInventory: 'Prize reserves are not enough for a new spin.',
+  ActiveRoundsExist: 'Wait for active spins to settle before changing the configuration.',
+  NoFreeSpins: 'No free spins available.', RevealTooEarly: 'Waiting for the block required by the contract.',
+  RevealWindowExpired: 'The reveal window has expired.', RevealWindowStillOpen: 'The reveal window is still open.',
+  NoPendingRound: 'This spin has already been settled.', GameNotFound: 'Spin not found.',
+  AccessControlUnauthorizedAccount: 'This wallet does not have the required onchain role.',
+  ERC20InsufficientAllowance: 'Approve a sufficient USDC budget from your phone.',
+  ERC20InsufficientBalance: 'Insufficient token balance.', ProbabilityTotalExceeded: 'The probability total exceeds 100%.',
+  InvalidDividendAmount: 'The ERC-20 amount must be divisible by two in base units.',
+  PaymentTokenCannotBePrize: 'USDC is the payment token and cannot be a prize.',
 };
 export function slotError(error: unknown): SlotError {
   if (error instanceof SlotError) return error;
@@ -23,5 +23,5 @@ export function slotError(error: unknown): SlotError {
     const name = revert.data?.errorName || 'ContractReverted';
     return new SlotError(name, messages[name] || `Il contratto ha rifiutato l’operazione (${name}).`);
   }
-  return new SlotError('Unavailable', 'Connessione onchain non disponibile. Verifica lo stato prima di riprovare.', 503);
+  return new SlotError('Unavailable', 'Onchain connection unavailable. Check the status before retrying.', 503);
 }

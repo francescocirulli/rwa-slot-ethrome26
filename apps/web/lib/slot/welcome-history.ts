@@ -20,7 +20,7 @@ export function createWelcomeHistory(reader: SlotReader) {
   async function scan(player: Address): Promise<WelcomeHistory> {
     const key = player.toLowerCase();
     const head = await client.getBlock({blockTag: 'latest'});
-    if (head.number < config.deploymentBlock) throw new SlotError('WrongDeployment', 'Lo storico del contratto non è disponibile.', 503);
+    if (head.number < config.deploymentBlock) throw new SlotError('WrongDeployment', 'The contract history is unavailable.', 503);
     let cached = scans.get(key);
     if (cached && (cached.through > head.number || (await client.getBlock({blockNumber: cached.through})).hash !== cached.hash)) {
       scans.delete(key); cached = undefined;
@@ -40,7 +40,7 @@ export function createWelcomeHistory(reader: SlotReader) {
         if (tx.to?.toLowerCase() !== config.address.toLowerCase() || tx.value !== 0n || ![data, nativeData].includes(tx.input.toLowerCase())) continue;
         const receipt = await client.getTransactionReceipt({hash: event.transactionHash});
         if (receipt.status !== 'success' || receipt.blockHash !== event.blockHash || tx.blockHash !== event.blockHash) {
-          throw new SlotError('WelcomeHistoryChanged', 'Verifichiamo lo storico del bonus. Riprova tra poco.', 503);
+          throw new SlotError('WelcomeHistoryChanged', 'Checking the bonus history. Try again shortly.', 503);
         }
         transactionHash = event.transactionHash; break;
       }
@@ -50,7 +50,7 @@ export function createWelcomeHistory(reader: SlotReader) {
     // A failed/inconsistent RPC read never advances the cursor or authorizes another credit.
     const checkpoint = await client.getBlock({blockNumber: through});
     if ((await client.getBlock({blockNumber: head.number})).hash !== head.hash) {
-      throw new SlotError('WelcomeHistoryChanged', 'Verifichiamo lo storico del bonus. Riprova tra poco.', 503);
+      throw new SlotError('WelcomeHistoryChanged', 'Checking the bonus history. Try again shortly.', 503);
     }
     if (scans.size >= 512 && !scans.has(key)) scans.delete(scans.keys().next().value!);
     scans.set(key, {through, hash: checkpoint.hash, transactionHash});

@@ -92,7 +92,7 @@ test('browser cancellation never returns a signature to the SDK',async()=>{
   const request=new Request(origin+input,{...init,headers:{...Object.fromEntries(new Headers(init?.headers)),Origin:origin}});
   if(input==='/api/wallet-authorization')return handle(request);
   return withWalletAuthorization(request,{userId:owner,wallets:[]},async authorization=>{await authorization.sign_fns[0](bytes);completed=true;return Response.json({ok:true});});
- }}),/Autorizzazione Privy non completata/);
+ }}),/Privy authorization not completed/);
  assert.equal(completed,false);
 });
 

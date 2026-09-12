@@ -1,7 +1,15 @@
-# Lucky Signal
+# Wall Street Slot
 
-Arcade slot machine for a shared iPad, with phone login, embedded Privy wallets
-and USDC on Base. Integrates `DigitalSlotMachine` from [`../../contracts`](../../contracts):
+Retro arcade slot machine for a shared iPad, with phone login, embedded Privy
+wallets and USDC on Base. The terminal, phone and admin copy is in English; the
+iPad skin uses system fonts only because the terminal CSP has no `font-src`.
+The terminal opens straight on the slot with the wallet QR code in a side
+panel; there is no attract screen. The header holds Info (how it works, odds,
+prizes), Sound, Full screen, Settings (log out, demo switch, Arduino link) and
+a toggle that hides the wallet panel so the slot fills the page. The full-screen
+button uses the Fullscreen API with the WebKit prefix and hides itself where the
+browser does not support it. Decorative dice, cards and chips live in
+`public/decor` and are never part of the layout. Integrates `DigitalSlotMachine` from [`../../contracts`](../../contracts):
 paid spins, free spins, automatic reveal and an onchain admin console.
 Without a configured contract address, wallet login, holdings and pairing remain
 available while game operations and reviewed wallet writes are disabled.
@@ -94,6 +102,23 @@ recovery; once a hash is known, receipt recovery survives a service restart. Thi
 uses the existing single-service, in-memory architecture and adds no database or
 replica. User-owned wallet requests still use exact Privy SDK request authorization,
 never the keeper or shared admin wallet.
+
+The “Scansiona QR dell’iPad” button opens the rear camera from `/phone`. Camera
+access is requested only after tapping it; closing, backgrounding or decoding a QR
+stops every track, including a permission response arriving after closure. If camera
+access is unavailable, a photo can be selected and decoded locally. Images are not
+uploaded. Only a `/phone#pair=…` URL on the current app origin with a valid secret is
+accepted; scanned URLs never cause navigation. The backend still checks QR expiry
+and the user must confirm the matching iPad code before pairing.
+
+Allowance and wallet-write readiness use current contract reads and the confirmation
+block, independently of spin/bonus history scans. Pending local submissions and
+rounds settling within the confirmation window still block writes. RPC errors are
+shown as unavailable chain data, not an expired login. Gameplay history and bonus
+recovery still require an RPC supporting historical `eth_getLogs` ranges of up to
+2,000 blocks. Providers with smaller plan limits must be upgraded or configured
+with a compatible endpoint; the RPC URL belongs in server-side `BASE_RPC_URL`,
+never in committed source.
 
 Scanning a QR while signed in asks only to confirm the matching iPad code. The
 phone distinguishes ending that pairing, revoking USDC allowance and logging out.
@@ -252,7 +277,10 @@ deployment. Physical iPad and email OTP checks also remain outstanding.
 
 The admin panel includes **Swap** (LI.FI API, USDC or native ETH → six supported
 Base RWA tokens) and **Inventory** (shared wallet balances, NFT placeholders,
-free-spin counter and reviewed contract deposits). See
+free-spin counter and reviewed contract deposits). The Swap tab also offers a
+quick-fund action that computes the missing reserve for a chosen number of rounds,
+buys the shortfall of the six RWA tokens with USDC and prepares the deposit
+transactions in sequence. See
 [assets and swap setup](docs/assets-and-swaps.md) for token addresses, decimal
 precision, deployment mapping, Privy gas setup, collaborator permission
 upgrades and recovery behavior. Both owner and authorized collaborators can

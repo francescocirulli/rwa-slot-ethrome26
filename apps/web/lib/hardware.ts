@@ -18,25 +18,25 @@ export function createHardware({origin, token, now = Date.now}: {origin: string;
     'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...(cookie ? {'Set-Cookie': cookie} : {})}});
   return {async handle(req: Request): Promise<Response> {
     const path = new URL(req.url).pathname;
-    if (!token || token.length < 32) return response({error: 'Hardware non configurato.'}, 503);
-    if (req.method !== 'POST') return response({error: 'Metodo non consentito.'}, 405);
+    if (!token || token.length < 32) return response({error: 'Hardware not configured.'}, 503);
+    if (req.method !== 'POST') return response({error: 'Method not allowed.'}, 405);
     const device = path === '/api/hardware/device';
     if (device) {
-      if (!safe(req.headers.get('authorization') || '', 'Bearer ' + token)) return response({error: 'Accesso non valido.'}, 401);
-    } else if (req.headers.get('origin') !== origin || req.headers.get('x-slot-request') !== '1') return response({error: 'Origine non valida.'}, 403);
-    if (!req.headers.get('content-type')?.startsWith('application/json')) return response({error: 'Formato non valido.'}, 415);
+      if (!safe(req.headers.get('authorization') || '', 'Bearer ' + token)) return response({error: 'Invalid access.'}, 401);
+    } else if (req.headers.get('origin') !== origin || req.headers.get('x-slot-request') !== '1') return response({error: 'Invalid origin.'}, 403);
+    if (!req.headers.get('content-type')?.startsWith('application/json')) return response({error: 'Invalid format.'}, 415);
     let input: Record<string, unknown>;
     try {
       const reader = req.body?.getReader(); let raw = '', size = 0; const decoder = new TextDecoder();
-      if (reader) while (true) {const part = await reader.read(); if (part.done) break; size += part.value.length; if (size > 4096) {await reader.cancel(); return response({error: 'Richiesta troppo grande.'}, 413);} raw += decoder.decode(part.value, {stream: true});}
+      if (reader) while (true) {const part = await reader.read(); if (part.done) break; size += part.value.length; if (size > 4096) {await reader.cancel(); return response({error: 'Request too large.'}, 413);} raw += decoder.decode(part.value, {stream: true});}
       input = JSON.parse(raw + decoder.decode()); if (!input || Array.isArray(input) || typeof input !== 'object') throw new Error();
-    } catch {return response({error: 'Richiesta non valida.'}, 400);}
+    } catch {return response({error: 'Invalid request.'}, 400);}
     const t = now();
     if (device) {
-      if (typeof input.deviceId !== 'string' || !/^[a-f0-9]{32}$/.test(input.deviceId) || !Number.isSafeInteger(input.seq) || Number(input.seq) < 1 || typeof input.online !== 'boolean') return response({error: 'Stato non valido.'}, 400);
+      if (typeof input.deviceId !== 'string' || !/^[a-f0-9]{32}$/.test(input.deviceId) || !Number.isSafeInteger(input.seq) || Number(input.seq) < 1 || typeof input.online !== 'boolean') return response({error: 'Invalid state.'}, 400);
       // Reconnect clears all eligibility. A new device boot must reacquire it.
       if (deviceId !== input.deviceId) {
-        if (deviceId && t - deviceSeen < 5000) return response({error: 'Un dispositivo è già attivo.'}, 409);
+        if (deviceId && t - deviceSeen < 5000) return response({error: 'A device is already active.'}, 409);
         deviceId = input.deviceId; sequence = 0; gate = ''; consumedGate = ''; events = [];
       }
       deviceSeen = t; deviceOnline = input.online;
@@ -59,18 +59,18 @@ export function createHardware({origin, token, now = Date.now}: {origin: string;
     }
     if (path === '/api/hardware/pair') {
       if (t >= attemptUntil) {attempts = 0; attemptUntil = t + 60000;}
-      if (++attempts > 10) return response({error: 'Troppi tentativi. Attendi un minuto.'}, 429);
-      if (!code || t >= codeUntil || !safe(String(input.code || ''), code) || t - deviceSeen >= 5000) return response({error: 'Codice scaduto o dispositivo offline.'}, 403);
+      if (++attempts > 10) return response({error: 'Too many attempts. Wait a minute.'}, 429);
+      if (!code || t >= codeUntil || !safe(String(input.code || ''), code) || t - deviceSeen >= 5000) return response({error: 'Code expired or device offline.'}, 403);
       binding = randomBytes(32).toString('hex'); code = ''; gate = ''; consumedGate = ''; events = []; command = idle; tabletSeen = 0;
       return response({ok: true}, 200, `slot_hardware=${binding}; Path=/api/hardware; HttpOnly; SameSite=Strict${origin.startsWith('https:') ? '; Secure' : ''}`);
     }
-    if (path !== '/api/hardware/tablet') return response({error: 'Risorsa non trovata.'}, 404);
+    if (path !== '/api/hardware/tablet') return response({error: 'Resource not found.'}, 404);
     const cookie = (req.headers.get('cookie') || '').split(';').map(s => s.trim()).find(s => s.startsWith('slot_hardware='))?.slice(14) || '';
-    if (!binding || !safe(cookie, binding)) return response({error: 'Collega Arduino con il codice sul display Arduino.'}, 401);
-    if (typeof input.gate !== 'string' || input.gate.length > 80) return response({error: 'Stato non valido.'}, 400);
+    if (!binding || !safe(cookie, binding)) return response({error: 'Link Arduino with the code on the Arduino display.'}, 401);
+    if (typeof input.gate !== 'string' || input.gate.length > 80) return response({error: 'Invalid state.'}, 400);
     const c = input.command as Record<string, unknown> | undefined;
-    if (!c || !['idle','attract','ready','blocked','spin','result'].includes(String(c.cmd))) return response({error: 'Comando non valido.'}, 400);
-    if (c.cmd === 'result' && (!Number.isInteger(c.tier) || Number(c.tier) < 0 || Number(c.tier) > 3 || typeof c.hub !== 'boolean')) return response({error: 'Risultato non valido.'}, 400);
+    if (!c || !['idle','attract','ready','blocked','spin','result'].includes(String(c.cmd))) return response({error: 'Invalid command.'}, 400);
+    if (c.cmd === 'result' && (!Number.isInteger(c.tier) || Number(c.tier) < 0 || Number(c.tier) > 3 || typeof c.hub !== 'boolean')) return response({error: 'Invalid result.'}, 400);
     const wasAlive = !!tabletSeen && t - tabletSeen < 2000;
     tabletSeen = t;
     gate = input.gate === consumedGate ? '' : input.gate;

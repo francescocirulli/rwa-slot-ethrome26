@@ -34,7 +34,7 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
   sweepTimer.unref();
   function valid(s: Session) {
     if (s.expiresAt <= now() || pairs.get(s.secretHash) !== s) {
-      revoke(s); throw new ApiError(401, 'Sessione terminata. Scansiona il nuovo QR sull’iPad.');
+      revoke(s); throw new ApiError(401, 'Session ended. Scan the new QR code on the iPad.');
     }
   }
   function cookie(req: Request, name: string) {
@@ -45,24 +45,24 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
     return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax${normalizedOrigin.startsWith('https:') ? '; Secure' : ''}${value ? '' : '; Max-Age=0'}`;
   }
   async function identity(req: Request) {
-    if (!walletService) throw new ApiError(503, 'Il collegamento sarà disponibile tra poco.');
+    if (!walletService) throw new ApiError(503, 'Linking will be available shortly.');
     const token = req.headers.get('authorization')?.match(/^Bearer ([^ ]+)$/)?.[1];
-    if (!token || token.length > 16_000) throw new ApiError(401, 'Accedi sul telefono per continuare.');
+    if (!token || token.length > 16_000) throw new ApiError(401, 'Sign in on your phone to continue.');
     try {return await walletService.authenticate(token);}
-    catch {throw new ApiError(401, 'Accesso non verificato. Accedi di nuovo sul telefono.');}
+    catch {throw new ApiError(401, 'Access not verified. Sign in again on your phone.');}
   }
   function tablet(req: Request) {
     const s = tablets.get(hash(cookie(req, 'slot_tablet')));
-    if (!s) throw new ApiError(401, 'Sessione terminata.');
+    if (!s) throw new ApiError(401, 'Session ended.');
     valid(s); return s;
   }
   async function phone(req: Request): Promise<{s: Session; user: Identity}> {
     const s = phones.get(hash(cookie(req, 'slot_phone')));
-    if (!s) throw new ApiError(401, 'Sessione terminata. Scansiona il QR sull’iPad.');
+    if (!s) throw new ApiError(401, 'Session ended. Scan the QR code on the iPad.');
     valid(s);
     const user = await identity(req);
     valid(s);
-    if (s.userId !== user.userId) throw new ApiError(403, 'Il collegamento appartiene a un altro account.');
+    if (s.userId !== user.userId) throw new ApiError(403, 'This link belongs to another account.');
     return {s, user};
   }
   function touch(s: Session) {valid(s); if (s.state !== 'pending') s.expiresAt = now() + IDLE_MS;}
@@ -101,23 +101,23 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
           if (path === '/tablet/game' || path === '/phone/game') {
             const s = path.startsWith('/tablet') ? tablet(req) : (await phone(req)).s;
             if (!slot) return json({configured: false});
-            if (!s.wallet || s.state !== 'active') throw new ApiError(409, 'Collega prima il wallet.');
+            if (!s.wallet || s.state !== 'active') throw new ApiError(409, 'Link the wallet first.');
             const [config, player] = await Promise.all([slot.reader.snapshot(), slot.playerView(s.wallet.address as Address)]);
             valid(s); return json({sessionId: s.id, ...config, player, keeper: slot.health()});
           }
           if (path === '/tablet/balance' || path === '/phone/balance') {
             const s = path.startsWith('/tablet') ? tablet(req) : (await phone(req)).s;
-            if (!s.wallet) throw new ApiError(409, 'Wallet non ancora collegato.');
+            if (!s.wallet) throw new ApiError(409, 'Wallet not linked yet.');
             const balance = await readBalance(s.wallet.address);
             valid(s); return json({sessionId: s.id, balance});
           }
-          throw new ApiError(404, 'Risorsa non trovata.');
+          throw new ApiError(404, 'Resource not found.');
         }
-        if (req.method !== 'POST') throw new ApiError(405, 'Metodo non consentito.');
+        if (req.method !== 'POST') throw new ApiError(405, 'Method not allowed.');
         if (req.headers.get('origin') !== normalizedOrigin || req.headers.get('x-slot-request') !== '1') {
-          throw new ApiError(403, 'Origine della richiesta non valida.');
+          throw new ApiError(403, 'Invalid request origin.');
         }
-        if (!req.headers.get('content-type')?.startsWith('application/json')) throw new ApiError(415, 'Formato non valido.');
+        if (!req.headers.get('content-type')?.startsWith('application/json')) throw new ApiError(415, 'Invalid format.');
         // Bound body size while reading, before allocating the entire payload.
         const reader = req.body?.getReader();
         let raw = '', bytes = 0;
@@ -126,18 +126,18 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
           while (true) {
             const chunk = await reader.read(); if (chunk.done) break;
             bytes += chunk.value.byteLength;
-            if (bytes > 12_000) {await reader.cancel(); throw new ApiError(413, 'Richiesta troppo grande.');}
+            if (bytes > 12_000) {await reader.cancel(); throw new ApiError(413, 'Request too large.');}
             raw += decoder.decode(chunk.value, {stream: true});
           }
           raw += decoder.decode();
         }
         let input: Record<string, unknown>;
         try {input = JSON.parse(raw || '{}'); if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error();}
-        catch {throw new ApiError(400, 'Richiesta non valida.');}
+        catch {throw new ApiError(400, 'Invalid request.');}
 
         if (path === '/pair') {
           creates = creates.filter((time) => time > now() - 60_000);
-          if (creates.length >= 30 || pairs.size >= 120) throw new ApiError(429, 'Attendi un momento prima di riprovare.');
+          if (creates.length >= 30 || pairs.size >= 120) throw new ApiError(429, 'Wait a moment before trying again.');
           creates.push(now());
           const previous = tablets.get(hash(cookie(req, 'slot_tablet')));
           if (previous) revoke(previous);
@@ -149,16 +149,16 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
           return json(await view(s), 201, cookieHeader('slot_tablet', token));
         }
         if (path === '/lookup' || path === '/approve') {
-          if (typeof input.secret !== 'string' || !/^[a-f0-9]{64}$/.test(input.secret)) throw new ApiError(400, 'QR non valido.');
+          if (typeof input.secret !== 'string' || !/^[a-f0-9]{64}$/.test(input.secret)) throw new ApiError(400, 'Invalid QR code.');
           const s = pairs.get(hash(input.secret));
-          if (!s || s.expiresAt <= now() || s.state !== 'pending') throw new ApiError(410, 'QR scaduto o già utilizzato. Scansiona quello sull’iPad.');
+          if (!s || s.expiresAt <= now() || s.state !== 'pending') throw new ApiError(410, 'QR code expired or already used. Scan the one on the iPad.');
           if (path === '/lookup') return json({code: s.code, expiresAt: s.expiresAt, origin: normalizedOrigin});
-          if (input.code !== s.code) throw new ApiError(400, 'Il codice non corrisponde.');
+          if (input.code !== s.code) throw new ApiError(400, 'The code does not match.');
           const user = await identity(req);
           valid(s);
-          if (s.state !== 'pending') throw new ApiError(409, 'QR già utilizzato.');
+          if (s.state !== 'pending') throw new ApiError(409, 'QR code already used.');
           const wallet = user.wallets[0];
-          if (!wallet) throw new ApiError(409, 'Il wallet è in preparazione. Attendi qualche secondo e riprova.');
+          if (!wallet) throw new ApiError(409, 'Your wallet is being prepared. Wait a few seconds and try again.');
           const previous = users.get(user.userId);
           if (previous && previous !== s) revoke(previous);
           const previousPhone = phones.get(hash(cookie(req, 'slot_phone')));
@@ -175,7 +175,7 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
         }
         if (path === '/tablet/claim') {
           const s = tablet(req);
-          if (s.state !== 'approved') throw new ApiError(409, 'Collegamento non disponibile.');
+          if (s.state !== 'approved') throw new ApiError(409, 'Link not available.');
           tablets.delete(s.tabletHash);
           const token = random(); s.tabletHash = hash(token); s.state = 'active';
           tablets.set(s.tabletHash, s);
@@ -193,7 +193,7 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
         if (path === '/phone/welcome') {
           const {s, user} = await phone(req);
           if (!s.wallet || !user.wallets.some(wallet => wallet.id === s.wallet!.id && wallet.address.toLowerCase() === s.wallet!.address.toLowerCase())) {
-            throw new ApiError(403, 'Il wallet non appartiene a questo account.');
+            throw new ApiError(403, 'This wallet does not belong to this account.');
           }
           s.welcome = welcome ? await welcome.request(user, s.wallet) : {status: 'unavailable', amount: '2'};
           // Automatic bonus recovery must not extend the global inactivity deadline.
@@ -201,11 +201,11 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
         }
         if (path === '/phone/prepare' || path === '/phone/activate') {
           const {s, user} = await phone(req);
-          if (s.state !== 'active' || !s.wallet) throw new ApiError(409, 'Attendi il collegamento dell’iPad.');
+          if (s.state !== 'active' || !s.wallet) throw new ApiError(409, 'Wait for the iPad to finish linking.');
           if (!user.wallets.some((wallet) => wallet.id === s.wallet!.id && wallet.address.toLowerCase() === s.wallet!.address.toLowerCase())) {
-            throw new ApiError(403, 'Il wallet non appartiene a questo account.');
+            throw new ApiError(403, 'This wallet does not belong to this account.');
           }
-          if (s.busy) throw new ApiError(409, 'Autorizzazione già in corso.');
+          if (s.busy) throw new ApiError(409, 'Approval already in progress.');
           touch(s); s.busy = true;
           try {
             if (path.endsWith('/prepare') && !s.grant) {
@@ -213,7 +213,7 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
               try {valid(s);} catch (error) {walletService!.revoke(grant); throw error;}
               s.grant = grant;
             } else if (path.endsWith('/activate')) {
-              if (!s.grant) throw new ApiError(409, 'Prepara prima il collegamento.');
+              if (!s.grant) throw new ApiError(409, 'Prepare the link first.');
               await walletService!.activate(s.grant); valid(s);
             }
           } finally {s.busy = false;}
@@ -221,25 +221,25 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
         }
         if (path === '/phone/play/prepare' || path === '/phone/play/activate') {
           const {s, user} = await phone(req);
-          if (!slot || !walletService?.preparePlay) throw new ApiError(503, 'Contratto non ancora configurato.');
-          if (s.state !== 'active' || !s.wallet) throw new ApiError(409, 'Attendi il collegamento dell’iPad.');
-          if (!user.wallets.some(wallet => wallet.id === s.wallet!.id && wallet.address.toLowerCase() === s.wallet!.address.toLowerCase())) throw new ApiError(403, 'Il wallet non appartiene a questo account.');
-          if (s.busy) throw new ApiError(409, 'Autorizzazione già in corso.');
+          if (!slot || !walletService?.preparePlay) throw new ApiError(503, 'Contract not configured yet.');
+          if (s.state !== 'active' || !s.wallet) throw new ApiError(409, 'Wait for the iPad to finish linking.');
+          if (!user.wallets.some(wallet => wallet.id === s.wallet!.id && wallet.address.toLowerCase() === s.wallet!.address.toLowerCase())) throw new ApiError(403, 'This wallet does not belong to this account.');
+          if (s.busy) throw new ApiError(409, 'Approval already in progress.');
           touch(s); s.busy = true;
           try {
             if (path.endsWith('/prepare')) {
-              if (slot.reader.config.gasMode === 'usdc' && input.gasConsent !== GAS_CONSENT) throw new ApiError(400, 'Conferma le commissioni USDC con fallback ETH sul telefono.');
-              if (typeof input.budget !== 'string' || !/^[1-9][0-9]{0,17}$/.test(input.budget)) throw new ApiError(400, 'Budget non valido.');
+              if (slot.reader.config.gasMode === 'usdc' && input.gasConsent !== GAS_CONSENT) throw new ApiError(400, 'Confirm USDC fees with ETH fallback on your phone.');
+              if (typeof input.budget !== 'string' || !/^[1-9][0-9]{0,17}$/.test(input.budget)) throw new ApiError(400, 'Invalid budget.');
               const settings = await slot.reader.settings(); valid(s);
-              if (BigInt(input.budget) < settings.ticketPrice) throw new ApiError(400, 'Il budget deve coprire almeno una giocata.');
-              if (s.playGrant) throw new ApiError(409, 'Budget già preparato. Completa il consenso oppure ricollega la sessione.');
+              if (BigInt(input.budget) < settings.ticketPrice) throw new ApiError(400, 'The budget must cover at least one spin.');
+              if (s.playGrant) throw new ApiError(409, 'Budget already prepared. Complete the consent or link the session again.');
               const grant = await walletService.preparePlay(s.wallet, user.userId, s.id, s.code, slot.reader.config.address, slot.reader.config.chainId, input.budget);
               try {valid(s);} catch (error) {walletService.revoke(grant); throw error;}
               grant.gasMode = slot.reader.config.gasMode; s.playGrant = grant;
             } else {
-              if (!s.playGrant) throw new ApiError(409, 'Prepara prima il budget.');
+              if (!s.playGrant) throw new ApiError(409, 'Prepare the budget first.');
               const player = await slot.reader.player(s.wallet.address as Address); valid(s);
-              if (player.allowance !== BigInt(s.playGrant.budget)) throw new ApiError(409, 'Conferma sul telefono l’approvazione USDC per il budget esatto.');
+              if (player.allowance !== BigInt(s.playGrant.budget)) throw new ApiError(409, 'Confirm the USDC approval for the exact budget on your phone.');
               await walletService.activate(s.playGrant); valid(s);
             }
           } finally {s.busy = false;}
@@ -247,12 +247,12 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
         }
         if (path === '/tablet/spin' || path === '/phone/spin') {
           const s = path.startsWith('/tablet') ? tablet(req) : (await phone(req)).s;
-          if (!slot || !s.wallet || s.state !== 'active') throw new ApiError(409, 'Collega il wallet e configura il contratto.');
-          if (typeof input.afterGameId !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(input.afterGameId)) throw new ApiError(400, 'Riferimento giocata non valido.');
-          if (input.mode !== 'free' && input.mode !== 'paid') throw new ApiError(400, 'Tipo di giocata non valido.');
+          if (!slot || !s.wallet || s.state !== 'active') throw new ApiError(409, 'Link the wallet and configure the contract.');
+          if (typeof input.afterGameId !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(input.afterGameId)) throw new ApiError(400, 'Invalid spin reference.');
+          if (input.mode !== 'free' && input.mode !== 'paid') throw new ApiError(400, 'Invalid spin type.');
           touch(s);
           const grant = s.playGrant;
-          if (input.mode === 'paid' && (!grant?.active || !walletService?.sendSpin)) throw new ApiError(403, 'Autorizza il budget e le giocate sul telefono.');
+          if (input.mode === 'paid' && (!grant?.active || !walletService?.sendSpin)) throw new ApiError(403, 'Approve the budget and spins on your phone.');
           const operation = await slot.start(s.wallet.address as Address, BigInt(input.afterGameId), input.mode, {
             assertSession: () => {valid(s);}, maxPrice: grant ? BigInt(grant.budget) : undefined,
             sendPaid: grant ? (key) => {valid(s); return walletService!.sendSpin!(grant, key, grant.gasMode || slot.reader.config.gasMode, () => {valid(s);});} : undefined,
@@ -262,7 +262,7 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
         }
         if (path === '/tablet/sign') {
           const s = tablet(req);
-          if (!s.grant?.active || !walletService || s.state !== 'active') throw new ApiError(403, 'Autorizza la firma dal telefono.');
+          if (!s.grant?.active || !walletService || s.state !== 'active') throw new ApiError(403, 'Approve the signature from your phone.');
           touch(s);
           if (s.proof) return json(await view(s));
           s.proof = {status: 'pending', message: s.grant.message};
@@ -275,7 +275,7 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
           }
           return json(await view(s));
         }
-        throw new ApiError(404, 'Risorsa non trovata.');
+        throw new ApiError(404, 'Resource not found.');
       } catch (error) {
         if (error instanceof SlotError) return json({error: error.message, code: error.code}, error.status);
         // Never serialize upstream SDK errors: they may include credentials.

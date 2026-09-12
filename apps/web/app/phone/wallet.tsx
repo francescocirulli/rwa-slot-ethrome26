@@ -15,47 +15,47 @@ export function PhoneWallet({wallet,transaction,paired,reload,loading=false}:{wa
   async function approve(value:string) {
     setError('');
     try {
-      if(!/^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$/.test(value))throw new Error('Inserisci un limite USDC con massimo 6 decimali.');
-      const units=parseUnits(value,6);if(units.toString().length>18)throw new Error('Limite troppo alto.');
+      if(!/^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$/.test(value))throw new Error('Enter a USDC limit with at most 6 decimals.');
+      const units=parseUnits(value,6);if(units.toString().length>18)throw new Error('Limit too high.');
       await transaction.execute('approveBudget',[units.toString()]);reload();
-    }catch(cause){setError(cause instanceof Error?cause.message:'Autorizzazione non completata.');}
+    }catch(cause){setError(cause instanceof Error?cause.message:'Approval not completed.');}
   }
   async function transfer() {
     if(!selection||locked)return;
     setError('');
     try {
-      if(!isAddress(recipient)||recipient.toLowerCase()===wallet.address.toLowerCase()||recipient===zeroAddress||recipient.toLowerCase()===portfolio?.contract?.toLowerCase()||recipient.toLowerCase()===selection.token.toLowerCase())throw new Error('Inserisci un indirizzo esterno valido sulla rete Base.');
+      if(!isAddress(recipient)||recipient.toLowerCase()===wallet.address.toLowerCase()||recipient===zeroAddress||recipient.toLowerCase()===portfolio?.contract?.toLowerCase()||recipient.toLowerCase()===selection.token.toLowerCase())throw new Error('Enter a valid external address on the Base network.');
       const units=selection.decimals?assetUnits(amount,selection.decimals):/^[1-9][0-9]*$/.test(amount)?BigInt(amount):0n;
-      if(units<=0n||selection.balance===null||units>BigInt(selection.balance))throw new Error('Quantità superiore al saldo disponibile o non valida.');
+      if(units<=0n||selection.balance===null||units>BigInt(selection.balance))throw new Error('Amount above the available balance or invalid.');
       await transaction.execute(selection.tokenId?'transferERC1155':'transferERC20',selection.tokenId?[selection.token,selection.tokenId,recipient,units.toString()]:[selection.token,recipient,units.toString()]);
       setSelection(null);setAmount('');setRecipient('');reload();
-    }catch(cause){setError(cause instanceof Error?cause.message:'Trasferimento non completato.');}
+    }catch(cause){setError(cause instanceof Error?cause.message:'Transfer not completed.');}
   }
   return <>
-    <section className="phone-card"><div className="wallet-heading"><span className="eyebrow">IL TUO WALLET</span><span className="base-badge">● BASE</span></div>
+    <section className="phone-card"><div className="wallet-heading"><span className="eyebrow">YOUR WALLET</span><span className="base-badge">● BASE</span></div>
       <div className="phone-balance">{wallet.balance.amount??'—'} <span>USDC</span></div>
-      <p className="small">{wallet.balance.stale?'Saldo da aggiornare. ':''}ETH per il gas: {portfolio?.eth??'—'}</p>
-      <button className="phone-text" disabled={loading} onClick={reload}>{loading?'Aggiornamento…':'Aggiorna saldi ↻'}</button>
-      <details className="wallet-receive"><summary>Ricevi sul tuo wallet ↙</summary><div className="receive-box"><img src={wallet.depositQr} width="180" height="180" alt="Indirizzo wallet su Base"/><code>{wallet.address}</code><button className="phone-secondary" onClick={async()=>{try{await navigator.clipboard.writeText(wallet.address);setCopied(true);}catch{setError('Copia l’indirizzo mostrato sopra.');}}}>{copied?'Indirizzo copiato ✓':'Copia indirizzo'}</button><p className="small">Invia fondi a questo indirizzo sulla rete Base.</p></div></details>
+      <p className="small">{wallet.balance.stale?'Balance pending update. ':''}ETH for gas: {portfolio?.eth??'—'}</p>
+      <button className="phone-text" disabled={loading} onClick={reload}>{loading?'Refreshing…':'Refresh balances ↻'}</button>
+      <details className="wallet-receive"><summary>Receive on your wallet ↙</summary><div className="receive-box"><img src={wallet.depositQr} width="180" height="180" alt="Wallet address on Base"/><code>{wallet.address}</code><button className="phone-secondary" onClick={async()=>{try{await navigator.clipboard.writeText(wallet.address);setCopied(true);}catch{setError('Copy the address shown above.');}}}>{copied?'Address copied ✓':'Copy address'}</button><p className="small">Send funds to this address on the Base network.</p></div></details>
     </section>
-    {portfolio?.busy&&<div className="phone-progress" role="status">Giocata in corso{portfolio.gameId?' #'+portfolio.gameId:''}. Puoi vedere i saldi; modifiche e trasferimenti riprendono dopo il risultato.</div>}
-    {!portfolio&&<div className="phone-error" role="alert">Saldi premi e autorizzazione non disponibili. Aggiorna per riprovare.</div>}
-    {portfolio&&!portfolio.canTransact&&!portfolio.busy&&<p className="phone-progress" role="status">{portfolio.contract?'Verifichiamo lo stato onchain prima di abilitare le operazioni.':'La slot non è ancora configurata. Il wallet può ricevere fondi.'}</p>}
-    <section className="phone-card"><span className="eyebrow">SPESA SULLA SLOT</span><h2>Il tuo limite USDC.</h2>
-      <div className="play-facts"><span>Autorizzazione residua<b>{portfolio?.allowance!=null?formatUnits(BigInt(portfolio.allowance),6)+' USDC':'—'}</b></span><span>Free spin<b>{portfolio?.freeSpins??'—'}</b></span></div>
-      <p>Questo è l’importo che il contratto può spendere per le giocate. L’approve non trasferisce USDC e non collega un iPad.</p>
-      {paired&&<p className="permission-note">Se le giocate sono abilitate, l’iPad può utilizzare il nuovo limite durante questa sessione.</p>}
-      <form onSubmit={event=>{event.preventDefault();if(!locked)void approve(budget);}}><label htmlFor="wallet-allowance">Nuovo limite totale in USDC</label><input id="wallet-allowance" inputMode="decimal" value={budget} onChange={event=>setBudget(event.target.value.replace(',','.'))} disabled={locked}/><button className="phone-primary" disabled={locked}>Rivedi autorizzazione ↗</button></form>
-      <button className="phone-text" disabled={locked||portfolio?.allowance==null||portfolio.allowance==='0'} onClick={()=>void approve('0')}>Revoca autorizzazione USDC</button>
-      <p className="small">Il nuovo limite sostituisce quello residuo. Modifica e revoca richiedono una transazione con gas. Terminare il collegamento all’iPad lascia invariata questa autorizzazione.</p>
+    {portfolio?.busy&&<div className="phone-progress" role="status">Spin in progress{portfolio.gameId?' #'+portfolio.gameId:''}. You can see balances; changes and transfers resume after the result.</div>}
+    {!portfolio&&<div className="phone-error" role="alert">Prize balances and approval unavailable. Refresh to retry.</div>}
+    {portfolio&&!portfolio.canTransact&&!portfolio.busy&&<p className="phone-progress" role="status">{portfolio.contract?'Wallet connected. Onchain reads are unavailable: press “Refresh balances” to retry. An iPad connection is not required.':'The slot is not configured yet. The wallet can receive funds.'}</p>}
+    <section className="phone-card"><span className="eyebrow">SPENDING ON THE SLOT</span><h2>Your USDC limit.</h2>
+      <div className="play-facts"><span>Remaining approval<b>{portfolio?.allowance!=null?formatUnits(BigInt(portfolio.allowance),6)+' USDC':'—'}</b></span><span>Free spins<b>{portfolio?.freeSpins??'—'}</b></span></div>
+      <p>This is the amount the contract may spend on spins. The approval does not transfer USDC and does not link an iPad.</p>
+      {paired&&<p className="permission-note">If spins are enabled, the iPad can use the new limit during this session.</p>}
+      <form onSubmit={event=>{event.preventDefault();if(!locked)void approve(budget);}}><label htmlFor="wallet-allowance">New total USDC limit</label><input id="wallet-allowance" inputMode="decimal" value={budget} onChange={event=>setBudget(event.target.value.replace(',','.'))} disabled={locked}/><button className="phone-primary" disabled={locked}>Review approval ↗</button></form>
+      <button className="phone-text" disabled={locked||portfolio?.allowance==null||portfolio.allowance==='0'} onClick={()=>void approve('0')}>Revoke USDC approval</button>
+      <p className="small">The new limit replaces the remaining one. Changing and revoking need a transaction with gas. Ending the iPad link leaves this approval unchanged.</p>
     </section>
-    <section className="phone-card"><span className="eyebrow">TOKEN E PREMI</span><h2>Le tue vincite.</h2><p className="small">Quantità onchain su Base. I free spin si usano nella slot e non sono trasferibili.</p>
-      <div className="wallet-holdings">{holdings.map(holding=><div className="holding" key={holding.key}>{holding.logo?<img src={holding.logo} width="30" height="30" alt=""/>:<span className="holding-nft" aria-hidden="true">✦</span>}<div><b>{holding.name}</b><span>{holding.formatted??'Non disponibile'}{holding.tokenId?' · NFT #'+holding.tokenId:''}</span></div><button className="phone-text" disabled={locked||holding.balance===null||BigInt(holding.balance)<=0n} onClick={()=>{setSelection(holding);setAmount('');setRecipient('');setError('');}}>Invia<span className="sr-only"> {holding.name}</span> ↗</button></div>)}</div>
-      {selection&&<form className="wallet-send" onSubmit={event=>{event.preventDefault();void transfer();}}><h3>Invia {selection.name}</h3><p className="small">Disponibili: {holdings.find(item=>item.key===selection.key)?.formatted??'—'} · rete Base</p><label htmlFor="send-address">Indirizzo esterno destinatario</label><input id="send-address" autoComplete="off" spellCheck={false} value={recipient} onChange={event=>setRecipient(event.target.value.trim())} placeholder="0x…" disabled={locked} required/><label htmlFor="send-amount">{selection.tokenId?'Quantità NFT (intera)':'Quantità token'}</label><input id="send-amount" inputMode={selection.tokenId?'numeric':'decimal'} value={amount} onChange={event=>setAmount(event.target.value.replace(',','.'))} disabled={locked} required/><p className="small">Controlla la rete del destinatario: il trasferimento avviene su Base. Prima della firma vedrai quantità, indirizzo e modalità di pagamento del gas.</p><button className="phone-primary" disabled={locked}>Rivedi trasferimento ↗</button><button type="button" className="phone-text" disabled={transaction.busy} onClick={()=>setSelection(null)}>Chiudi trasferimento</button></form>}
+    <section className="phone-card"><span className="eyebrow">TOKENS AND PRIZES</span><h2>Your winnings.</h2><p className="small">Onchain amounts on Base. Free spins are used in the slot and cannot be transferred.</p>
+      <div className="wallet-holdings">{holdings.map(holding=><div className="holding" key={holding.key}>{holding.logo?<img src={holding.logo} width="30" height="30" alt=""/>:<span className="holding-nft" aria-hidden="true">✦</span>}<div><b>{holding.name}</b><span>{holding.formatted??'Unavailable'}{holding.tokenId?' · NFT #'+holding.tokenId:''}</span></div><button className="phone-text" disabled={locked||holding.balance===null||BigInt(holding.balance)<=0n} onClick={()=>{setSelection(holding);setAmount('');setRecipient('');setError('');}}>Send<span className="sr-only"> {holding.name}</span> ↗</button></div>)}</div>
+      {selection&&<form className="wallet-send" onSubmit={event=>{event.preventDefault();void transfer();}}><h3>Send {selection.name}</h3><p className="small">Available: {holdings.find(item=>item.key===selection.key)?.formatted??'—'} · Base network</p><label htmlFor="send-address">External recipient address</label><input id="send-address" autoComplete="off" spellCheck={false} value={recipient} onChange={event=>setRecipient(event.target.value.trim())} placeholder="0x…" disabled={locked} required/><label htmlFor="send-amount">{selection.tokenId?'NFT quantity (whole)':'Token amount'}</label><input id="send-amount" inputMode={selection.tokenId?'numeric':'decimal'} value={amount} onChange={event=>setAmount(event.target.value.replace(',','.'))} disabled={locked} required/><p className="small">Check the recipient network: the transfer happens on Base. Before signing you will see amount, address and how gas is paid.</p><button className="phone-primary" disabled={locked}>Review transfer ↗</button><button type="button" className="phone-text" disabled={transaction.busy} onClick={()=>setSelection(null)}>Close transfer</button></form>}
     </section>
-    {transaction.confirmed>0&&!transaction.busy&&!transaction.pending&&<div className="ready-card" role="status">Transazione confermata su Base. I saldi si aggiornano automaticamente.</div>}
-    {transaction.pending&&<div className="phone-progress" role="status">Transazione in verifica. Non inviarla di nuovo.<button className="phone-text" disabled={transaction.busy} onClick={()=>void transaction.check()}>Verifica transazione</button></div>}
+    {transaction.confirmed>0&&!transaction.busy&&!transaction.pending&&<div className="ready-card" role="status">Transaction confirmed on Base. Balances refresh automatically.</div>}
+    {transaction.pending&&<div className="phone-progress" role="status">Transaction under verification. Do not send it again.<button className="phone-text" disabled={transaction.busy} onClick={()=>void transaction.check()}>Check transaction</button></div>}
     {(error||transaction.error)&&<p className="phone-error" role="alert">{error||transaction.error}</p>}
-    {transaction.hash&&<a className="phone-chain-link" href={'https://basescan.org/tx/'+transaction.hash} target="_blank" rel="noreferrer">Vedi transazione su Base ↗</a>}
+    {transaction.hash&&<a className="phone-chain-link" href={'https://basescan.org/tx/'+transaction.hash} target="_blank" rel="noreferrer">View transaction on Base ↗</a>}
   </>;
 }
