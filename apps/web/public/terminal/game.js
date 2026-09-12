@@ -113,8 +113,13 @@
     var checking = sending || currentOperation && operation.stage === 'submitting' && !operation.hash;
     var inFlight = currentOperation && (operation.stage === 'confirming' || operation.stage === 'uncertain' || operation.stage === 'submitting' && operation.hash);
     var pending = game && game.pending, waitingConfirmation = game && game.hasResult && !game.confirmed;
+    var reserves = snapshot.prizeAvailability && snapshot.prizeAvailability.state;
     var unavailable = !online || checking || inFlight || pending || waitingConfirmation || player.busy || player.gameUnavailable || snapshot.settings.paused || snapshot.settings.totalOutcomeWeight !== 1000 || snapshot.settings.configuredPrizeCount < 3 || !snapshot.keeper.configured || snapshot.keeper.balanceWei === '0';
     var availability = !online ? 'Connection lost. New spins resume when the network is back.' : snapshot.settings.paused ? 'Machine paused. Open spins still settle onchain.' : snapshot.settings.totalOutcomeWeight !== 1000 || snapshot.settings.configuredPrizeCount < 3 ? 'The slot is getting ready. The prize table is not complete yet.' : player.gameUnavailable ? 'Connection to the current round is unavailable. Retrying automatically.' : !snapshot.keeper.configured || snapshot.keeper.balanceWei === '0' ? 'The game service is not ready. Please wait for the operator.' : '';
+    if (reserves && reserves !== 'ready') {
+      unavailable = true;
+      if (!availability) availability = reserves === 'restocking' ? 'Prize reserve too low. The operator needs to refill the machine. Your free spins are safe.' : reserves === 'unavailable' ? 'Prize availability could not be verified. Retrying automatically. Your free spins are safe.' : 'Checking prize availability. Your balance and free spins are available below.';
+    }
     el('game-availability').textContent = availability; show('game-availability', !!availability);
     var hasFreeSpins = atLeast(player.freeSpins, '1'), welcome = player.welcome || currentSession.welcome;
     show('free-spin-summary', true); document.body.classList.toggle('has-free-spins', hasFreeSpins && online);
@@ -124,9 +129,10 @@
     el('free-spin-note').textContent = !online ? 'Balance pending update.' : hasFreeSpins ? 'The lever uses them first. Gas included.' : welcome && welcome.status === 'checking' ? 'Checking welcome bonus…' : welcome && welcome.status === 'pending' ? 'Welcome bonus: +2 on the way.' : 'No free spins available.';
     el('spin-paid').disabled = !!unavailable || !grant || !grant.active || !atLeast(player.allowance, snapshot.settings.ticketPrice) || !atLeast(player.balance, snapshot.settings.ticketPrice);
     el('spin-free').disabled = !!unavailable || !snapshot.keeper.canStartFreeSpin || player.freeSpins === '0';
-    var hasBudget = atLeast(player.allowance, snapshot.settings.ticketPrice);
+    var hasBudget = atLeast(player.allowance, snapshot.settings.ticketPrice), hasBalance = atLeast(player.balance, snapshot.settings.ticketPrice);
     el('play-consent-title').textContent = hasFreeSpins && !(grant && grant.active) ? 'You can already play for free.' : grant && grant.active ? hasBudget ? 'Spins approved.' : 'Budget needs a top-up.' : 'Approve a budget on your phone.';
     el('play-consent-copy').textContent = hasFreeSpins && !(grant && grant.active) ? 'Pull the lever or press USE FREE SPIN. No USDC top-up or approval needed.' : grant && grant.active ? hasBudget ? 'Remaining USDC budget: ' + amount(player.allowance) + '. Your phone can stay closed.' : 'Remaining budget: ' + amount(player.allowance) + ' USDC. To set a new one, log out and link again from your phone. Free spins stay available.' : 'Choose how much USDC to approve for spins from this iPad. Free spins do not use USDC.';
+    if (!hasBalance && grant && grant.active) {el('play-consent-title').textContent = 'Not enough USDC for a paid spin.'; el('play-consent-copy').textContent = 'Add USDC to your wallet on Base. Free spins do not use USDC.';}
     if (availability) {el('play-consent-title').textContent = 'Waiting for the machine.'; el('play-consent-copy').textContent = 'New spins resume when the service is ready. Your balance and free spins are safe.';}
     if (window.slotDemo) {el('play-consent-title').textContent = 'Test credits only.'; el('play-consent-copy').textContent = '5 cents + 1 cent of simulated gas. No real funds.';}
     if (checking && !pending && !waitingConfirmation) {
@@ -157,7 +163,7 @@
       else status('YOUR TURN', 'One pull. A little luck.', 'Spin with USDC or use an available free spin.');
     }
     feedback({phase: 'ready', ready: !el('spin-free').disabled || !el('spin-paid').disabled});
-    if (availability && !(game && game.hasResult && game.confirmed)) status('NEW SPINS ON HOLD', 'Your seat is waiting.', 'We resume as soon as the machine is ready.');
+    if (availability && !(game && game.hasResult && game.confirmed)) status('NEW SPINS ON HOLD', reserves === 'restocking' ? 'Prize refill needed.' : 'New spins are on hold.', availability);
     if (requestError) status(requestUncertain ? 'CHECKING SPIN' : 'SPIN NOT STARTED', requestUncertain ? 'Check before retrying.' : 'Spin not started.', requestError);
   }
   function balanceUpdate(data) {var event = document.createEvent('CustomEvent'); event.initCustomEvent('slot-balance', false, false, data); window.dispatchEvent(event);}
@@ -170,7 +176,9 @@
       if (error) {online = false; balanceUpdate({sessionId: currentSession.id, unavailable: true}); if (snapshot) render(); else status('CONNECTION UNAVAILABLE', 'Reconnecting to Base.', 'Balances and spins resume when the connection recovers.');}
       else if (data.configured && data.sessionId === currentSession.id) {online = true; configuredState = true; if (snapshot && data.player.latestGameId !== snapshot.player.latestGameId) requestError = ''; snapshot = data; balanceUpdate({sessionId: currentSession.id, amount: amount(data.player.balance)}); render();}
       else if (!data.configured) {balanceUpdate({sessionId: currentSession.id, unavailable: true}); configuredState = false; show('free-spin-summary', true); el('free-spin-note').textContent = 'The slot is not live yet.';}
-      timer = window.setTimeout(poll, 2000);
+      var player = snapshot && snapshot.player, operation = player && player.operation;
+      var active = sending || player && (player.busy || player.game && (player.game.pending || player.game.hasResult && !player.game.confirmed) || operation && (operation.stage === 'submitting' || operation.stage === 'confirming' || operation.stage === 'uncertain'));
+      timer = window.setTimeout(poll, active ? 1000 : 2000);
     });
   }
   function start(mode) {

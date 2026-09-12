@@ -4,6 +4,7 @@ import type {SlotReader} from './reader';
 import {serializable} from './config';
 import {SlotError, slotError} from './errors';
 import {logSpinFailure} from './diagnostics';
+import {createPrizeAvailability} from './availability';
 import {slotAbi} from './abi';
 import {definiteSendFailure, transactionError, type GasToken} from './gas';
 import type {WelcomeView} from '../welcome';
@@ -22,6 +23,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
   const welcome = new Map<string, {player: Address; hash?: Hash; nextAttempt: number; checking: boolean; error?: string}>();
   const welcomeHistory = createWelcomeHistory(reader);
   const welcomeViews = new Map<string, WelcomeView>();
+  const prizeAvailability = createPrizeAvailability(() => reader.funding());
   let backendQueue = Promise.resolve<unknown>(null), ticking = false, timer: ReturnType<typeof setTimeout> | undefined, stopped = true;
   let pendingBackend: {hash: Hash; raw: Hex; nonce: number} | undefined;
   const health = {configured: !!backend, address: backend?.address || null, lastTick: 0, lastBlock: '0', error: '', canStartFreeSpin: false, balanceWei: '0'};
@@ -101,7 +103,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
     const receipt = await client.getTransactionReceipt({hash: operation.hash}).catch(() => null);
     if (!receipt) return;
     if (receipt.status === 'reverted') {operation.stage = 'failed'; operation.error = 'Transaction reverted by the contract. No spin opened.'; return;}
-    try {const id=startEvent(receipt, operation.player).args.gameId;reader.rememberGame(operation.player,id);operation.gameId = id.toString(); operation.stage = 'started'; operation.error = undefined;}
+    try {const id=startEvent(receipt, operation.player).args.gameId;reader.rememberGame(operation.player,id);operation.gameId = id.toString(); operation.stage = 'started'; operation.error = undefined;prizeAvailability.invalidate();}
     catch (error) {operation.stage = 'failed'; operation.error = slotError(error).message;}
   }
   async function start(player: Address, afterGameId: bigint, mode: 'paid' | 'free', options: {
@@ -135,7 +137,9 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
         const settings = await reader.settings();
         if (settings.paused) throw new SlotError('Paused', 'The machine is paused.');
         if (settings.totalOutcomeWeight !== 1000 || settings.configuredPrizeCount < 3) throw new SlotError('Paytable', 'The prize table is not ready.');
-        if (!(await reader.funding()).ready) throw new SlotError('InsufficientPrizeInventory', 'The slot is restocking prizes. Wait before you spin: your balance and free spins stay available.');
+        const funding = await reader.funding();
+        prizeAvailability.record(funding.ready);
+        if (!funding.ready) throw new SlotError('InsufficientPrizeInventory', 'The slot needs a prize refill. Your balance and free spins stay available.');
         if (!backend || !health.configured) throw new SlotError('KeeperMissing', 'The reveal service is not configured yet.', 503);
         if (!health.lastTick || Date.now() - health.lastTick > 30000 || health.balanceWei === '0' || health.error) throw new SlotError('KeeperNotReady', 'The reveal service must be online and hold ETH for gas.', 503);
         if (mode === 'free') {
@@ -183,6 +187,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
             const rejected = operation.hash || operation.transactionId ? error instanceof SlotError && error.code === 'TransactionFailed' : definiteSendFailure(error);
             operation.stage = !rejected && (operation.hash || mode === 'paid') ? 'uncertain' : 'failed';
             operation.error = mode === 'paid' ? transactionError(error) : slotError(error).message;
+            if (slotError(error).code === 'InsufficientPrizeInventory') prizeAvailability.record(false);
             logSpinFailure('slot.spin_submission_failed',player,mode,operation.afterGameId,error,operation.stage);
           }
         })();
@@ -211,7 +216,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
     const block=await client.getBlockNumber({cacheTime:0});
     const [settings,state]=await Promise.all([reader.settings(block),playerView(player,block)]);
     return serializable({configured:true,address:config.address,chainId:config.chainId,paymentToken:config.paymentToken,
-      gasMode:config.gasMode,block,settings,player:state,keeper:health});
+      gasMode:config.gasMode,block,settings,player:state,keeper:health,prizeAvailability:prizeAvailability.view()});
   }
   async function queueWelcome(player: Address): Promise<WelcomeView> {
     return locked(`welcome:${player.toLowerCase()}`, async () => {
