@@ -1,6 +1,7 @@
 import type {SlotEngine} from './slot/engine';
 import type {WelcomeService} from './welcome';
 import {SlotError, slotError} from './slot/errors';
+import {logSpinFailure} from './slot/diagnostics';
 import {GAS_CONSENT} from './slot/gas';
 import type {Address} from 'viem';
 import {createHash, randomBytes, randomInt} from 'node:crypto';
@@ -257,6 +258,9 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
             assertSession: () => {valid(s);}, maxPrice: grant ? BigInt(grant.budget) : undefined,
             sendPaid: grant ? (key) => {valid(s); return walletService!.sendSpin!(grant, key, grant.gasMode || slot.reader.config.gasMode, () => {valid(s);});} : undefined,
             resolvePaid: walletService?.resolveSpin,
+          }).catch(error => {
+            logSpinFailure('slot.spin_rejected',s.wallet!.address as Address,input.mode as 'paid'|'free',input.afterGameId as string,error);
+            throw error;
           });
           valid(s); return json({sessionId: s.id, operation}, 202);
         }

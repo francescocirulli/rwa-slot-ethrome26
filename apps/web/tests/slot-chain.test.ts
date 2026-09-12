@@ -166,12 +166,19 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
     });
     await t.test('a long-idle history cache resumes in bounded requests instead of blocking the terminal',async()=>{
       const empty=mnemonicToAccount(mnemonic,{addressIndex:3}).address;
-      const fresh=createSlotReader(config);
-      assert.deepEqual(await fresh.lastGame(empty,await client.getBlockNumber({cacheTime:0})),{id:0n,complete:true});
-      await mine(24001);
+      const head=await client.getBlockNumber({cacheTime:0});
+      // Exceed the same 12-page budget using the production's capped page size.
+      // Mining 24,001 blocks only tests Anvil's speed and can exhaust the suite timeout.
+      const fresh=createSlotReader({...config,logPageBlocks:5n,historyFromBlock:head});
+      assert.deepEqual(await fresh.lastGame(empty,head),{id:0n,complete:true});
+      let requests=0;const readEvents=fresh.client.getContractEvents;
+      fresh.client.getContractEvents=(async (args:Parameters<typeof readEvents>[0])=>{requests++;assert.ok((args.toBlock as bigint)-(args.fromBlock as bigint)<5n);return readEvents(args);}) as typeof readEvents;
+      await mine(61);
       const block=await client.getBlockNumber({cacheTime:0});
       assert.deepEqual(await fresh.lastGame(empty,block),{id:0n,complete:false});
+      assert.equal(requests,12);requests=0;
       assert.deepEqual(await fresh.lastGame(empty,block),{id:0n,complete:true});
+      assert.ok(requests>0&&requests<=12);
     });
     await t.test('collection ownership, reviewed mint/deposit and grouped reserves gate new paid and free spins',async()=>{
       const artifact=JSON.parse(await readFile(new URL('../../../contracts/out/SlotPrize1155.sol/SlotPrize1155.json',import.meta.url),'utf8'));
@@ -335,6 +342,7 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
       const minimalSlot=await deploy(slotAbi,fixtures.slotBytecode,[owner.address,keeper.address,payment,50000n]);
       async function configure(functionName:string,args:unknown[]=[]){const hash=await adminWallet.writeContract({address:minimalSlot,abi:slotAbi as Abi,functionName,args});await client.waitForTransactionReceipt({hash});}
       await configure('setNoWinWeight',[0]);
+      await configure('setRevealSettings',[2,256]);
       for(let symbol=0;symbol<3;symbol++)await configure('configurePrize',[symbol,3,zeroAddress,0n,1n,0,symbol===2?400:300]);
       await configure('grantFreeSpins',[player.address,2n]);
       await userWallet.writeContract({address:payment,abi:erc20Abi,functionName:'approve',args:[minimalSlot,100000n]});
@@ -344,7 +352,15 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
       const minimal=createSlotEngine(minimalReader,toHex(keeper.getHdKey().privateKey!) as Hex);
       try{
         await minimal.tick();
+        const readFunding=minimalReader.funding;
+        let releaseFunding!:()=>void;
+        const fundingGate=new Promise<void>(resolve=>{releaseFunding=resolve;});
+        minimalReader.funding=async()=>{await fundingGate;return readFunding();};
         let view=await minimal.playView(player.address);
+        // An unresolved reserve RPC does not hold the balance/current-game response.
+        assert.equal(view.prizeAvailability.state,'checking');
+        releaseFunding();minimalReader.funding=readFunding;
+        assert.equal(view.settings.revealDelayBlocks,'2');
         assert.equal(view.player.freeSpins,'2');assert.equal(view.player.busy,false);assert.equal(view.player.game,null);
         assert.ok(BigInt(view.player.balance)>100000n);assert.equal('funding' in view,false);assert.equal('catalog' in view,false);
         let paidSends=0;
@@ -356,7 +372,12 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
           const pending=await until(async()=>{const s=await minimal.playView(player.address);return s.player.game?.pending?s:null;},'Minimal spin not started');
           assert.equal(BigInt(pending.player.balance),balance-(mode==='paid'?50000n:0n));
           const id=BigInt(pending.player.game!.id),head=await client.getBlockNumber({cacheTime:0});
-          await mine(Number(BigInt(pending.player.game!.targetBlock)-head+1n));
+          const started=await client.getContractEvents({address:minimalSlot,abi:slotAbi,eventName:'SpinStarted',args:{gameId:id},fromBlock:deployed});
+          assert.equal(BigInt(pending.player.game!.targetBlock)-started[0].blockNumber,2n);
+          // At the target block the reveal is still forbidden; the next block is eligible.
+          await mine(Number(BigInt(pending.player.game!.targetBlock)-head));await minimal.tick();
+          assert.equal((await minimal.playView(player.address)).player.game!.hasResult,false);
+          await mine();
           await minimal.tick();
           const unconfirmed=await minimal.playView(player.address);
           assert.equal(unconfirmed.player.game!.hasResult,true);assert.equal(unconfirmed.player.game!.confirmed,false);assert.equal(unconfirmed.player.busy,true);

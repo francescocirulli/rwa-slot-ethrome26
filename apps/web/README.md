@@ -156,7 +156,10 @@ explicit onchain action to revoke it or replace it with another finite amount,
 including without iPad pairing. If a play signer is active, it can use the new
 allowance during that session. Approving USDC alone never authorizes an iPad.
 
-The reels spin from submission until the reveal has two confirmations. The
+The reels spin from submission until the reveal has two confirmations. Active
+rounds poll every second (idle sessions every two seconds), with no fixed animation
+minimum. Reveal timing follows the live contract's target block, including a
+two-block delay; the keeper reveals only after that target block. The
 backend waits for the block required by the contract and finishes the game even
 if the phone is closed or the session has ended. The contract pays the prize to
 the original player. Results are neither fabricated nor shown early through
@@ -164,12 +167,16 @@ the original player. Results are neither fabricated nor shown early through
 
 The paired phone/iPad poll reads only current USDC balance, allowance, free spins,
 settings and the current round. It does not scan spin or welcome history, read the
-prize catalog, or poll reserves. The iPad uses this same response for its USDC display;
+prize catalog, or await reserve checks. The iPad uses this same response for its USDC display;
 the separate balance endpoint is a fallback when game reads are unavailable.
 Results come from `getGame` at the confirmation depth. Known keeper receipts add
 exact prize amounts and a transaction link; missing receipt details do not block a
-confirmed result. Welcome history runs separately from play, and reserve checks run
-before submission. Historical results remain available in admin.
+confirmed result. A shared background reserve check runs at most once per 15 seconds
+while play is being polled; its cached availability disables new spins while checking,
+unavailable, or underfunded. It never delays balance or result responses. A fresh
+reserve check still runs before submission, and confirmed starts invalidate cached
+availability. Welcome history runs separately from play. Historical results remain
+available in admin.
 
 The keeper recovers pending games through `getActiveGameIds` after each restart.
 A new session recovers an active round from `getPlayerState`; it does not restore
@@ -327,6 +334,19 @@ reserve reads fail. These checks do not block idle balance reads or settlement
 polling. Confirmed wins include the exact award and BaseScan link when the keeper
 receipt is available; otherwise they show the confirmed grid and win/loss without
 inventing a payout amount. Gold uses jackpot artwork only on the reels.
+
+The terminal explains when the operator must refill prize reserves and keeps free
+credits visible. Insufficient player USDC disables paid spins only; free spins do
+not require a USDC balance. Reserve RPC failures disable new spins and retry in the
+background without concealing a pending round or a confirmed result.
+
+While the server checks a requested spin, the terminal keeps the reels still and
+locks repeated input. Animation starts when submission is reported or a current
+round is observed. A rejected request keeps its explanation visible across polls,
+without hiding the remaining free-spin balance. Railway receives structured
+`slot.spin_rejected` and `slot.spin_submission_failed` records containing the
+public wallet, mode, previous round and normalized error code; request payloads,
+credentials and raw SDK errors are never logged.
 
 ### Phone approval and funding
 
