@@ -65,6 +65,7 @@
   function hideOutcome() {
     window.clearTimeout(outcomeTimer); show('outcome', false); el('outcome').className = 'outcome';
     var machine = document.querySelector('.machine'); machine.classList.remove('tier-3'); machine.classList.remove('tier-5'); machine.classList.remove('tier-jackpot'); machine.classList.remove('tier-loss');
+    document.documentElement.classList.remove('jackpot-on');
   }
   // Display only: the big result card and the cabinet lights for the confirmed onchain outcome.
   function showOutcome(game) {
@@ -73,16 +74,23 @@
     var box = el('outcome'); box.className = 'outcome outcome-' + tier;
     var fx = el('outcome-fx'); fx.innerHTML = '';
     if (game.won) {
-      var glyph = game.matchCount === 5 ? '$' : '★', count = jackpot ? 18 : 9;
-      for (var i = 0; i < count; i++) {var piece = document.createElement('span'); piece.textContent = glyph; piece.style.left = (4 + Math.random() * 92) + '%'; piece.style.animationDelay = (Math.random() * 1.4) + 's'; piece.style.fontSize = (jackpot ? 24 + Math.random() * 26 : 14 + Math.random() * 12) + 'px'; fx.appendChild(piece);}
+      // Stars for a 3 of 5, dollars for a 5 of 5, gold bars raining for the jackpot.
+      var count = jackpot ? 26 : 10;
+      for (var i = 0; i < count; i++) {
+        var piece;
+        if (jackpot) {piece = document.createElement('img'); piece.src = '/decor/gold.svg'; piece.alt = ''; piece.style.width = (28 + Math.random() * 30) + 'px';}
+        else {piece = document.createElement('span'); piece.textContent = game.matchCount === 5 ? '$' : '★'; piece.style.fontSize = (14 + Math.random() * 12) + 'px';}
+        piece.style.left = (2 + Math.random() * 94) + '%'; piece.style.animationDelay = (Math.random() * 1.6) + 's'; fx.appendChild(piece);
+      }
     }
-    el('outcome-kicker').textContent = jackpot ? 'JACKPOT!' : game.won ? (game.matchCount === 5 ? '5 OF A KIND' : '3 OF A KIND') : 'NO PRIZE';
-    el('outcome-title').textContent = game.won ? 'YOU WIN' : 'YOU LOST';
+    el('outcome-kicker').textContent = jackpot ? 'GOLD · 5 OF A KIND' : game.won ? (game.matchCount === 5 ? '5 OF A KIND' : '3 OF A KIND') : 'NO PRIZE';
+    el('outcome-title').textContent = jackpot ? 'JACKPOT!' : game.won ? 'YOU WIN' : 'YOU LOST';
+    if (jackpot) document.documentElement.classList.add('jackpot-on');
     el('outcome-copy').textContent = game.won ? 'Congrats, you win ' + (game.payout ? game.payout.formattedAmount + ' ' + prizeName(game, game.payout) : 'a prize') + '!' : 'Sorry, the market was not on your side. Spin again!';
     if (game.won) {el('outcome-prize').src = game.winningSymbol === 11 ? '/symbols/jackpot.svg' : '/symbols/symbol-' + game.winningSymbol + '.svg'; show('outcome-prize', true);} else show('outcome-prize', false);
     document.querySelector('.machine').classList.add('tier-' + tier);
     show('outcome', true);
-    window.clearTimeout(outcomeTimer); outcomeTimer = window.setTimeout(hideOutcome, jackpot ? 7000 : game.won ? 5000 : 3000);
+    window.clearTimeout(outcomeTimer); outcomeTimer = window.setTimeout(hideOutcome, jackpot ? 9000 : game.won ? 5000 : 3000);
   }
   function resultText(game) {
     var hash = game.transactionHash;

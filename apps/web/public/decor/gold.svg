@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 44">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff3c4"/><stop offset=".45" stop-color="#f2cf6e"/><stop offset="1" stop-color="#b8862a"/></linearGradient></defs>
+  <polygon points="10,26 54,26 60,42 4,42" fill="url(#g)" stroke="#7a5a12" stroke-width="1.5"/>
+  <polygon points="22,4 42,4 48,20 16,20" fill="url(#g)" stroke="#7a5a12" stroke-width="1.5"/>
+  <text x="32" y="16" text-anchor="middle" font-family="Georgia,serif" font-size="9" font-weight="700" fill="#7a5a12">AU</text>
+  <text x="32" y="38" text-anchor="middle" font-family="Georgia,serif" font-size="9" font-weight="700" fill="#7a5a12">999.9</text>
+</svg>
