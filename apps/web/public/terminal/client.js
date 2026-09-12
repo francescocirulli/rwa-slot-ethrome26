@@ -55,14 +55,14 @@
     show('wallet-panel', false); show('idle-warning', false); show('proof-dialog', false); show('deposit-panel', false);
     show('login-qr', false); show('qr-loading', true); show('proof-toggle', false); show('retry', false);
     el('login-qr').removeAttribute('src'); el('deposit-qr').removeAttribute('src');
-    el('pair-code').textContent = '— — —'; el('balance').textContent = '—';
+    el('pair-code').textContent = '— — —'; el('balance').textContent = '—'; el('credit-display').textContent = '—';
     el('balance').removeAttribute('title'); el('balance').style.fontSize = '';
     el('short-address').textContent = ''; el('full-address').textContent = '';
     el('proof-value').textContent = ''; el('proof-message').textContent = '';
     el('machine-status').textContent = 'EVERY SPIN IS A TRANSACTION.';
     el('cabinet-label').textContent = 'YOUR SEAT IS WAITING';
-    el('cabinet-copy').textContent = 'Connect your wallet from your phone.';
-    el('footer-state').textContent = 'SCAN. LINK. TAKE A SEAT.';
+    el('cabinet-copy').textContent = 'Scan the QR code with your phone to link your wallet.';
+    el('footer-state').textContent = 'SCAN. LINK. SPIN.';
     el('sign-button').disabled = true; el('deposit-toggle').disabled = true;
     document.body.className = '';
     el('balance-status').textContent = 'Reading balance on Base…';
@@ -130,6 +130,7 @@
         if (balance.amount !== null) {
           var parts = balance.amount.split('.'), fraction = (parts[1] || '') + '00';
           el('balance').textContent = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + fraction.slice(0, 2);
+          el('credit-display').textContent = el('balance').textContent;
           el('balance').title = balance.amount + ' USDC';
           el('balance').style.fontSize = parts[0].length > 6 ? '28px' : '';
         }

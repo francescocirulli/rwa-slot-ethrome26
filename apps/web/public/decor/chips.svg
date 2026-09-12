@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 190">
+  <defs>
+    <g id="chip-red"><rect x="-40" y="-8" width="80" height="16" fill="#8f1a20"/><ellipse cx="0" cy="8" rx="40" ry="14" fill="#7a1a1f"/><ellipse cx="0" cy="-8" rx="40" ry="14" fill="#d3363b" stroke="#fff" stroke-width="6" stroke-dasharray="12 10"/><ellipse cx="0" cy="-8" rx="21" ry="7.5" fill="#fff"/><ellipse cx="0" cy="-8" rx="15" ry="5.3" fill="none" stroke="#d3363b" stroke-width="1.5"/></g>
+    <g id="chip-blue"><rect x="-40" y="-8" width="80" height="16" fill="#1c3b8a"/><ellipse cx="0" cy="8" rx="40" ry="14" fill="#16306f"/><ellipse cx="0" cy="-8" rx="40" ry="14" fill="#2e5fd0" stroke="#fff" stroke-width="6" stroke-dasharray="12 10"/><ellipse cx="0" cy="-8" rx="21" ry="7.5" fill="#fff"/><ellipse cx="0" cy="-8" rx="15" ry="5.3" fill="none" stroke="#2e5fd0" stroke-width="1.5"/></g>
+    <g id="chip-green"><rect x="-40" y="-8" width="80" height="16" fill="#1f5a2c"/><ellipse cx="0" cy="8" rx="40" ry="14" fill="#184722"/><ellipse cx="0" cy="-8" rx="40" ry="14" fill="#3aa64f" stroke="#fff" stroke-width="6" stroke-dasharray="12 10"/><ellipse cx="0" cy="-8" rx="21" ry="7.5" fill="#fff"/><ellipse cx="0" cy="-8" rx="15" ry="5.3" fill="none" stroke="#3aa64f" stroke-width="1.5"/></g>
+    <g id="chip-black"><rect x="-40" y="-8" width="80" height="16" fill="#151518"/><ellipse cx="0" cy="8" rx="40" ry="14" fill="#0b0b0d"/><ellipse cx="0" cy="-8" rx="40" ry="14" fill="#2b2b31" stroke="#fff" stroke-width="6" stroke-dasharray="12 10"/><ellipse cx="0" cy="-8" rx="21" ry="7.5" fill="#fff"/><ellipse cx="0" cy="-8" rx="15" ry="5.3" fill="none" stroke="#2b2b31" stroke-width="1.5"/></g>
+  </defs>
+  <ellipse cx="70" cy="172" rx="60" ry="12" fill="#000" opacity=".25"/>
+  <ellipse cx="170" cy="176" rx="60" ry="12" fill="#000" opacity=".25"/>
+  <ellipse cx="220" cy="140" rx="40" ry="9" fill="#000" opacity=".25"/>
+  <g transform="translate(70 160)"><use href="#chip-blue"/><use href="#chip-blue" y="-16"/><use href="#chip-blue" y="-32"/><use href="#chip-blue" y="-48"/><use href="#chip-blue" y="-64"/></g>
+  <g transform="translate(170 164)"><use href="#chip-red"/><use href="#chip-red" y="-16"/><use href="#chip-red" y="-32"/></g>
+  <g transform="translate(120 100)"><use href="#chip-green"/><use href="#chip-green" y="-16"/></g>
+  <g transform="translate(220 130) rotate(-12)"><use href="#chip-black"/></g>
+  <g transform="translate(36 70) rotate(14)"><use href="#chip-red"/></g>
+</svg>

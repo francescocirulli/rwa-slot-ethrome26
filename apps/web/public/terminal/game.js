@@ -46,7 +46,7 @@
     document.body.classList.remove('game-enabled');
     document.body.classList.remove('has-free-spins'); show('free-spin-summary', false);
     el('free-spin-balance').textContent = '—'; el('free-spin-count').textContent = '—'; el('free-spin-note').textContent = '';
-    el('spin-paid').disabled = true; el('spin-free').disabled = true;
+    el('spin-paid').disabled = true; el('spin-free').disabled = true; el('ticket-display').textContent = '—'; el('wins-display').textContent = '—';
     var originals = [2, 1, 0, 4, 3, 5, 6, 11, 8, 7, 9, 10, 11, 2, 1];
     var images = document.querySelectorAll('.cell img');
     for (var i = 0; i < images.length; i++) {images[i].src = reelSource(originals[i]); images[i].alt = originals[i] === 11 ? 'JACKPOT' : labels[originals[i]];}
@@ -57,11 +57,12 @@
     show('won-prize', !!game.won && !!game.payout);
     document.querySelector('.game-progress').classList.toggle('game-won', !!game.won);
     if (game.won && game.payout) {el('won-prize').src = '/symbols/symbol-' + game.winningSymbol + '.svg'; el('won-prize').alt = labels[game.winningSymbol] || 'Prize'; show('won-prize', true);}
-    if (!game.won) {status('SPIN #' + game.id + ' · SETTLED', 'No prize this time.', 'Result confirmed on Base.'); return;}
+    if (!game.won) {el('wins-display').textContent = '0'; status('SPIN #' + game.id + ' · SETTLED', 'No prize this time.', 'Result confirmed on Base.'); return;}
     var prize = game.payout;
-    if (!prize) {status('SPIN #' + game.id + ' · WON', 'You won!', 'Prize confirmed. Reading the details from the contract.'); return;}
+    if (!prize) {el('wins-display').textContent = 'WIN'; status('SPIN #' + game.id + ' · WON', 'You won!', 'Prize confirmed. Reading the details from the contract.'); return;}
     var isGold = prize.kind === 1 && String(prize.token || '').toLowerCase() === '0xe908475f8beb7a138b0dc6eb5a05cb27068ffb9a';
     var name = prize.kind === 1 && prize.decimals === null ? 'base units of ' + (isGold ? 'Gold (DGLD)' : prize.tokenSymbol || 'token') : isGold ? 'Gold (DGLD)' : prize.kind === 3 ? 'free spin' : prize.kind === 2 ? labels[game.winningSymbol] : prize.tokenSymbol || 'token units';
+    el('wins-display').textContent = prize.formattedAmount + ' ' + name;
     status('SPIN #' + game.id + ' · ' + game.matchCount + '/5', 'You won ' + prize.formattedAmount + ' ' + name + '!', prize.kind === 3 ? 'Credits are already available for this wallet.' : 'The prize has already been sent to your wallet.');
   }
   function render() {
@@ -76,7 +77,7 @@
     var hasFreeSpins = atLeast(player.freeSpins, '1'), welcome = player.welcome || currentSession.welcome;
     show('free-spin-summary', true); document.body.classList.toggle('has-free-spins', hasFreeSpins && online);
     el('free-spin-summary').classList.toggle('bonus-pending', !!welcome && (welcome.status === 'checking' || welcome.status === 'pending'));
-    el('ticket-label').textContent = amount(snapshot.settings.ticketPrice) + ' USDC';
+    el('ticket-label').textContent = amount(snapshot.settings.ticketPrice) + ' USDC'; el('ticket-display').textContent = amount(snapshot.settings.ticketPrice);
     el('free-spin-count').textContent = online ? player.freeSpins : '—'; el('free-spin-balance').textContent = online ? player.freeSpins : '—';
     el('free-spin-note').textContent = !online ? 'Balance pending update.' : welcome && welcome.status === 'checking' ? 'Checking welcome bonus…' : welcome && welcome.status === 'pending' ? 'Welcome bonus: +2 on the way.' : hasFreeSpins ? 'The lever uses them first. Gas included.' : 'No free spins available.';
     el('spin-paid').disabled = !!unavailable || !grant || !grant.active || !atLeast(player.allowance, snapshot.settings.ticketPrice) || !atLeast(player.balance, snapshot.settings.ticketPrice);

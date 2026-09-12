@@ -1,4 +1,4 @@
-/* Hardware, attract screen and audio. Safari 12 / ES5, no wallet credentials. */
+/* Hardware, cabinet effects, dialogs and audio. Safari 12 / ES5, no wallet credentials. */
 (function () {
   'use strict';
   var demo = !!window.slotDemo, active = false, awakeUntil = 0, ready = false, busy = false, gate = '', serial = 0;
@@ -33,7 +33,7 @@
       tone(660, 0, 0.12); audioLabel();
     } catch (ignore) {el('audio-enable').textContent = 'Sound unavailable';}
   }
-  function audioLabel() {el('audio-enable').textContent = audioEnabled && audio && audio.state === 'running' ? 'Sound ON · mute' : 'Enable sound';}
+  function audioLabel() {el('audio-enable').textContent = audioEnabled && audio && audio.state === 'running' ? 'Sound on' : 'Sound off';}
   el('audio-enable').onclick = function () {if (audioEnabled && audio && audio.state === 'running') {audioEnabled = false; audio.suspend(); audioLabel();} else unlockAudio();};
   function wake() {
     if (active || busy) return;
@@ -41,8 +41,8 @@
     if (Date.now() - lastAttract > 9000) {lastAttract = Date.now(); phase = 'attract'; effectUntil = Date.now() + 9000; melody(2, false);}
     drawAttract();
   }
-  function drawAttract() {if (Date.now() >= effectUntil) document.querySelector('.machine').removeAttribute('data-feedback'); el('attract-screen').hidden = active || Date.now() < awakeUntil;}
-  el('attract-wake').onclick = function () {unlockAudio(); wake();};
+  // There is no attract screen any more: motion only drives cabinet lights and the LCD, the slot is always visible.
+  function drawAttract() {if (Date.now() >= effectUntil) document.querySelector('.machine').removeAttribute('data-feedback');}
   window.addEventListener('slot-session', function (event) {
     var nextActive = !!event.detail && event.detail.state !== 'pending';
     if (active && !nextActive) {awakeUntil = 0; phase = 'idle'; effectUntil = 0; ready = false; gate = '';}
@@ -84,7 +84,20 @@
     });
   }
   var hardwareTimer = window.setInterval(poll, 300); poll();
-  el('hardware-open').onclick = function () {el('hardware-dialog').hidden = false; el('hardware-code').focus();};
+  // Dialogs and panel toggle are display-only: they never touch sessions, eligibility or transactions.
+  function openDialog(id, focusId) {el(id).hidden = false; el(focusId).focus();}
+  function closeDialog(id, focusId) {el(id).hidden = true; el(focusId).focus();}
+  el('info-open').onclick = function () {openDialog('info-dialog', 'info-close');};
+  el('info-close').onclick = function () {closeDialog('info-dialog', 'info-open');};
+  el('settings-open').onclick = function () {openDialog('settings-dialog', 'settings-close');};
+  el('settings-close').onclick = function () {closeDialog('settings-dialog', 'settings-open');};
+  el('settings-logout').onclick = function () {el('settings-dialog').hidden = true; el('logout').click();};
+  el('panel-toggle').onclick = function () {
+    var collapsed = document.body.classList.toggle('panel-collapsed');
+    el('panel-toggle').textContent = collapsed ? 'Show wallet' : 'Hide wallet';
+    el('panel-toggle').setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  };
+  el('hardware-open').onclick = function () {el('settings-dialog').hidden = true; el('hardware-dialog').hidden = false; el('hardware-code').focus();};
   el('hardware-close').onclick = function () {el('hardware-dialog').hidden = true; el('hardware-open').focus();};
   el('hardware-pair').onclick = function () {
     if (pairBusy) return; pairBusy = true;
@@ -95,15 +108,15 @@
   var fullscreenButton = el('fullscreen-toggle'), root = document.documentElement;
   var fullscreenSupported = !!(root.requestFullscreen || root.webkitRequestFullscreen);
   function fullscreenActive() {return !!(document.fullscreenElement || document.webkitFullscreenElement);}
-  function fullscreenLabel() {fullscreenButton.textContent = fullscreenActive() ? 'Exit full screen' : 'Full screen';}
+  function fullscreenLabel() {var active = fullscreenActive(); fullscreenButton.textContent = active ? '⤡' : '⤢'; fullscreenButton.setAttribute('aria-label', active ? 'Exit full screen' : 'Full screen'); fullscreenButton.title = fullscreenButton.getAttribute('aria-label');}
   if (!fullscreenSupported) fullscreenButton.hidden = true;
   fullscreenButton.onclick = function () {
     var result;
     try {
       if (fullscreenActive()) result = (document.exitFullscreen || document.webkitExitFullscreen).call(document);
       else result = (root.requestFullscreen || root.webkitRequestFullscreen).call(root);
-    } catch (ignore) {fullscreenButton.textContent = 'Full screen unavailable'; return;}
-    if (result && result.then) result.then(fullscreenLabel, function () {fullscreenButton.textContent = 'Full screen unavailable';});
+    } catch (ignore) {fullscreenButton.title = 'Full screen unavailable'; return;}
+    if (result && result.then) result.then(fullscreenLabel, function () {fullscreenButton.title = 'Full screen unavailable';});
   };
   document.addEventListener('fullscreenchange', fullscreenLabel); document.addEventListener('webkitfullscreenchange', fullscreenLabel);
   fullscreenLabel();
@@ -111,6 +124,6 @@
   el('mode-switch').onclick = function () {if (window.slotCanSwitchMode && !window.slotCanSwitchMode()) return; window.location.href = demo ? '/' : '/?demo=1';};
   document.addEventListener('visibilitychange', function () {gate = ''; ready = false; if (document.hidden) {window.clearInterval(spinSound); spinSound = null;} else {audioLabel(); poll();}});
   window.setInterval(function () {drawAttract(); audioLabel();}, 500);
-  document.addEventListener('keydown', function (event) {if (event.key === 'Escape') {el('hardware-dialog').hidden = true; el('hardware-open').focus();}});
+  document.addEventListener('keydown', function (event) {if (event.key === 'Escape') {el('hardware-dialog').hidden = true; el('info-dialog').hidden = true; el('settings-dialog').hidden = true; el('hardware-open').focus();}});
   drawAttract();
 }());

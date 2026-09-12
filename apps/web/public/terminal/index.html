@@ -16,17 +16,23 @@
   <script src="/terminal/kiosk.js" defer></script>
 </head>
 <body data-wallet-state="restoring" data-mode="real">
-  <div id="attract-screen" class="attract-screen"><span class="overline">WALL STREET SLOT · FULLY ONCHAIN</span><div class="attract-stars" aria-hidden="true">★ 777 ★</div><h2>SPIN THE<br>MARKET.</h2><p>Real-world assets as prizes. Every spin is a transaction on Base.</p><button id="attract-wake" class="primary-button" type="button">TAP TO START ↗</button><small>Free spins and tokenized stocks, verifiable onchain</small></div>
+  <div class="decor decor-cards" aria-hidden="true"><img src="/decor/cards.svg" alt=""></div>
+  <div class="decor decor-dice" aria-hidden="true"><img src="/decor/dice.svg" alt=""></div>
+  <div class="decor decor-chips" aria-hidden="true"><img src="/decor/chips.svg" alt=""></div>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand"><span class="brand-mark" aria-hidden="true">$</span><div>WALL STREET<span>SLOT<span class="brand-dot">™</span></span></div></div>
-      <div class="kiosk-tools"><button id="mode-switch" type="button">LIVE · switch to demo</button><button id="audio-enable" type="button">Enable sound</button><button id="fullscreen-toggle" type="button">Full screen</button><button id="hardware-open" type="button">Hardware</button></div>
-      <div class="network"><i></i> BASE <span>MAINNET</span></div>
+      <div class="brand"><span class="brand-mark" aria-hidden="true">$</span><h1 class="wordmark">WALL STREET SLOT</h1></div>
+      <div class="kiosk-tools"><button id="info-open" type="button"><span aria-hidden="true">i</span>Info</button><button id="audio-enable" type="button">Sound off</button><button id="fullscreen-toggle" type="button" aria-label="Full screen" title="Full screen">⤢</button><button id="settings-open" type="button"><span aria-hidden="true">⚙</span>Settings</button><button id="panel-toggle" type="button" aria-expanded="true">Hide wallet</button></div>
     </header>
     <main class="main-layout">
       <section class="cabinet" aria-label="Slot machine with 3 rows and 5 reels">
-        <div class="cabinet-heading"><span class="overline">FULLY ONCHAIN · VERIFIABLE ON BASESCAN</span><span class="edition">NO. 001 <b>★</b></span></div>
-        <div class="headline"><h1>FEELING<br><span>BULLISH?</span></h1><div class="orbit-seal" aria-hidden="true"><span>PAYS<br>ON<br>CHAIN</span><b>★</b></div><div id="free-spin-summary" class="free-spin-summary" role="status" aria-live="polite" aria-atomic="true" hidden><span class="free-spin-eyebrow">YOUR FREE SPINS <span aria-hidden="true">★</span></span><strong id="free-spin-balance">—</strong><span id="free-spin-note">Reading balance…</span></div></div>
+        <div class="cabinet-heading"><span class="overline">FULLY ONCHAIN · EVERY SPIN IS A BASE TRANSACTION</span><div class="network"><i></i> BASE · NO. 001</div></div>
+        <div class="displays">
+          <div class="display"><span>TICKET</span><strong id="ticket-display">—</strong><small>USDC per spin</small></div>
+          <div class="display"><span>CREDIT</span><strong id="credit-display">—</strong><small>USDC in wallet</small></div>
+          <div id="free-spin-summary" class="display free-spin-summary" role="status" aria-live="polite" aria-atomic="true" hidden><span class="free-spin-eyebrow">FREE SPINS <span aria-hidden="true">★</span></span><strong id="free-spin-balance">—</strong><span id="free-spin-note">Reading balance…</span></div>
+          <div class="display display-wins"><span>WINS</span><strong id="wins-display">—</strong><small>last confirmed spin</small></div>
+        </div>
         <div class="machine">
           <div class="machine-top"><span><i></i> WALL STREET SLOT</span><span>5 REELS / 3 ROWS / 3 PAYLINES</span></div>
           <div class="reels" aria-label="Fifteen slot symbols; game not active yet">
@@ -38,10 +44,10 @@
           </div>
           <div class="machine-bottom"><span class="line-marks" aria-hidden="true">◆ ◆ ◆ ◆ ◆</span><span id="machine-status">EVERY SPIN IS A TRANSACTION.</span><span class="line-marks" aria-hidden="true">◆ ◆ ◆ ◆ ◆</span></div>
         </div>
-        <div class="cabinet-footer"><div><span id="cabinet-label" class="overline">YOUR SEAT IS WAITING</span><p id="cabinet-copy">Connect your wallet from your phone.</p></div><span id="game-unconfigured" class="coming-soon">CONTRACT NOT LINKED <b>↗</b></span></div>
+        <div class="cabinet-footer"><div><span id="cabinet-label" class="overline">YOUR SEAT IS WAITING</span><p id="cabinet-copy">Scan the QR code with your phone to link your wallet.</p></div><span id="game-unconfigured" class="coming-soon">CONTRACT NOT LINKED <b>↗</b></span></div>
         <div id="game-controls" class="game-controls" hidden>
-          <div class="game-progress" role="status"><img id="won-prize" class="won-prize" alt="" hidden><span class="overline" id="game-phase">YOUR TURN</span><strong id="game-title">Take a seat.</strong><p id="game-detail">Connect your wallet to play.</p><a id="game-tx" class="game-tx" target="_blank" rel="noopener noreferrer" hidden></a></div>
-          <div class="game-actions"><button id="spin-paid" class="primary-button" type="button" disabled>SPIN <span id="ticket-label">— USDC</span></button><button id="spin-free" class="free-spin-button" type="button" disabled>USE FREE SPIN <span id="free-spin-count">—</span></button></div>
+          <div class="game-progress" role="status"><img id="won-prize" class="won-prize" alt="" hidden><span class="overline" id="game-phase">YOUR TURN</span><strong id="game-title">Take a seat.</strong><p id="game-detail">Link your wallet to play.</p><a id="game-tx" class="game-tx" target="_blank" rel="noopener noreferrer" hidden></a></div>
+          <div class="game-actions"><button id="spin-free" class="free-spin-button" type="button" disabled>FREE SPIN <span id="free-spin-count">—</span></button><button id="spin-paid" class="primary-button spin-button" type="button" disabled>SPIN <span id="ticket-label">— USDC</span></button></div>
         </div>
         <div id="game-availability" class="game-availability" role="status" hidden></div>
       </section>
@@ -54,38 +60,52 @@
           <h2 id="transition-title">Finding<br>your seat.</h2><p id="transition-copy">Checking whether a wallet is already linked to this iPad.</p><span class="loader" aria-hidden="true"></span>
         </section>
         <section id="welcome" hidden>
-          <div class="step-label">01 <span>/ NO WALLET LINKED</span></div>
-          <h2>Your luck<br>starts here<span>.</span></h2>
-          <p class="panel-copy">Scan with your phone.<br>Link your wallet and take a seat.</p>
+          <div class="step-label">01 <span>/ SCAN TO PLAY</span></div>
+          <h2>Link your<br>wallet<span>.</span></h2>
           <div class="qr-frame"><img id="login-qr" alt="QR code to link your phone to this iPad" hidden><div id="qr-loading" class="qr-loading"><span class="loader"></span><span>Preparing your seat…</span></div></div>
           <div class="pair-code"><span>YOUR CODE</span><strong id="pair-code">— — —</strong></div>
-          <p class="qr-note">Match this code on your phone.</p>
-          <div class="how-it-works"><span>↗</span><p><b>Your phone verifies you.</b><br>This iPad opens your seat.</p></div>
+          <p class="qr-note">Scan with your phone and match this code.</p>
+          <div class="how-it-works"><span>↗</span><p><b>Your phone verifies you.</b><br>Free spins and USDC play, all onchain.</p></div>
         </section>
         <section id="wallet-panel" hidden>
           <div class="step-label">02 <span>/ YOUR SEAT</span></div>
           <div class="balance-heading"><h2>Wallet linked<span>.</span></h2><span class="coin" aria-hidden="true">$</span></div>
-          <div class="session-indicator"><i></i><span>Personal session</span><span id="session-countdown">3:00</span></div><span class="overline balance-label">YOUR BALANCE</span>
+          <div class="session-indicator"><i></i><span>Session</span><span id="session-countdown">3:00</span></div><span class="overline balance-label">BALANCE</span>
           <div class="balance-line"><strong id="balance">—</strong><span>USDC</span></div>
           <p id="balance-status" class="balance-status">Reading balance on Base…</p>
-          <div class="wallet-address"><span class="overline">YOUR WALLET · BASE</span><p id="short-address"></p><button id="deposit-toggle" class="text-button" type="button">Top up wallet <span>↗</span></button></div>
+          <div class="wallet-address"><span class="overline">YOUR WALLET · BASE</span><p id="short-address"></p><button id="deposit-toggle" class="text-button" type="button">Top up <span>↗</span></button></div>
           <div id="play-consent-status" class="play-consent-status" hidden><b id="play-consent-title">Approve a budget on your phone.</b><p id="play-consent-copy">Spins are paid from your Privy wallet.</p></div>
           <div class="signature-card"><span id="signature-icon" aria-hidden="true">↗</span><div><b id="signature-title">One last yes on your phone.</b><p id="signature-description">Approve the signature proof to finish linking.</p></div></div>
           <button id="sign-button" class="primary-button" type="button" disabled><span id="sign-button-label">WAIT FOR YOUR PHONE</span><span aria-hidden="true">↗</span></button>
           <button id="proof-toggle" class="text-button proof-toggle" type="button" hidden>See the verified signature ↗</button>
-          <button id="logout" class="logout-button" type="button">Log out and free the seat <span>↗</span></button>
+          <button id="logout" class="logout-button" type="button">Log out <span>↗</span></button>
         </section>
         <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
         <button id="retry" class="text-button" type="button" hidden>Retry ↗</button>
-        <div class="panel-footnote"><span aria-hidden="true">◇</span><p>Your wallet stays yours.<br>The session ends after 3 minutes of inactivity.</p></div>
+        <div class="panel-footnote"><span aria-hidden="true">◇</span><p>Your wallet stays yours. Sessions end after 3 minutes idle.</p></div>
       </aside>
     </main>
-    <footer class="bottom-bar"><span><i></i> REAL ASSETS · REAL CHAIN</span><span id="footer-state">SCAN. LINK. TAKE A SEAT.</span><span>EST. 2026 <b>★</b></span></footer>
+    <footer class="bottom-bar"><span><i></i> REAL ASSETS · REAL CHAIN</span><span id="footer-state">SCAN. LINK. SPIN.</span><span>EST. 2026 <b>★</b></span></footer>
   </div>
   <div id="deposit-panel" class="overlay" role="dialog" aria-modal="true" aria-labelledby="deposit-title" hidden><div class="dialog receive-dialog"><span class="overline">YOUR WALLET · BASE</span><h2 id="deposit-title">Top up.</h2><p>Receive USDC on the Base network.</p><img id="deposit-qr" alt="QR code of your address to receive USDC on Base"><p id="full-address"></p><small>Deposits reach your wallet even after you leave the iPad.</small><button id="deposit-close" class="primary-button" type="button">DONE <span>✓</span></button></div></div>
   <div id="idle-warning" class="overlay" role="dialog" aria-modal="true" aria-labelledby="idle-title" hidden><div class="dialog"><span class="overline">YOUR SEAT IS ABOUT TO FREE UP</span><h2 id="idle-title">Still there?</h2><p>The session ends in <strong id="idle-seconds">30</strong> seconds.<br>Your wallet and your funds stay yours.</p><button id="stay" class="primary-button" type="button">I'M HERE <span>↗</span></button><button id="idle-logout" class="text-button" type="button">I'm done, log out</button></div></div>
   <div id="proof-dialog" class="overlay" role="dialog" aria-modal="true" aria-labelledby="proof-title" hidden><div class="dialog proof-dialog"><span class="overline">LINK VERIFIED</span><h2 id="proof-title">The signature is authentic.</h2><p>The server signed the authorized message and verified the signature against your wallet.</p><label>MESSAGE</label><pre id="proof-message"></pre><label>SIGNATURE</label><pre id="proof-value"></pre><button id="proof-close" class="primary-button" type="button">DONE <span>✓</span></button></div></div>
   <div id="hardware-dialog" class="overlay" role="dialog" aria-modal="true" aria-labelledby="hardware-title" hidden><div class="dialog"><span class="overline">ARCADE CABINET</span><h2 id="hardware-title">Link Arduino.</h2><p>Enter the 8-digit code shown on the Arduino display.</p><label for="hardware-code">Hardware code</label><input id="hardware-code" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" autocomplete="off"><p id="hardware-status" role="status">Hardware not linked.</p><button id="hardware-pair" class="primary-button" type="button">LINK</button><button id="hardware-motion" class="text-button" type="button" hidden>Simulate a visitor (demo)</button><button id="hardware-close" class="text-button" type="button">Close</button></div></div>
+  <div id="info-dialog" class="overlay" role="dialog" aria-modal="true" aria-labelledby="info-title" hidden><div class="dialog info-dialog">
+    <span class="overline">HOW IT WORKS · ODDS · PRIZES</span><h2 id="info-title">Fully onchain slot.</h2>
+    <div class="info-columns">
+      <section><h3>How it works</h3><ol><li><b>Scan the QR code</b> with your phone and link your Privy wallet.</li><li><b>Approve a USDC budget</b> for this slot, or use your free spins. Gas is included in free spins.</li><li><b>Spin.</b> The ticket is paid in a Base transaction. After 5 blocks the keeper reveals the result onchain.</li><li><b>Prizes are paid instantly</b> to your wallet by the contract. Every spin has a BaseScan link.</li></ol></section>
+      <section><h3>Odds per spin</h3><table><tr><th>Outcome</th><th>Chance</th></tr><tr><td>5 of a kind</td><td>49.5%</td></tr><tr><td>3 of a kind</td><td>40.4%</td></tr><tr><td>No prize</td><td>10.1%</td></tr></table><p>Odds are stored in the contract as 1,000 buckets and can be audited with <code>getOutcomeForRoll</code>. Three paylines: middle row, and two V shapes through the centre.</p></section>
+      <section><h3>Prizes</h3><ul class="prize-list"><li><img src="/symbols/symbol-2.svg" alt="">Tokenized stocks: NVIDIA, SpaceX, Apple, Alphabet, Amazon. 3 of a kind pays a half-share dividend.</li><li><img src="/symbols/symbol-11.svg" alt="">Tokenized gold (DGLD).</li><li><img src="/symbols/symbol-8.svg" alt="">Collectibles: ENS name, Urbe Hub day pass, T-shirt, gadget, magnet.</li><li><img src="/symbols/symbol-1.svg" alt="">Free spins, credited onchain to your wallet.</li></ul></section>
+    </div>
+    <button id="info-close" class="primary-button" type="button">GOT IT <span>✓</span></button>
+  </div></div>
+  <div id="settings-dialog" class="overlay" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden><div class="dialog settings-dialog">
+    <span class="overline">PLAYER SETTINGS</span><h2 id="settings-title">Your seat.</h2>
+    <p>Log in by scanning the QR code in the wallet panel. Logging out frees the seat and keeps your wallet and funds.</p>
+    <div class="settings-list"><button id="settings-logout" class="settings-button" type="button">Log out and free the seat <span>↗</span></button><button id="mode-switch" class="settings-button" type="button">LIVE · switch to demo</button><button id="hardware-open" class="settings-button" type="button">Link Arduino cabinet <span>↗</span></button></div>
+    <button id="settings-close" class="primary-button" type="button">DONE <span>✓</span></button>
+  </div></div>
   <noscript>Enable JavaScript in Safari to link your wallet.</noscript>
 </body>
 </html>

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200">
+  <defs>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#eeeae0"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="2" dy="4" stdDeviation="3" flood-color="#000" flood-opacity=".35"/></filter>
+  </defs>
+  <g font-family="Georgia,'Times New Roman',serif" font-weight="700">
+    <g transform="rotate(-18 120 190)" filter="url(#shadow)">
+      <rect x="60" y="40" width="96" height="136" rx="9" fill="url(#card)" stroke="#b9b3a4"/>
+      <text x="68" y="64" font-size="20" fill="#1b1b1f">10</text><text x="68" y="82" font-size="18" fill="#1b1b1f">♣</text>
+      <text x="108" y="130" font-size="52" text-anchor="middle" fill="#1b1b1f">♣</text>
+    </g>
+    <g filter="url(#shadow)">
+      <rect x="82" y="30" width="96" height="136" rx="9" fill="url(#card)" stroke="#b9b3a4"/>
+      <text x="90" y="54" font-size="20" fill="#c1272d">J</text><text x="90" y="72" font-size="18" fill="#c1272d">♥</text>
+      <rect x="104" y="60" width="52" height="78" rx="4" fill="none" stroke="#d9a73a" stroke-width="2"/>
+      <text x="130" y="112" font-size="34" text-anchor="middle" fill="#c1272d">♥</text>
+      <text x="130" y="90" font-size="16" text-anchor="middle" fill="#2a4e9c">J</text>
+    </g>
+    <g transform="rotate(18 120 190)" filter="url(#shadow)">
+      <rect x="104" y="40" width="96" height="136" rx="9" fill="url(#card)" stroke="#b9b3a4"/>
+      <text x="112" y="64" font-size="20" fill="#c1272d">Q</text><text x="112" y="82" font-size="18" fill="#c1272d">♦</text>
+      <text x="152" y="130" font-size="52" text-anchor="middle" fill="#c1272d">♦</text>
+    </g>
+  </g>
+  <g transform="translate(26 118)">
+    <ellipse cx="34" cy="44" rx="34" ry="12" fill="#7a1a1f"/>
+    <rect x="0" y="30" width="68" height="14" fill="#a92027"/>
+    <ellipse cx="34" cy="30" rx="34" ry="12" fill="#d3363b" stroke="#fff" stroke-width="5" stroke-dasharray="11 9"/>
+    <ellipse cx="34" cy="30" rx="18" ry="6.5" fill="#fff"/><text x="34" y="33" font-family="Georgia,serif" font-size="8" font-weight="700" text-anchor="middle" fill="#a92027">WSS</text>
+  </g>
+</svg>

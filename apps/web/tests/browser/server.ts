@@ -23,7 +23,7 @@ const server = createServer(async (req, res) => {
     res.writeHead(result.status, Object.fromEntries(result.headers)); res.end(await result.text()); return;
   }
   const path = url.pathname === '/' ? '/terminal/index.html' : url.pathname;
-  if (!/^\/(terminal|symbols)\/[a-z0-9-]+\.(html|js|css|svg)$/.test(path)) {res.writeHead(404); res.end(); return;}
+  if (!/^\/(terminal|symbols|decor)\/[a-z0-9-]+\.(html|js|css|svg)$/.test(path)) {res.writeHead(404); res.end(); return;}
   const types: Record<string, string> = {html: 'text/html', js: 'text/javascript', css: 'text/css', svg: 'image/svg+xml'};
   res.setHeader('Content-Type', types[path.split('.').pop()!]); res.end(await readFile(join(process.cwd(), 'public', path)));
 });

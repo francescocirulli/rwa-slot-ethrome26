@@ -3,7 +3,6 @@ import {pairingSecret} from '../fixtures';
 
 async function link(page: Page, phone: BrowserContext) {
   await page.goto('/');
-  await page.locator('#attract-wake').click();
   await expect(page.locator('#login-qr')).toBeVisible();
   const secret = pairingSecret((await page.locator('#login-qr').getAttribute('src'))!);
   const code = (await page.locator('#pair-code').textContent())!.replace(/ /g, '');
@@ -23,7 +22,7 @@ test('real pairing UI, wallet, receive QR, verified signature and logout at iPad
   await expect(page.locator('#free-spin-summary')).toBeVisible();
   await expect(page.locator('#free-spin-balance')).toHaveText('—');
   await expect(page.locator('#free-spin-note')).toHaveText('The slot is not live yet.');
-  await page.getByRole('button', {name: 'Top up wallet'}).click();
+  await page.getByRole('button', {name: 'Top up'}).click();
   await expect(page.locator('#deposit-qr')).toBeVisible();
   await page.locator('#deposit-close').click();
   for (const height of [768, 650]) {
@@ -199,6 +198,7 @@ test('a paired wallet can enter demo when the contract is not configured', async
   const phone = await phoneContext(browser);
   await link(page, phone);
   await expect(page.locator('#free-spin-note')).toHaveText('The slot is not live yet.');
+  await page.locator('#settings-open').click();
   await page.locator('#mode-switch').click();
   await expect(page).toHaveURL(/demo=1/);
   await expect(page.locator('body')).toHaveAttribute('data-mode', 'demo');

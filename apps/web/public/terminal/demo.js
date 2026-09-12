@@ -22,7 +22,7 @@
     return {configured: true, funding: {ready: true, assets: []}, sessionId: 'demo', block: '103', settings: {ticketPrice: '50000', paused: false, totalOutcomeWeight: 1000, configuredPrizeCount: 12}, keeper: {configured: true, canStartFreeSpin: true, balanceWei: '1'},
       player: {freeSpins: String(credits), allowance: '1000000', balance: String(cents >= 6 ? cents * 10000 : 0), latestGameId: String(round), historyReady: true, game: game, operation: operation}};
   }
-  function balances() {el('balance').textContent = (cents / 100).toFixed(2);}
+  function balances() {el('balance').textContent = (cents / 100).toFixed(2); el('credit-display').textContent = el('balance').textContent;}
   function login() {
     round = 0; credits = 2; cents = 25; spent = 0; started = 0; deadline = Date.now() + 180000;
     session = {id: 'demo', state: 'active', expiresAt: deadline, serverTime: Date.now(), playGrant: {active: true}};
@@ -34,7 +34,7 @@
   }
   function logout() {
     session = null; deadline = 0; emit(null); document.body.className = ''; show('wallet-panel', false); show('welcome', true);
-    el('balance').textContent = '—'; el('connection-light').textContent = 'DEMO'; el('demo-outcome').disabled = false;
+    el('balance').textContent = '—'; el('credit-display').textContent = '—'; el('connection-light').textContent = 'DEMO'; el('demo-outcome').disabled = false;
   }
   window.slotDemo = {request: function (path, body, callback) {
     window.setTimeout(function () {
