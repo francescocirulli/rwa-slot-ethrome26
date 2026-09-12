@@ -44,8 +44,8 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
     await userWallet.writeContract({address:payment,abi:erc20Abi,functionName:'approve',args:[slot,10000000n]});
     await write('grantRole',[keccak256(toHex('GAME_MANAGER_ROLE')),keeper.address]);
     await engine.tick();
-    let sends=0;
-    const paid={assertSession:()=>{},maxPrice:1000000n,sendPaid:async()=>{sends++;return {hash:await userWallet.writeContract({address:slot,abi:slotAbi,functionName:'startSpin'})};}};
+    let sends=0, lastPaidHash: Hex | undefined;
+    const paid={assertSession:()=>{},maxPrice:1000000n,sendPaid:async()=>{sends++;lastPaidHash=await userWallet.writeContract({address:slot,abi:slotAbi,functionName:'startSpin'});return {hash:lastPaidHash};}};
     let firstId=0n;
     await t.test('paid transaction belongs to player and duplicate requests do not buy two tickets',async()=>{
       const first=await engine!.start(player.address,0n,'paid',paid);
@@ -145,7 +145,12 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
     });
     await t.test('free-spin rewards credit the stored player without sending tokens',async()=>{
       for(let symbol=0;symbol<3;symbol++)await write('configurePrize',[symbol,3,zeroAddress,0n,3n,0,symbol===2?400:300]);
-      const before=await reader.player(player.address);await engine!.tick();await engine!.start(player.address,before.latestGameId,'paid',paid);
+      const before=await reader.player(player.address), previousHash=lastPaidHash;
+      await engine!.tick();await engine!.start(player.address,before.latestGameId,'paid',paid);
+      // Anvil can expose the mutating head during automining: wait for the start
+      // receipt before comparing the reward round's state across separate calls.
+      const hash=await until(async()=>lastPaidHash && lastPaidHash!==previousHash ? lastPaidHash : null,'Reward start not submitted');
+      assert.equal((await client.waitForTransactionReceipt({hash})).status,'success');
       const pending=await until(async()=>{const g=await reader.player(player.address);return g.game?.pending?g.game:null;},'Reward round not started');
       const head=await client.getBlockNumber({cacheTime:0});await mine(Number(pending.targetBlock-head+1n));await engine!.tick();await mine();
       const result=await reader.game(pending.id);assert.equal(result.confirmed,true);assert.equal(result.payout!.kind,3);assert.equal(result.payout!.amount,3n);
