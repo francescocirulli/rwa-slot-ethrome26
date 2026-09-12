@@ -52,6 +52,10 @@ test('authenticated QR pairing reuses login; inactivity expires only the iPad se
   await setup(page);await page.clock.install();await page.goto('/phone-fixture#pair=fixture-secret');
   await expect(page.getByRole('button',{name:'Sign in with passkey'})).toBeHidden();await page.getByLabel('The code matches.').check();await page.getByRole('button',{name:'Link the wallet'}).click();
   await expect(page.getByRole('button',{name:'End the iPad link'})).toBeVisible();
+  // A configured slot must still expose the proof approval: the iPad waits for
+  // grant.active, so gating this card on slotConfigured would strand the link.
+  await expect(page.getByText("Now it is the iPad's turn.")).toBeVisible();
+  await expect(page.getByRole('button',{name:'Approve and take a seat'})).toBeVisible();
   // Freeze relay expiry relative to real time while advancing the browser clock.
   await page.route('**/api/relay/phone',route=>route.fulfill({status:401,json:{error:'Session expired'}}));
   await page.clock.fastForward(181000);await expect(page.getByRole('button',{name:'End the iPad link'})).toBeHidden();await expect(page.locator('b').filter({hasText:'GOLD · DGLD'})).toBeVisible();
