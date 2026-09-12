@@ -152,7 +152,7 @@ Because only one outcome is selected per spin, each symbol is reserved once rath
 ## Lifecycle
 
 1. `startSpin()` transfers the ticket price in USDC and commits to a future block. The configurable delay defaults
-   to five blocks.
+   to five blocks in a fresh deployment; the current Base deployment is configured to two blocks.
 2. Once the target block is sealed, anyone can call `revealRound(gameId)` during the configured reveal window,
    which defaults to 256 blocks and can never exceed the EVM blockhash limit.
 3. The reveal selects one exact paytable bucket, chooses one of the three lines, builds the 5x3 result, and pays the
@@ -244,6 +244,9 @@ probability denominator, and the 256-block maximum window are protocol rules rat
 - ERC-1155 prizes: [`0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`](https://base.blockscout.com/address/0x8D411D8efCDb0d528E4F6659B44223264Fd0B719) (verified source)
 - Slot machine: [`0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c`](https://base.blockscout.com/address/0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c) (verified source)
 - Ticket: `0.05 USDC` (`50,000` base units)
+- Live reveal delay: `2` blocks (a spin in block `N` is revealable from `N + 3`)
+- Reveal window: `256` blocks
+- Live paytable: `15` symbols, `1%` no prize, total weight `1,000`
 - Slot owner: `0xC81f6728a10B20a8981d5C2601Aa185417229035`
 - Initial game manager and current ERC-1155 owner: `0x8e251547f0fD650e0573711EF733F13eBA1505aD`
 
@@ -276,8 +279,25 @@ The existing ENS prize (ID 2) is transferred directly to
 contract is deployed. The transfer calldata binds the reservation and the
 backend verifies the finalized receipt and ERC1155 event before fulfilling it.
 This transfer does not burn the token or reduce its supply.
-`SlotENSRegistrar` uses the real ENSv2 UserRegistry and PermissionedResolver on
-Sepolia, with a backend-attested Base transaction/log identifier that can be
-used only once. The player owns the name and resolver; the backend controls the
-parent namespace. See the [ENS setup and trust model](../apps/web/docs/ens.md)
+We registered `wallstreetslot.eth` as the parent ENS name on Sepolia through the
+official `ensdomains/contracts-v2` deployment. Winning and redeeming an ENS
+Registration voucher creates an available player-selected subdomain, for example
+`elon.wallstreetslot.eth`, owned by that player's wallet. The official `ETHRegistry`
+maps the parent to the project's UserRegistry proxy.
+`SlotENSRegistrar` uses a backend-attested Base transaction/log identifier only
+once, deploys a child resolver through the official ENSv2 factory, and calls the
+project UserRegistry to create the subname. The player owns the name and resolver;
+the backend controls the parent namespace.
+
+| Ethereum Sepolia deployment | Scope | Address |
+| --- | --- | --- |
+| ENSv2 `ETHRegistry` | Official upstream contract | [`0xBDC85dD5b15D7ecb354cd7cb6f2c50b4f2c4F0E2`](https://sepolia.etherscan.io/address/0xBDC85dD5b15D7ecb354cd7cb6f2c50b4f2c4F0E2) |
+| ENSv2 `VerifiableFactory` | Official upstream contract | [`0x10dC6333CDFe1FCEf624c6e0a8221b91804Cd7ef`](https://sepolia.etherscan.io/address/0x10dC6333CDFe1FCEf624c6e0a8221b91804Cd7ef) |
+| `UserRegistry` | Project proxy registered below `wallstreetslot.eth` | [`0x6D9E4b4a02D966D460D5fFBA87fDE09a7Ba34b21`](https://sepolia.etherscan.io/address/0x6D9E4b4a02D966D460D5fFBA87fDE09a7Ba34b21) |
+| `SlotENSRegistrar` | Project voucher adapter | [`0x84f6ddfe529D5f38AF2a95e38B6a23f9b4CDAA69`](https://sepolia.etherscan.io/address/0x84f6ddfe529D5f38AF2a95e38B6a23f9b4CDAA69) |
+| Parent `PermissionedResolver` | Project proxy | [`0x202Ea0a1d8F2dC90Ea4F265c89ae3b5Ec5127B91`](https://sepolia.etherscan.io/address/0x202Ea0a1d8F2dC90Ea4F265c89ae3b5Ec5127B91) |
+
+The complete deployment evidence and transaction history are recorded in
+[`deployments/sepolia-ens-v2.json`](deployments/sepolia-ens-v2.json). See the
+[ENS setup and trust model](../apps/web/docs/ens.md)
 for configuration, fees, finality and recovery requirements.
