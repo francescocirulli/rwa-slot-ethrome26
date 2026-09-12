@@ -25,6 +25,7 @@ async function setup(page:Page,{paired=false,busy=false,unavailable=false,playAc
 test('standalone wallet shows allowance and all prizes; transfer requires readable review and explicit confirmation',async({page})=>{
   await setup(page);await page.goto('/phone-fixture');
   await expect(page.getByText('No iPad linked to this page')).toBeVisible();
+  await page.getByRole('button',{name:'Wallet',exact:true}).click();
   await expect(page.getByLabel('Wallet address',{exact:true})).toHaveText(address);
   await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(value:string)=>{document.body.dataset.copiedAddress=value;}}}));
   await page.getByRole('button',{name:'Copy address',exact:true}).click();
@@ -44,6 +45,7 @@ test('standalone wallet shows allowance and all prizes; transfer requires readab
 });
 test('NFT quantity validation, allowance replacement and zero revocation remain separate reviewed actions',async({page})=>{
   await setup(page);await page.goto('/phone-fixture');
+  await page.getByRole('button',{name:'Wallet',exact:true}).click();
   await page.getByRole('button',{name:'Send Magnet'}).click();await page.getByLabel('External recipient address').fill(recipient);await page.getByLabel('NFT quantity (whole)').fill('1.5');await page.getByRole('button',{name:'Review transfer'}).click();
   await expect(page.getByRole('dialog')).toBeHidden();await expect(page.getByText('Amount above the available balance or invalid.')).toBeVisible();
   await page.getByLabel('NFT quantity (whole)').fill('2');await page.getByRole('button',{name:'Review transfer'}).click();await expect(page.getByText('2 NFT · ID 5',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Cancel',exact:true}).click();
@@ -53,9 +55,11 @@ test('NFT quantity validation, allowance replacement and zero revocation remain 
 test('ending pairing keeps wallet signed in; logout returns to standalone login',async({page})=>{
   await setup(page,{paired:true});await page.goto('/phone-fixture');
   await page.getByRole('button',{name:'End the iPad link'}).click();
+  await page.getByRole('button',{name:'Wallet',exact:true}).click();
+  await page.getByText('Account & security',{exact:true}).click();
   await expect(page.getByText('ACCOUNT CONNECTED',{exact:false})).toBeVisible();await expect(page.locator('b').filter({hasText:'GOLD · DGLD'})).toBeVisible();await expect(page.getByText('2.5 USDC',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Sign out of the wallet'}).click();await expect(page.getByRole('button',{name:'Sign in with passkey'})).toBeVisible();await expect(page.locator('b').filter({hasText:'GOLD · DGLD'})).toBeHidden();
-  await page.getByRole('button',{name:'Sign in with passkey'}).click();await expect(page.locator('b').filter({hasText:'GOLD · DGLD'})).toBeVisible();
+  await page.getByRole('button',{name:'Sign in with passkey'}).click();await page.getByRole('button',{name:'Wallet',exact:true}).click();await expect(page.locator('b').filter({hasText:'GOLD · DGLD'})).toBeVisible();
 });
 test('authenticated QR pairing reuses login; inactivity expires only the iPad session',async({page})=>{
   await setup(page);await page.clock.install();await page.goto('/phone-fixture#pair=fixture-secret');
@@ -67,12 +71,13 @@ test('authenticated QR pairing reuses login; inactivity expires only the iPad se
   await expect(page.getByRole('button',{name:'Approve and take a seat'})).toBeVisible();
   // Freeze relay expiry relative to real time while advancing the browser clock.
   await page.route('**/api/relay/phone',route=>route.fulfill({status:401,json:{error:'Session expired'}}));
-  await page.clock.fastForward(181000);await expect(page.getByRole('button',{name:'End the iPad link'})).toBeHidden();await expect(page.locator('b').filter({hasText:'GOLD · DGLD'})).toBeVisible();
+  await page.clock.fastForward(181000);await expect(page.getByRole('button',{name:'End the iPad link'})).toBeHidden();await page.getByRole('button',{name:'Wallet',exact:true}).click();await expect(page.locator('b').filter({hasText:'GOLD · DGLD'})).toBeVisible();
 });
 test('pending spin disables wallet writes; unavailable reads never look like zero holdings',async({page})=>{
   await setup(page,{paired:true,busy:true});await page.goto('/phone-fixture');
+  await page.getByRole('button',{name:'Wallet',exact:true}).click();
   await expect(page.getByText('Spin in progress #4.',{exact:false})).toBeVisible();await expect(page.getByRole('button',{name:'Review approval'})).toBeDisabled();await expect(page.getByRole('button',{name:'Send NVIDIA · NVDAc'})).toBeDisabled();
-  await page.unrouteAll({behavior:'wait'});await setup(page,{unavailable:true});await page.goto('/phone-fixture');
+  await page.unrouteAll({behavior:'wait'});await setup(page,{unavailable:true});await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
   await expect(page.getByText('Prize balances and approval unavailable.',{exact:false})).toBeVisible();await expect(page.getByRole('button',{name:'Review approval'})).toBeDisabled();
 });
 
@@ -91,7 +96,7 @@ test('camera scanner decodes the iPad QR locally, stops the camera and requires 
   },{picture});
   await page.goto('/phone-fixture');
   expect(await page.evaluate(()=>(window as any).cameraRequests)).toBe(0);
-  await page.getByRole('button',{name:'Scansiona QR dell’iPad'}).click();
+  await page.getByRole('button',{name:'Scan iPad QR'}).click();
   await expect(page.getByLabel('The code matches.')).toBeVisible();
   await expect(page.getByRole('button',{name:'Link the wallet'})).toBeDisabled();
   expect(await page.evaluate(()=>(window as any).cameraTrack.readyState)).toBe('ended');
@@ -103,7 +108,7 @@ test('camera scanner decodes the iPad QR locally, stops the camera and requires 
 test('denied camera offers local photo scanning and rejects a foreign pairing origin',async({page})=>{
   await setup(page);
   await page.addInitScript(()=>{Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:async()=>{throw new DOMException('denied','NotAllowedError');}}});});
-  await page.goto('/phone-fixture');await page.getByRole('button',{name:'Scansiona QR dell’iPad'}).click();
+  await page.goto('/phone-fixture');await page.getByRole('button',{name:'Scan iPad QR'}).click();
   await expect(page.getByText('Consenti l’accesso alla fotocamera',{exact:false})).toBeVisible();
   const secret='b'.repeat(64),image=async(origin:string)=>({name:'qr.png',mimeType:'image/png',buffer:await QRCode.toBuffer(origin+'/phone#pair='+secret,{width:512,margin:4})});
   await page.locator('input[type=file]').setInputFiles(await image('https://other.example'));
@@ -118,7 +123,7 @@ test('closing scanner while permission is pending stops a late camera stream',as
   await page.addInitScript(()=>{Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:()=>new Promise(resolve=>{(window as any).allowCamera=()=>{
     const canvas=document.createElement('canvas');canvas.width=16;canvas.height=16;const stream=canvas.captureStream();(window as any).cameraTrack=stream.getTracks()[0];resolve(stream);
   };})}});});
-  await page.goto('/phone-fixture');await page.getByRole('button',{name:'Scansiona QR dell’iPad'}).click();await page.getByRole('button',{name:'Chiudi scanner'}).click();
+  await page.goto('/phone-fixture');await page.getByRole('button',{name:'Scan iPad QR'}).click();await page.getByRole('button',{name:'Chiudi scanner'}).click();
   await page.evaluate(()=>(window as any).allowCamera());
   await expect.poll(()=>page.evaluate(()=>(window as any).cameraTrack.readyState)).toBe('ended');
   await expect(page.getByRole('dialog')).toBeHidden();
@@ -138,6 +143,7 @@ test('paired setup has one approval form and empty wallets see Base funding befo
   expect(await page.locator('body').getAttribute('data-submitted')).toBeNull();
   await page.unrouteAll({behavior:'wait'});await setup(page,{paired:true,playActive:false});
   await page.getByRole('button',{name:'Refresh balances'}).click();
+  await page.getByRole('button',{name:'Play',exact:true}).click();
   await expect(page.getByRole('button',{name:'Approve and play'})).toBeEnabled();
   await page.getByRole('button',{name:'Approve and play'}).click();
   await expect(page.getByRole('dialog')).toBeVisible();
@@ -148,10 +154,10 @@ test('ETH alone cannot enable paid play; ETH gas mode requires ETH and failed ba
   await setup(page,{paired:true,playActive:false,usdc:'0'});await page.goto('/phone-fixture');
   await page.getByLabel('I authorize spins within this budget').check();
   await expect(page.getByRole('button',{name:'Approve and play'})).toBeDisabled();
-  await page.unrouteAll({behavior:'wait'});await setup(page,{eth:'0',gasMode:'eth'});await page.goto('/phone-fixture');
+  await page.unrouteAll({behavior:'wait'});await setup(page,{eth:'0',gasMode:'eth'});await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
   await expect(page.getByRole('button',{name:'Review approval'})).toBeDisabled();
   await expect(page.getByText('Add ETH on Base to pay approval fees.',{exact:false})).toBeVisible();
-  await page.unrouteAll({behavior:'wait'});await setup(page,{unavailable:true});await page.goto('/phone-fixture');
+  await page.unrouteAll({behavior:'wait'});await setup(page,{unavailable:true});await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
   await expect(page.getByRole('button',{name:'Review approval'})).toBeDisabled();
 });
 
@@ -169,6 +175,7 @@ test('paid play rechecks USDC before preparing permission when displayed balance
 
 for(const [name,id] of [['Books','6'],['Water Bottle','7'],['Caps','8']])test('phone reviews and transfers '+name+' with its exact ERC1155 ID',async({page})=>{
   await setup(page);await page.goto('/phone-fixture');
+  await page.getByRole('button',{name:'Wallet',exact:true}).click();
   await page.getByRole('button',{name:'Send '+name}).click();
   await page.getByLabel('External recipient address').fill(recipient);await page.getByLabel('NFT quantity (whole)').fill('2');
   await page.getByRole('button',{name:'Review transfer'}).click();
@@ -195,4 +202,69 @@ test('welcome spins recover without pairing or working balance RPCs and resume a
   await expect(page.getByRole('status',{name:'Welcome spins'})).toContainText('have been credited');
   expect(claims).toBe(3);
   await expect(page.getByText('No iPad linked to this page')).toBeVisible();
+});
+
+
+for (const viewport of [{width:320,height:568},{width:390,height:844},{width:430,height:932},{width:844,height:390}]) {
+  test(`phone navigation stays reachable at ${viewport.width}×${viewport.height}`, async ({page}) => {
+    await setup(page);
+    await page.setViewportSize(viewport);
+    await page.goto('/phone-fixture');
+    const nav = page.getByRole('navigation', {name:'Phone sections'});
+    const scan = page.getByRole('button', {name:'Scan iPad QR'});
+    await expect(scan).toBeVisible();
+    if (viewport.height >= 568) await expect(scan).toBeInViewport();
+    await expect(page.getByRole('heading', {name:'Your winnings.'})).toBeHidden();
+    for (const name of ['Wallet','Activity','Play']) {
+      const button = nav.getByRole('button', {name,exact:true});
+      await expect(button).toBeInViewport();
+      const bounds = await button.boundingBox();
+      expect(bounds!.height).toBeGreaterThanOrEqual(44);
+      await button.click();
+      await expect(button).toHaveAttribute('aria-current','page');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      if (name === 'Wallet') {
+        await expect(page.getByLabel('Wallet address', {exact:true})).toBeVisible();
+        const winnings = await page.getByRole('heading', {name:'Your winnings.'}).boundingBox();
+        const limit = await page.getByRole('heading', {name:'Your USDC limit.'}).boundingBox();
+        expect(winnings!.y).toBeLessThan(limit!.y);
+        await page.getByText('Account & security', {exact:true}).scrollIntoViewIfNeeded();
+        await expect(nav).toBeInViewport();
+      }
+      if (name === 'Activity') await expect(page.getByRole('region', {name:'Season leaderboard'})).toBeVisible();
+    }
+    if (viewport.width === 390) await page.screenshot({path:'/tmp/iphone-play-redesign.png'});
+  });
+}
+
+test('changing views preserves a transfer draft and never submits it', async ({page}) => {
+  await setup(page);await page.goto('/phone-fixture');
+  await page.getByRole('button',{name:'Wallet',exact:true}).click();
+  await page.getByRole('button',{name:'Send NVIDIA · NVDAc'}).click();
+  await expect(page.getByLabel('External recipient address')).toBeFocused();
+  await page.getByLabel('External recipient address').fill(recipient);
+  await page.getByLabel('Token amount',{exact:true}).fill('0.0005');
+  await page.getByRole('button',{name:'Activity',exact:true}).click();
+  await page.getByRole('button',{name:'Wallet',exact:true}).click();
+  await expect(page.getByLabel('External recipient address')).toHaveValue(recipient);
+  await expect(page.getByLabel('Token amount',{exact:true})).toHaveValue('0.0005');
+  expect(await page.locator('body').getAttribute('data-submitted')).toBeNull();
+});
+
+test('session expiry warning remains reachable while viewing the wallet', async ({page}) => {
+  await setup(page,{paired:true});await page.clock.install();await page.goto('/phone-fixture');
+  await expect(page.getByRole('button',{name:'End the iPad link'})).toBeVisible();
+  await page.getByRole('button',{name:'Wallet',exact:true}).click();
+  await expect(page.getByLabel('Wallet address',{exact:true})).toHaveText(address);
+  // Stop session reads from refreshing the fixture timestamps while the clock advances.
+  await page.route('**/api/relay/phone',route=>route.abort());
+  await page.clock.fastForward(151000);
+  const keepAlive=page.getByRole('button',{name:'I am still here'});
+  await expect(keepAlive).toBeInViewport();
+  await expect(page.getByRole('button',{name:'Wallet',exact:true})).toHaveAttribute('aria-current','page');
+  await page.clock.fastForward(31000);
+  await expect(keepAlive).toBeHidden();
+  await expect(page.getByLabel('Wallet address',{exact:true})).toHaveText(address);
+  await page.getByRole('button',{name:'Play',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Scan iPad QR'})).toBeVisible();
 });
