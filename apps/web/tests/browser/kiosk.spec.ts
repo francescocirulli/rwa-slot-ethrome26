@@ -39,7 +39,8 @@ test('paired hardware motion wakes kiosk and one physical lever starts one demo 
   await page.locator('#settings-open').click();await page.locator('#hardware-open').click();await page.locator('#hardware-code').fill(initial.code);await page.locator('#hardware-pair').click();
   await expect(page.locator('#hardware-status')).toHaveText('Arduino linked.');await page.locator('#hardware-close').click();
   await device([{evt:'motion'}]);await expect.poll(async()=>(await device()).command.cmd).toBe('attract');
-  await page.locator('#demo-login').click();await expect(page.locator('#spin-free')).toBeEnabled();
+  await expect(page.locator('#attract')).toBeVisible();await expect(page.locator('#attract')).toContainText('Try your luck');
+  await page.locator('#demo-login').click();await expect(page.locator('#spin-free')).toBeEnabled();await expect(page.locator('#attract')).toBeHidden();
   await page.locator('#demo-outcome').selectOption('loss');
   let gate='';await expect.poll(async()=>{gate=(await device()).gate;return gate;}).not.toBe('');
   await device([{evt:'lever',gate},{evt:'lever',gate}]);await expect(page.locator('.machine')).toHaveClass(/is-spinning/);
