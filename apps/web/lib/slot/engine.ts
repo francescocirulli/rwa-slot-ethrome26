@@ -20,7 +20,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
   const backendRpcUrls=config.rpcUrls?.length?config.rpcUrls:[config.rpcUrl];
   const wallet = backend ? createWalletClient({account: backend, chain, transport: fallback(backendRpcUrls.map(url=>http(url, {retryCount: 0, timeout: 12000})),{retryCount:0,shouldThrow:shouldThrowRpcError})}) : undefined;
   const operations = new Map<string, SpinOperation>(), locks = new Map<string, Promise<unknown>>();
-  const welcome = new Map<string, {player: Address; hash?: Hash; nextAttempt: number; checking: boolean; error?: string}>();
+  const welcome = new Map<string, {player: Address; fromBlock:bigint; hash?: Hash; nextAttempt: number; checking: boolean; error?: string}>();
   const welcomeHistory = createWelcomeHistory(reader);
   const welcomeViews = new Map<string, WelcomeView>();
   const prizeAvailability = createPrizeAvailability(() => reader.funding());
@@ -55,7 +55,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
       let checked: WelcomeHistory | undefined;
       if (functionName === 'grantFreeSpins') {
         // Read again inside the nonce queue: an earlier eligibility check cannot authorize a send.
-        checked = await welcomeHistory.read(arg as Address);
+        checked = await welcomeHistory.read(arg as Address,welcome.get(String(arg).toLowerCase())?.fromBlock);
         if (checked.granted) throw new SlotError('WelcomeAlreadyGranted', 'Bonus already credited.');
         if (!checked.complete) throw new SlotError('WelcomeHistorySyncing', 'Checking the bonus history.');
         if (await client.getTransactionCount({address: backend.address, blockNumber: checked.blockNumber}) !== pendingNonce) {
@@ -218,30 +218,36 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
     return serializable({configured:true,address:config.address,chainId:config.chainId,paymentToken:config.paymentToken,
       gasMode:config.gasMode,block,settings,player:state,keeper:health,prizeAvailability:prizeAvailability.view()});
   }
-  async function queueWelcome(player: Address): Promise<WelcomeView> {
+  async function queueWelcome(player: Address, fromBlock=config.deploymentBlock): Promise<WelcomeView> {
     return locked(`welcome:${player.toLowerCase()}`, async () => {
+      // Enqueue before RPC reads: a transient failure must not lose the claim.
+      if(backend&&!welcome.has(player.toLowerCase())) {
+        if(welcome.size>=256)throw new SlotError('Busy','Too many pending bonuses. Try again shortly.',503);
+        welcome.set(player.toLowerCase(),{player,fromBlock,nextAttempt:0,checking:true});
+      }
+      const queued=welcome.get(player.toLowerCase());
+      if(queued&&fromBlock<queued.fromBlock)queued.fromBlock=fromBlock;
       await reader.validate();
-      const history = await welcomeHistory.read(player);
+      const history = await welcomeHistory.read(player,queued?.fromBlock??fromBlock);
       if (history.granted) {
         welcomeViews.set(player.toLowerCase(),{status:'granted',amount:'2'});
         welcome.delete(player.toLowerCase()); return {status: 'granted', amount: '2'};
       }
       if (!backend) return {status: 'unavailable', amount: '2', error: 'The bonus will be credited once the service is ready.'};
       const existing = welcome.get(player.toLowerCase());
-      if (!existing) {
-        if (welcome.size >= 256) throw new SlotError('Busy', 'Too many pending bonuses. Try again shortly.', 503);
-        welcome.set(player.toLowerCase(), {player, nextAttempt: 0, checking: !history.complete});
-      }
+      if(existing)existing.checking=!history.complete;
       return {status: history.complete ? 'pending' : 'checking', amount: '2', error: existing?.error};
     });
   }
   async function processWelcome() {
     const entry = [...welcome.values()].find(item => item.nextAttempt <= Date.now());
     if (!entry) return;
+    // Round-robin claims: one slow history scan cannot starve later wallets.
+    welcome.delete(entry.player.toLowerCase());welcome.set(entry.player.toLowerCase(),entry);
     entry.nextAttempt = Date.now() + 10000;
     try {
       if (entry.hash) {
-        if ((await welcomeHistory.read(entry.player)).granted) {welcomeViews.set(entry.player.toLowerCase(),{status:'granted',amount:'2'});welcome.delete(entry.player.toLowerCase()); return;}
+        if ((await welcomeHistory.read(entry.player,entry.fromBlock)).granted) {welcomeViews.set(entry.player.toLowerCase(),{status:'granted',amount:'2'});welcome.delete(entry.player.toLowerCase()); return;}
         const receipt = await client.getTransactionReceipt({hash: entry.hash}).catch(() => null);
         // An unknown submission never permits another nonce. A confirmed revert can be retried.
         if (!receipt || receipt.status === 'success') return;
@@ -252,6 +258,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
     } catch (error) {
       if (error instanceof SlotError && error.code === 'WelcomeAlreadyGranted') {welcomeViews.set(entry.player.toLowerCase(),{status:'granted',amount:'2'});welcome.delete(entry.player.toLowerCase()); return;}
       entry.checking = error instanceof SlotError && error.code === 'WelcomeHistorySyncing';
+      if(entry.checking)entry.nextAttempt=Date.now()+250;
       entry.error = 'The welcome bonus is pending. We retry automatically.';
     }
   }

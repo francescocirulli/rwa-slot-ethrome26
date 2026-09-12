@@ -271,6 +271,18 @@ test('contract integration on Anvil: wallets, two-phase spins, restart recovery,
         assert.equal(await client.getTransactionCount({address: keeper.address}), finalNonce);
         assert.equal((await legacyReader.player(player.address)).freeSpins, 0n);
 
+        await legacyTest.test('a queued claim survives its initial RPC failure after the phone disconnects',async()=>{
+          const recipient=mnemonicToAccount(mnemonic,{addressIndex:9}).address;
+          const validate=legacyEngine.reader.validate;
+          legacyEngine.reader.validate=async()=>{throw new Error('Transient RPC outage');};
+          try{await assert.rejects(legacyEngine.queueWelcome(recipient),/Transient RPC outage/);}
+          finally{legacyEngine.reader.validate=validate;}
+          // No second frontend request: the keeper owns the queued claim now.
+          await until(async()=>{await legacyEngine.tick();return (await client.readContract({address:legacySlot,abi:slotAbi,functionName:'freeSpins',args:[recipient]}))===2n||null;},'Queued welcome was lost after RPC failure');
+          await until(async()=>{await legacyEngine.tick();return (await legacyEngine.queueWelcome(recipient)).status==='granted'||null;},'Welcome receipt was not reconciled');
+          const logs=await client.getContractEvents({address:legacySlot,abi:slotAbi,eventName:'FreeSpinsGranted',args:{player:recipient},fromBlock:legacyBlock});
+          assert.equal(logs.length,1);assert.equal(logs[0].args.amount,2n);
+        });
         await legacyTest.test('lost welcome response and restart with a pending nonce never submit a second bonus', async () => {
           const recipient = mnemonicToAccount(mnemonic, {addressIndex: 6}).address;
           await client.request({method: 'anvil_setBalance' as never, params: [recipient, '0x0'] as never});

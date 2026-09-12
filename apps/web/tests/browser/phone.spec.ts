@@ -5,6 +5,7 @@ import {BASE_PRIZE_COLLECTION,BASE_PRIZE_IDS} from '../../lib/prize-collection';
 const address='0x0000000000000000000000000000000000000011',recipient='0x0000000000000000000000000000000000000022',contract='0x0000000000000000000000000000000000000099';
 async function setup(page:Page,{paired=false,busy=false,unavailable=false,playActive=true,usdc='100000000',eth='0.001',gasMode='usdc'}={}) {
   let connected=paired;
+  await page.route('**/api/account/welcome',route=>route.fulfill({json:{status:'granted',amount:'2'}}));
   const session=()=>({id:'fixture-session',state:'active',address,code:'123456',serverTime:Date.now(),expiresAt:Date.now()+180000,welcome:{status:'granted',amount:'2'},...(playActive?{playGrant:{active:true,budget:'5000000'}}:{})});
   await page.route('**/api/account',async route=>route.fulfill({json:{userId:'fixture-user',wallet:{address,depositQr:'data:image/gif;base64,R0lGODlhAQABAAAAACw=',balance:{amount:'10',stale:false,updatedAt:Date.now()},portfolio:unavailable?null:{address,chainId:8453,contract,updatedAt:Date.now(),eth,allowance:'2500000',freeSpins:'2',ticketPrice:'50000',busy,canTransact:!busy,gameId:busy?'4':null,gasMode,assets:WALLET_ASSETS.map(asset=>({...asset,balance:asset.id==='usdc'?usdc:'100000000',formatted:asset.decimals===8?'1':'10',verified:true})),nfts:NFT_PRIZES.map(nft=>({...nft,token:BASE_PRIZE_COLLECTION,tokenId:BASE_PRIZE_IDS[nft.symbol],balance:'2'}))}}}}));
   await page.route('**/api/relay/**',async route=>{
@@ -174,4 +175,23 @@ for(const [name,id] of [['Books','6'],['Water Bottle','7'],['Caps','8']])test('p
   expect(await page.locator('body').getAttribute('data-submitted')).toBeNull();
   await page.getByRole('button',{name:'Confirm from my wallet'}).click();
   await expect(page.locator('body')).toHaveAttribute('data-submitted',JSON.stringify({action:'transferERC1155',args:[BASE_PRIZE_COLLECTION,id,recipient,'2']}));
+});
+
+test('welcome spins recover without pairing or working balance RPCs and resume after reload',async({page})=>{
+  await setup(page,{unavailable:true});let claims=0;
+  await page.route('**/api/account',route=>route.fulfill({status:503,json:{error:'Balance RPC unavailable'}}));
+  await page.route('**/api/account/welcome',route=>{
+    claims++;
+    expect(route.request().method()).toBe('POST');
+    expect(route.request().postData()).toBeNull();
+    return claims===1?route.fulfill({status:503,json:{status:'unavailable',amount:'2'}}):route.fulfill({json:{status:'granted',amount:'2'}});
+  });
+  await page.goto('/phone-fixture');
+  await expect(page.getByRole('status',{name:'Welcome spins'})).toContainText('being credited');
+  await expect(page.getByRole('status',{name:'Welcome spins'})).toContainText('have been credited',{timeout:10000});
+  expect(claims).toBe(2);
+  await page.reload();
+  await expect(page.getByRole('status',{name:'Welcome spins'})).toContainText('have been credited');
+  expect(claims).toBe(3);
+  await expect(page.getByText('No iPad linked to this page')).toBeVisible();
 });
