@@ -34,6 +34,7 @@ test('standalone wallet shows allowance and all prizes; transfer requires readab
   await expect(page.getByText('2.5 USDC',{exact:true})).toBeVisible();
   await expect(page.locator('b').filter({hasText:'GOLD · DGLD'})).toBeVisible();
   await page.screenshot({path:'/tmp/phone-wallet-standalone.png',fullPage:true});
+  await page.locator('#wallet-approval').screenshot({path:'/tmp/iphone-wallet-approval.png'});
   await page.getByRole('button',{name:'Send NVIDIA · NVDAc'}).click();
   await page.getByLabel('External recipient address').fill(recipient);await page.getByLabel('Token amount',{exact:true}).fill('0.0005');
   await page.getByRole('button',{name:'Review transfer'}).click();
@@ -132,9 +133,10 @@ test('closing scanner while permission is pending stops a late camera stream',as
 
 test('paired setup has one approval form and empty wallets see Base funding before any signature',async({page})=>{
   await setup(page,{paired:true,playActive:false,usdc:'0',eth:'0'});await page.goto('/phone-fixture');
-  await expect(page.getByText('Pick your budget.')).toBeVisible();
-  await expect(page.getByRole('button',{name:'Review approval'})).toHaveCount(0);
-  await expect(page.getByText('You can already play for free on the iPad.')).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Your USDC limit.'})).toBeHidden();
+  await expect(page.getByRole('button',{name:'Approve and play'})).toBeHidden();
+  await expect(page.getByText('You can already play for free on the iPad.',{exact:false})).toBeVisible();
+  await page.getByRole('button',{name:'Manage spending in Wallet'}).click();
   await page.getByLabel('I authorize spins within this budget').check();
   await expect(page.getByRole('button',{name:'Approve and play'})).toBeDisabled();
   await page.getByRole('link',{name:'Fund your wallet on Base'}).click();
@@ -143,7 +145,7 @@ test('paired setup has one approval form and empty wallets see Base funding befo
   expect(await page.locator('body').getAttribute('data-submitted')).toBeNull();
   await page.unrouteAll({behavior:'wait'});await setup(page,{paired:true,playActive:false});
   await page.getByRole('button',{name:'Refresh balances'}).click();
-  await page.getByRole('button',{name:'Play',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Your USDC limit.'})).toHaveCount(1);
   await expect(page.getByRole('button',{name:'Approve and play'})).toBeEnabled();
   await page.getByRole('button',{name:'Approve and play'}).click();
   await expect(page.getByRole('dialog')).toBeVisible();
@@ -151,7 +153,7 @@ test('paired setup has one approval form and empty wallets see Base funding befo
 });
 
 test('ETH alone cannot enable paid play; ETH gas mode requires ETH and failed balances block approval',async({page})=>{
-  await setup(page,{paired:true,playActive:false,usdc:'0'});await page.goto('/phone-fixture');
+  await setup(page,{paired:true,playActive:false,usdc:'0'});await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
   await page.getByLabel('I authorize spins within this budget').check();
   await expect(page.getByRole('button',{name:'Approve and play'})).toBeDisabled();
   await page.unrouteAll({behavior:'wait'});await setup(page,{eth:'0',gasMode:'eth'});await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
@@ -162,7 +164,7 @@ test('ETH alone cannot enable paid play; ETH gas mode requires ETH and failed ba
 });
 
 test('paid play rechecks USDC before preparing permission when displayed balances are stale',async({page})=>{
-  await setup(page,{paired:true,playActive:false});await page.goto('/phone-fixture');
+  await setup(page,{paired:true,playActive:false});await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
   await page.getByLabel('I authorize spins within this budget').check();
   await expect(page.getByRole('button',{name:'Approve and play'})).toBeEnabled();
   let prepared=0;
@@ -227,7 +229,7 @@ for (const viewport of [{width:320,height:568},{width:390,height:844},{width:430
         await expect(page.getByLabel('Wallet address', {exact:true})).toBeVisible();
         const winnings = await page.getByRole('heading', {name:'Your winnings.'}).boundingBox();
         const limit = await page.getByRole('heading', {name:'Your USDC limit.'}).boundingBox();
-        expect(winnings!.y).toBeLessThan(limit!.y);
+        expect(limit!.y).toBeLessThan(winnings!.y);
         await page.getByText('Account & security', {exact:true}).scrollIntoViewIfNeeded();
         await expect(nav).toBeInViewport();
       }
@@ -269,4 +271,39 @@ test('session expiry warning remains reachable while viewing the wallet', async 
   await expect(page.getByLabel('Wallet address',{exact:true})).toHaveText(address);
   await page.getByRole('button',{name:'Play',exact:true}).click();
   await expect(page.getByRole('button',{name:'Scan iPad QR'})).toBeVisible();
+});
+
+test('one wallet approval card and draft survive tab switches, failed refresh and session expiry',async({page})=>{
+ await setup(page,{paired:true,playActive:false});await page.goto('/phone-fixture');
+ const card=page.locator('#wallet-approval');await expect(card).toHaveCount(1);await expect(card).toBeHidden();
+ await page.getByRole('button',{name:'Wallet',exact:true}).click();
+ await page.getByLabel('New total USDC limit').fill('7.25');
+ await page.evaluate(()=>{(window as any).approvalCard=document.getElementById('wallet-approval');});
+ for(const tab of ['Activity','Play','Wallet','Activity','Wallet']){
+  await page.getByRole('button',{name:tab,exact:true}).click();
+  if(tab==='Wallet')await expect(card).toBeVisible();else await expect(card).toBeHidden();
+  expect(await page.evaluate(()=>(window as any).approvalCard===document.getElementById('wallet-approval'))).toBe(true);
+ }
+ await page.route('**/api/account',route=>route.fulfill({status:503,json:{error:'Temporary balance outage'}}));
+ await page.getByRole('button',{name:'Refresh balances'}).click();
+ await expect(card).toContainText('Needs refresh');await expect(card).toContainText('2.5 USDC');
+ await expect(page.getByLabel('New total USDC limit')).toHaveValue('7.25');
+ await expect(card.getByRole('button',{name:'Approve and play'})).toBeDisabled();
+ await page.getByRole('button',{name:'Play',exact:true}).click();await page.getByRole('button',{name:'End the iPad link'}).click();
+ await expect(card).toBeHidden();await page.getByRole('button',{name:'Wallet',exact:true}).click();
+ await expect(page.getByLabel('New total USDC limit')).toHaveValue('7.25');await expect(card).toHaveCount(1);
+ expect(await page.evaluate(()=>(window as any).approvalCard===document.getElementById('wallet-approval'))).toBe(true);
+});
+
+test('an approval review arriving after navigation stays in Wallet',async({page})=>{
+ await setup(page);await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
+ await page.evaluate(()=>{(window as any).phoneReviewDelay=new Promise<void>(resolve=>{(window as any).releasePhoneReview=resolve;});});
+ await page.getByRole('button',{name:'Review approval'}).click();
+ await page.getByRole('button',{name:'Activity',exact:true}).click();
+ await page.evaluate(async()=>{(window as any).releasePhoneReview();await new Promise(requestAnimationFrame);});
+ await expect(page.getByRole('dialog')).toBeHidden();
+ await page.getByRole('button',{name:'Wallet',exact:true}).click();
+ await expect(page.getByRole('dialog')).toBeVisible();
+ await page.getByRole('button',{name:'Cancel',exact:true}).click();
+ expect(await page.locator('body').getAttribute('data-submitted')).toBeNull();
 });

@@ -192,7 +192,7 @@ function Phone() {
         const response=await fetch('/api/account',{headers:{Authorization:'Bearer '+token},cache:'no-store',signal:AbortSignal.timeout(25000)});
         const value=await response.json();if(!response.ok)throw new Error(value.error||'Wallet unavailable.');
         if(!cancelled){setAccount(value);setAccountError('');}
-      }catch(cause){if(!cancelled){setAccountError(cause instanceof Error?cause.message:'Wallet unavailable.');setAccount(previous=>previous?.wallet?{...previous,wallet:{...previous.wallet,portfolio:null,balance:{...previous.wallet.balance,stale:true}}}:previous);}}
+      }catch(cause){if(!cancelled){setAccountError(cause instanceof Error?cause.message:'Wallet unavailable.');setAccount(previous=>previous?.wallet?{...previous,wallet:{...previous.wallet,portfolio:previous.wallet.portfolio?{...previous.wallet.portfolio,canTransact:false}:null,balance:{...previous.wallet.balance,stale:true}}}:previous);}}
       finally {if(!cancelled){setAccountLoading(false);timer=setTimeout(pollAccount,10000);}}
     }
     void pollAccount();return()=>{cancelled=true;clearTimeout(timer);};
@@ -282,7 +282,7 @@ function Phone() {
       <details className="phone-session-details" open={!linkReady}><summary>iPad connection & permissions</summary>
       {!session.grant?.active ? <section className="phone-card"><span className="eyebrow">FINISH THE LINK</span><h2>Now it is the iPad's turn.</h2><p>Approve a signature proof from the tablet. It works even after you close this page.</p><div className="permission-note"><b>Only a proof message.</b><p>No transfer, purchase or bet. The permission ends after 3 minutes without interaction on the phone or the iPad.</p></div><label className="check-row"><input type="checkbox" checked={consented} onChange={(event) => setConsented(event.target.checked)}/><span>I authorize signing the proof message during this session.</span></label><button className="phone-primary" disabled={!canAct || !consented || session.state !== 'active'} onClick={() => run('Approving the signature', authorize)}>{session.state === 'approved' ? 'Wait for the iPad…' : 'Approve and take a seat'} <span>↗</span></button></section> : <div className="ready-card"><span>✓</span><div><b>{session.proof?.status === 'verified' ? 'Link verified.' : 'Your phone can rest.'}</b><p>{session.proof?.status === 'verified' ? 'The signature succeeded. No funds were moved.' : 'Press “Test the link” on the iPad.'}</p></div></div>}
       </details>
-      {session.state === 'active' && account?.wallet?.address.toLowerCase()===session.address?.toLowerCase() && <PhoneGame portfolio={account?.wallet?.portfolio} session={session} api={api} transaction={transaction} onSession={value => {if (latest.current.session?.id === value.id && deadline.current > Date.now()) apply(value);}}/>}
+      {session.state === 'active' && account?.wallet?.address.toLowerCase()===session.address?.toLowerCase() && <PhoneGame portfolio={account?.wallet?.portfolio} session={session} onWallet={()=>{setView('wallet');requestAnimationFrame(()=>document.getElementById('wallet-approval')?.scrollIntoView({block:'start'}));}}/>}
       <button className="phone-account-exit" disabled={!!busy} onClick={() => void disconnect()}>End the iPad link ↗</button>
       <p className="small">The wallet stays open on your phone. The iPad permission ends after 3 minutes without interaction.</p>
     </>}
@@ -293,7 +293,7 @@ function Phone() {
     {ready && authenticated && <>
       {accountError&&<div className="phone-error" role="alert">{accountError}<button className="phone-text" onClick={reloadAccount}>Retry</button></div>}
       {accountLoading&&!account&&<p className="phone-progress" role="status">Loading the wallet…</p>}
-      {account?.wallet&&<PhoneWallet key={account.wallet.address} wallet={account.wallet} transaction={transaction} paired={!!connectedSession} showApproval={!connectedSession || session.state !== 'active' || !!session.playGrant?.active} reload={reloadAccount} loading={accountLoading}/>}
+      {account?.wallet&&<PhoneWallet key={account.wallet.address} wallet={account.wallet} transaction={transaction} permission={connectedSession&&session.state==='active'&&session.address?.toLowerCase()===account.wallet.address.toLowerCase()?{session,api,onSession:value=>{if(latest.current.session?.id===value.id&&deadline.current>Date.now())apply(value);}}:undefined} reload={reloadAccount} loading={accountLoading}/>}
       {account&&!account.wallet&&<section className="phone-card"><h2>Create your wallet.</h2><p>Receive tokens and prizes on Base. The wallet stays available from your account even without an iPad.</p><button className="phone-primary" disabled={!canAct||!walletsReady} onClick={()=>void run('Creating wallet',async()=>{if(!latest.current.wallets.some(wallet=>wallet.walletClientType==='privy'))await createWallet();reloadAccount();})}>Create wallet ↗</button></section>}
       <details className="phone-session-details"><summary>Account & security</summary>
         <div className="phone-account-state"><span>● ACCOUNT CONNECTED</span><b>{user?.email?.address || 'Passkey login'}</b><small>{connectedSession ? linkReady ? 'Wallet linked to this iPad' : 'iPad linked · approval pending' : 'Your wallet stays available without an iPad.'}</small></div>
@@ -304,6 +304,6 @@ function Phone() {
     </>}
     </div>
     {connectedSession && remaining <= 30 && <div className="phone-idle" role="alert"><p>The seat frees up in <b>{remaining}s</b>.</p><button className="phone-primary" onClick={() => void activity()}>I am still here ↗</button></div>}
-    <TransactionConfirmation review={transaction.review} onDecision={transaction.decide}/>
+    <TransactionConfirmation review={view==='wallet'?transaction.review:null} onDecision={transaction.decide}/>
   </Shell>;
 }
