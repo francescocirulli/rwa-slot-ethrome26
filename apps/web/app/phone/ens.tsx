@@ -6,7 +6,7 @@ import type {EnsClaim,EnsName} from '@/lib/ens/service';
 type View={configured:boolean;names:EnsName[];claims:EnsClaim[]};
 type Review={id:string;claimId:string;name:string;address:string;quantity:number;registrationPayer:'backend';gasMode:'usdc'|'eth';expires:number};
 type Pending={id:string;claimId:string};
-class EnsRequestError extends Error {constructor(message:string,public stage?:string,public code?:string){super(message);}}
+class EnsRequestError extends Error {constructor(message:string,public stage?:string,public code?:string,public retryToken?:string){super(message);}}
 export function PhoneENS({address,onChanged}:{address:string;onChanged:()=>void}){
  const {getAccessToken}=usePrivy(),walletRequest=useWalletRequest();
  const [view,setView]=useState<View|null>(null),[label,setLabel]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[review,setReview]=useState<Review|null>(null),[pending,setPending]=useState<Pending|null>(null);
@@ -16,13 +16,14 @@ export function PhoneENS({address,onChanged}:{address:string;onChanged:()=>void}
   const token=await getAccessToken();if(!token)throw Error('Sign in again.');
   const response=await (authorize?walletRequest:fetch)('/api/ens',{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json','X-Slot-Request':'1'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store',signal:AbortSignal.timeout(authorize?95000:120000)});
   const data=await response.json();if(!alive.current||owner.current!==address)throw Error('Wallet changed.');
-  if(!response.ok)throw new EnsRequestError(data.error||'Registration is temporarily unavailable.',data.stage,data.code);return data;
+  if(!response.ok)throw new EnsRequestError(data.error||'Registration is temporarily unavailable.',data.stage,data.code,data.retryToken);return data;
  }
  const apiRef=useRef(api);apiRef.current=api;
+ function saveRetry(claimId:string,token?:string){if(token)sessionStorage.setItem(storageKey+':retry:'+claimId,token);}
  function clearPending(){sessionStorage.removeItem(storageKey);pendingRef.current=null;setPending(null);}
  async function refresh(){
   const saved=pendingRef.current;
-  if(saved){const status=await apiRef.current({action:'status',id:saved.id}).catch(()=>null);if(status?.stage==='failed')clearPending();}
+  if(saved){const status=await apiRef.current({action:'status',id:saved.id}).catch(()=>null);if(status?.stage==='failed'){saveRetry(saved.claimId,status.retryToken);clearPending();}}
   const next:View=await apiRef.current();setView(next);
   if(saved&&next.claims.some(c=>c.id===saved.claimId&&(c.stage==='ready'||c.stage==='registered')))clearPending();
  }
@@ -44,13 +45,13 @@ export function PhoneENS({address,onChanged}:{address:string;onChanged:()=>void}
   try{await work();}catch(cause){if(alive.current)setError(cause instanceof Error?cause.message:'Registration is temporarily unavailable.');}
   finally{locked.current=false;if(alive.current)setBusy(false);}
  }
- async function prepare(id:string){setReview(await apiRef.current({action:'prepare',claimId:id}));}
+ async function prepare(id:string){const retryToken=sessionStorage.getItem(storageKey+':retry:'+id)||undefined;setReview(await apiRef.current({action:'prepare',claimId:id,retryToken}));}
  async function send(){
   if(!review)return;const r=review;
   if(r.address.toLowerCase()!==address.toLowerCase()||r.expires<Date.now()||r.registrationPayer!=='backend'){setReview(null);throw Error('Review expired. Please continue again.');}
   const saved={id:r.id,claimId:r.claimId};sessionStorage.setItem(storageKey,JSON.stringify(saved));pendingRef.current=saved;setPending(saved);setReview(null);
   try{await apiRef.current({action:'send',id:r.id,confirm:true},true);await refresh();onChanged();}
-  catch(cause){if(cause instanceof EnsRequestError&&cause.stage==='failed')clearPending();throw cause;}
+  catch(cause){if(cause instanceof EnsRequestError&&cause.stage==='failed'){saveRetry(r.claimId,cause.retryToken);clearPending();}throw cause;}
  }
  if(view&&!view.configured)return null;
  return <section className="phone-card" aria-label="ENS names on Sepolia">
