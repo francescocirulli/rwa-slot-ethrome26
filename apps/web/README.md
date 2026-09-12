@@ -279,11 +279,13 @@ deployment. Physical iPad and email OTP checks also remain outstanding.
 ## Token inventory and swaps
 
 The admin panel includes **Swap** (LI.FI API, USDC or native ETH → six supported
-Base RWA tokens) and **Inventory** (shared wallet balances, NFT placeholders,
+Base RWA tokens) and **Inventory** (shared wallet balances, ERC1155 prizes,
 free-spin counter and reviewed contract deposits). The Swap tab also offers a
-quick-fund action that computes the missing reserve for a chosen number of rounds,
+quick-fund action that adds a chosen number of rounds (1–99) to the current reserve,
 buys the shortfall of the six RWA tokens with USDC and prepares the deposit
-transactions in sequence. Start once, then confirm each requested signature;
+transactions in sequence. Completed top-ups can be repeated. An interrupted top-up
+keeps its target across page reloads, so resuming skips confirmed deposits.
+Start once, then confirm each requested signature;
 approvals, swaps, balance checks and deposits advance automatically. The manual
 swap form is available in a collapsed section. Admin RPC reads share batching and
 `BASE_RPC_FALLBACK_URLS`; the funding path skips NFT reads and reuses concurrent
@@ -305,6 +307,12 @@ Mint requires collection ownership and the updated collaborator policy. See
 [setup and ownership requirements](docs/assets-and-swaps.md#inventory-and-erc1155-minting).
 Admin Operations also supports two-step collection ownership transfers, including
 explicitly confirmed acceptance signed by the configured backend wallet with ETH gas.
+
+The prize catalog includes Books (symbol 12 / token ID 6), Water Bottle (13 / 7),
+and Caps (14 / 8). They appear in the phone portfolio and transfer flow, admin
+inventory/deposit/mint forms, prize configuration, history, terminal reels and
+win displays. The terminal help and offline demo use their 2.0%, 2.1% and 5.0%
+five-match odds, with 1.0% no prize. Live payouts and reserves come from the contract.
 
 The terminal blocks new paid/free spins when prize reserves cannot cover a round
 or reserve reads are unavailable. Confirmed wins display the actual award and a

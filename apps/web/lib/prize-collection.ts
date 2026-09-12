@@ -1,8 +1,8 @@
 import {getAddress,isAddress,parseAbi,type Address} from 'viem';
 
 export const BASE_PRIZE_COLLECTION = getAddress('0x8D411D8efCDb0d528E4F6659B44223264Fd0B719');
-// Deployed launch IDs plus Magnet, verified on Base on 2026-09-12.
-export const BASE_PRIZE_IDS: Record<number,string> = {0:'5',3:'1',8:'2',9:'3',10:'4'};
+// Deployed launch IDs, Magnet and physical prize expansion, verified on Base on 2026-09-12.
+export const BASE_PRIZE_IDS: Record<number,string> = {0:'5',3:'1',8:'2',9:'3',10:'4',12:'6',13:'7',14:'8'};
 export const prizeCollectionAbi = parseAbi([
   'function balanceOf(address account,uint256 id) view returns(uint256)',
   'function owner() view returns(address)',

@@ -75,7 +75,7 @@ strings, without floating-point arithmetic for monetary calculations.
 does not use the current catalog to calculate past prizes. ERC20 formatting
 reads `symbol` and `decimals`; if the token does not expose them, it displays
 base units. Visual symbol labels are defined in the app and match the contract
-design IDs, including placeholders 12–15.
+design IDs, including Books (12), Water Bottle (13), Caps (14), and the reserved placeholder 15.
 
 Reveal events are searched only between the target and deadline (at most
 256 blocks). The player's latest game is recovered from `SpinStarted` in
@@ -200,6 +200,6 @@ through allowance, but does not promise an atomic price lock between UI and mini
 ERC20, ERC1155, free spins, expiry, roles and keeper restart. Public Anvil keys
 are confined to tests; fixtures are not imported by the app.
 `npm run test:browser` verifies visual stages with controlled snapshots.
-The Base deployment is live but still has an empty prize catalog and zero
-prize inventory. Do not enable real spins until all prizes and weights are
-configured, funded and checked on-chain.
+The Base deployment includes the 15-symbol catalog from the physical prize expansion.
+Current configuration and reserves are always checked onchain before enabling spins;
+the recorded deployment inventory is not a guarantee of remaining stock.
