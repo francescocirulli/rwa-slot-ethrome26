@@ -26,3 +26,12 @@ test('account endpoint distinguishes missing wallet from unavailable service', a
   assert.deepEqual(await response.json(), {userId: 'did:privy:new', wallet: null});
   assert.equal((await createAccountHandler(undefined, async () => {throw new Error();})(new Request('http://app/api/account'))).status, 503);
 });
+
+test('wallet display selects the same first Privy wallet as the welcome claim regardless of list order',async()=>{
+  const f=walletFixture(),user=await f.service.authenticate('player-a');
+  const first={...user.wallets[0],index:0};
+  const other={id:'second',address:'0x0000000000000000000000000000000000000099',index:1};
+  const handler=createAccountHandler({...f.service,authenticate:async()=>({...user,wallets:[other,first]})},async address=>{assert.equal(address,first.address);return {amount:'0',stale:false,updatedAt:1};});
+  const result=await handler(new Request('http://app/api/account',{headers:{Authorization:'Bearer player-a'}}));
+  assert.equal((await result.json()).wallet.address,first.address);
+});

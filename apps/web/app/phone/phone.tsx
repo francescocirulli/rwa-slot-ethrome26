@@ -6,6 +6,7 @@ import {base} from 'viem/chains';
 import {PhoneGame} from './game';
 import {SeasonLeaderboard} from './leaderboard';
 import {PhoneWallet} from './wallet';
+import {WelcomeBonus} from './welcome';
 import {PairingScanner} from './scanner';
 import type {AccountView} from '@/lib/account';
 import {useContractTransaction} from '@/lib/slot/use-transaction';
@@ -223,6 +224,7 @@ function Phone() {
     clearSession();
     try {await task;} catch {setError('Link interrupted: the server will close the session when it expires.');}
   }
+  const welcomeWallet=wallets.find(wallet=>wallet.walletClientType==='privy');
   const canAct = ready && !busy && !transaction.busy;
   const connectedSession = authenticated && session;
   const linkReady = !!session?.grant?.active;
@@ -230,6 +232,7 @@ function Phone() {
   return <Shell>
     <div className="intro"><span className="eyebrow">YOUR WALLET, ALWAYS WITH YOU</span><h1>{connectedSession ? linkReady ? <>Nice pull.<br/>You are in<span>.</span></> : <>Nice pull.<br/>One last step<span>.</span></> : authenticated ? <>Your wallet.<br/>Your winnings<span>.</span></> : <>One phone.<br/>A little luck<span>.</span></>}</h1><p>{connectedSession ? session.state === 'approved' ? 'The iPad is finishing the link.' : linkReady ? 'Your wallet is linked to the iPad.' : 'Approve the signature proof below to finish linking the iPad.' : authenticated ? 'Manage your tokens and prizes. Scan a QR code whenever you want to play on the iPad.' : 'Sign in to your wallet to see tokens and prizes, even without an iPad.'}</p></div>
     {checking && <div className="phone-progress" role="status">Checking your access and the link to the iPad…</div>}
+    {ready&&authenticated&&walletsReady&&welcomeWallet&&<WelcomeBonus key={`${user?.id}:${welcomeWallet.address}`} getAccessToken={getAccessToken} onGranted={reloadAccount}/>}
     {ready && authenticated && <div className="phone-account-state"><span>● ACCOUNT CONNECTED</span><b>{user?.email?.address || 'Passkey login'}</b><small>{connectedSession ? linkReady ? 'Wallet linked to this iPad' : 'iPad linked · approval pending' : 'No iPad linked to this page'}</small></div>}
     {ready&&loaded&&!connectedSession&&!info&&<button className="phone-primary" disabled={!!busy||transaction.busy||transaction.pending} onClick={()=>{setError('');setScanning(true);}}>Scansiona QR dell’iPad ↗</button>}
     {scanning&&<PairingScanner onClose={()=>setScanning(false)} onRead={value=>{generation.current++;setScanning(false);setInfo(null);setConfirmed(false);setEnded(false);setRecovering(false);setError('');setSecret(value);try{sessionStorage.setItem('slot-pair',value);}catch{}}}/>}
