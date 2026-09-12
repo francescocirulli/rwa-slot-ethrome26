@@ -17,6 +17,19 @@ available while game operations and reviewed wallet writes are disabled.
 Before contributing, read [../../CONTRIBUTING.md](../../CONTRIBUTING.md),
 [../../AGENTS.md](../../AGENTS.md) and the [web rules](AGENTS.md).
 
+## Live onchain configuration
+
+| Network | Contract | Address |
+| --- | --- | --- |
+| Base mainnet | Slot machine | [`0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c`](https://basescan.org/address/0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c) |
+| Base mainnet | ERC-1155 prize collection | [`0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`](https://basescan.org/address/0x8D411D8efCDb0d528E4F6659B44223264Fd0B719) |
+| Ethereum Sepolia | Official ENSv2 `ETHRegistry` | [`0xBDC85dD5b15D7ecb354cd7cb6f2c50b4f2c4F0E2`](https://sepolia.etherscan.io/address/0xBDC85dD5b15D7ecb354cd7cb6f2c50b4f2c4F0E2) |
+
+The live Base slot charges `0.05 USDC`, uses 15 configured symbols and a 1% no-prize
+weight, and targets the block two positions after the spin transaction. The keeper
+can reveal from the following block and the app displays a result only after the
+reveal reaches its configured confirmation depth. The reveal window is 256 blocks.
+
 ## Getting started
 
 Use Node.js 22. Copy `.env.example` to `.env.local` and fill in the required
@@ -78,14 +91,18 @@ landscape, iOS 12.5.8 / Safari 12.1.2, matching the experimental reference repo.
 
 The iPhone layout opens in **Play**, with sign-in first, then one QR pairing
 prompt or the current iPad session. Required proof permission is expanded until
-approved; paid-play budget controls follow it. **Wallet** contains the balance,
-receive address, tokens/prizes, USDC allowance, ENS names and account settings,
+approved; a read-only play summary links to spending controls. **Wallet** contains
+the balance, receive address, one persistent USDC approval card, tokens/prizes,
+ENS names and account settings,
 in that order. **Activity** contains the leaderboard and game explorer.
 A fixed bottom navigation respects iPhone safe areas; inputs keep a 16px font
 and navigation targets are at least 44px tall. The page supports narrow portrait
 and landscape widths without disabling zoom.
 
-Changing views preserves wallet drafts, game polling and pending operations.
+Changing views preserves wallet drafts and pending operations. Approval, paid-play
+authorization and revocation appear only in Wallet, including transaction reviews
+that arrive after navigating elsewhere. Account polling retains the last verified
+values on an error, marks them stale and disables writes until a successful refresh.
 Funding links open Wallet and expand the receive panel. Transaction review and
 session-expiry warnings stay above the navigation. Account/passkey settings are
 under **Account & security**; ending the iPad link remains in Play.
@@ -272,8 +289,10 @@ APP_ORIGIN=http://localhost:3000 HOSTNAME=0.0.0.0 PORT=3000 node --env-file=.env
 
 Monorepo deployment procedures and variables:
 [`../../.railway/README.md`](../../.railway/README.md).
-The contract has not been deployed yet. `SLOT_BACKEND_PRIVATE_KEY=REPLACE_ME`
-keeps the keeper disabled until a real key is supplied.
+The production Base contracts and official Sepolia ENSv2 registry are listed above.
+`SLOT_BACKEND_PRIVATE_KEY=REPLACE_ME` remains the safe
+disabled value for a new or local environment; production requires the dedicated
+keeper EOA and matching onchain `GAME_MANAGER_ROLE`.
 Arduino input now reaches `window.slotPullLever()` through the authenticated
 hardware API, called directly over HTTPS by the board. No local bridge or Mac is
 required. The real mode remains default;
@@ -436,11 +455,21 @@ retain the original transaction; a balance of zero never authorizes another bonu
 
 ## ENSv2 on the phone
 
-Optional ENS voucher redemption registers `*.wallstreetslot.eth` on Sepolia
-using the existing backend EOA. The player receives the ENS name and pays no
-Sepolia gas. Existing Base ENS vouchers are transferred to `0x000000000000000000000000000000000000dEaD`, not burned;
+We registered `wallstreetslot.eth` as the parent ENS name on Sepolia. A player who
+wins and redeems an ENS Registration voucher can choose an available subdomain,
+for example `elon.wallstreetslot.eth`, and receives ownership in their personal
+wallet without paying Sepolia gas. The existing backend EOA submits the Sepolia
+transactions. Existing Base ENS vouchers are transferred to `0x000000000000000000000000000000000000dEaD`, not burned;
 the player's Base transfer follows the app's existing USDC/ETH fee mode.
 The phone confirms the voucher once, then follows backend registration automatically.
+Subdomains ultimately use the official ENSv2
+[`ETHRegistry`](https://sepolia.etherscan.io/address/0xBDC85dD5b15D7ecb354cd7cb6f2c50b4f2c4F0E2),
+pinned from `ensdomains/contracts-v2`. It maps `wallstreetslot.eth` to the project's
+[`UserRegistry`](https://sepolia.etherscan.io/address/0x6D9E4b4a02D966D460D5fFBA87fDE09a7Ba34b21).
+The project-specific
+[`SlotENSRegistrar`](https://sepolia.etherscan.io/address/0x84f6ddfe529D5f38AF2a95e38B6a23f9b4CDAA69)
+attests voucher consumption and calls that subregistry; it is not the official ENSv2
+contract.
 See [ENS setup, costs and recovery](docs/ens.md) before enabling the feature.
 
 ### Game Explorer and personal statistics

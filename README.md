@@ -8,6 +8,38 @@ transaction and every result is verifiable on BaseScan.
 [admin](https://web-production-e2628.up.railway.app/admin) ·
 [Railway project](https://railway.com/project/c3367565-9058-4341-9795-e9de185dfea0).
 
+## Live contracts
+
+| Network | Contract | Address |
+| --- | --- | --- |
+| Base mainnet | `DigitalSlotMachine` | [`0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c`](https://basescan.org/address/0xc0253B67E835500aC9a69214fa4F2Bbce61CA72c) |
+| Base mainnet | `SlotPrize1155` | [`0x8D411D8efCDb0d528E4F6659B44223264Fd0B719`](https://basescan.org/address/0x8D411D8efCDb0d528E4F6659B44223264Fd0B719) |
+| Ethereum Sepolia | Official ENSv2 `ETHRegistry` | [`0xBDC85dD5b15D7ecb354cd7cb6f2c50b4f2c4F0E2`](https://sepolia.etherscan.io/address/0xBDC85dD5b15D7ecb354cd7cb6f2c50b4f2c4F0E2) |
+
+The deployed game uses native Base USDC at `0.05 USDC` per paid spin. Its live
+configuration has a 5x3 grid, three paylines, 15 outcome symbols, a 1% no-prize
+outcome, a two-block randomness target and a 256-block reveal window. A reveal is
+permissionless; the backend keeper normally submits it as soon as the target block
+is sealed. Because the target block hash is only available in the following block,
+a spin included in block `N` can be revealed from `N + 3` with the current delay.
+
+ERC-20 and ERC-1155 prizes are transferred immediately by the slot. The ERC-1155
+collection contains IDs 1 through 8 and stores JSON metadata and SVG artwork fully
+onchain as base64 data URIs. ENS Registration vouchers use collection ID 2. Their
+Base transfer is verified by the backend before the Sepolia registrar creates a
+`*.wallstreetslot.eth` ENSv2 name owned by the player.
+
+We registered `wallstreetslot.eth` as the parent ENS name on Sepolia using the
+official `ensdomains/contracts-v2` deployment. A player who wins and redeems an
+ENS Registration voucher chooses an available label and receives the corresponding
+subdomain, for example `elon.wallstreetslot.eth`, in their own wallet. The official
+`ETHRegistry` delegates these `wallstreetslot.eth` subnames to the project's
+[`UserRegistry`](https://sepolia.etherscan.io/address/0x6D9E4b4a02D966D460D5fFBA87fDE09a7Ba34b21).
+The project-specific
+[`SlotENSRegistrar`](https://sepolia.etherscan.io/address/0x84f6ddfe529D5f38AF2a95e38B6a23f9b4CDAA69)
+verifies the backend-attested Base voucher consumption and registers the subname
+through that ENSv2 registry; it is not the official ENS contract listed above.
+
 | Directory | Contents |
 | --- | --- |
 | [`apps/web`](apps/web) | Next.js, iPad terminal, phone login, admin panel and backend keeper |
@@ -42,12 +74,14 @@ ends the session after three minutes. `/admin` uses personal accounts to operate
 the shared wallet.
 
 Spins have two stages: the player wallet sends the initial transaction, then the
-backend EOA reveals the round. The reels keep spinning while waiting; contract
-state and events determine the result. Admins sign management operations with
-the shared Privy wallet and use LI.FI for swaps. The contract stores games,
-prizes and credits; app sessions and locks are held in memory.
+permissionless reveal settles the round; the backend EOA is the normal reveal
+keeper. The reels keep spinning while waiting, and confirmed contract state and
+events determine the result. Admins sign management operations with the shared
+Privy wallet and use LI.FI for swaps. The contract stores games, prizes and free-spin
+credits; app sessions and write locks are held in memory. One player can have at
+most one pending paid or free spin.
 
-The physical cabinet uses an UNO R4 WiFi (joystick, PIR, LCD and RGB strip), a
+The physical cabinet uses an UNO R4 WiFi (joystick, PIR, LCD and RGB strip) with a
 direct Wi-Fi connection to the Railway HTTPS backend. No Mac or tunnel is needed
 in production. The iPad provides audio and an
 idle screensaver. The terminal defaults to real play; its explicit demo switch
@@ -103,6 +137,7 @@ the keeper, also follow the deployment instructions in `.railway/README.md`.
 Details: [app and wallets](apps/web/README.md),
 [contracts](contracts/README.md),
 [onchain integration](apps/web/docs/contracts.md),
+[ENSv2 redemption](apps/web/docs/ens.md),
 [shared admin wallet](apps/web/docs/shared-admin.md),
 [swaps and inventory](apps/web/docs/assets-and-swaps.md).
 
