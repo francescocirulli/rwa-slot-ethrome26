@@ -39,6 +39,9 @@ export function createEnsApi({service,walletService,origin,gasMode='usdc',writes
       const owner=wallet.address as Address,url=new URL(request.url);
       if(request.method==='GET'){
         if(url.searchParams.has('label'))return reply(await service.available(url.searchParams.get('label')));
+        // A slow or unavailable Base proof must not block Sepolia name reads.
+        if(url.searchParams.get('view')==='names')return reply({configured:true,names:await service.names(owner)});
+        if(url.searchParams.get('view')==='claims')return reply({configured:true,claims:await service.claims(owner)});
         const [names,claims]=await Promise.all([service.names(owner),service.claims(owner)]);
         return reply({configured:true,parent:ENS_PARENT,names,claims});
       }
