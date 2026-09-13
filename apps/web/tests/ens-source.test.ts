@@ -27,7 +27,7 @@ test('a restart reconstructs finalized proof without a database or an in-memory 
  const f=fixture();f.finalize();const a=await f.create().find(id,owner,labelHash),b=await f.create().find(id,owner,labelHash);assert.deepEqual(a,b);assert.equal(b?.finalized,true);
 });
 test('unfinalized reorgs disappear and finalized proofs are rechecked before use',async()=>{
- const f=fixture(),source=f.create();assert.ok(await source.find(id,owner,labelHash));f.reorg();assert.equal(await source.find(id,owner,labelHash),null);
+ const f=fixture(),source=f.create();assert.ok(await source.find(id,owner,labelHash));f.reorg();await assert.rejects(source.find(id,owner,labelHash),/proof changed/);
  const g=fixture();g.finalize();const saved=g.create();assert.ok(await saved.find(id,owner,labelHash));g.reorg();await assert.rejects(saved.find(id,owner,labelHash),/proof changed/);
 });
 test('RPC failure cannot be treated as no voucher or advance a scan past its proof',async()=>{
@@ -91,4 +91,41 @@ test('worker consumes the verified finalized index without fetching the same log
  assert.equal(source.finalizedEvents(8n,10n)[0].id,id);
  assert.deepEqual(source.finalizedEvents(8n,9n),[]);
  assert.throws(()=>source.finalizedEvents(11n,12n),/catching up/);
+});
+
+test('known finalized claims remain verifiable when an unrelated new history page fails',async()=>{
+ const f=fixture();f.finalize();const source=f.create();await source.indexFinalized();
+ const read=f.client.getLogs;f.client.getLogs=(async(args:any)=>{if(args.fromBlock>10n)throw Error('later history unavailable');return read(args);}) as typeof read;
+ const block=f.client.getBlock;f.client.getBlock=(async(args:any)=>args.blockTag==='finalized'?{number:12n,hash:blockHash}:block(args)) as typeof block;
+ await assert.rejects(source.indexFinalized(),/later history unavailable/);
+ assert.equal((await source.find(id,owner,labelHash))?.finalized,true);
+});
+
+test('a lagging finality provider cannot authorize an indexed proof above its finalized boundary',async()=>{
+ const f=fixture();f.finalize();const source=f.create();await source.indexFinalized();
+ const block=f.client.getBlock;f.client.getBlock=(async(args:any)=>args.blockTag==='finalized'?{number:9n,hash:blockHash}:block(args)) as typeof block;
+ assert.equal((await source.find(id,owner,labelHash))?.finalized,false);
+});
+
+test('a successful voucher can register after two Base confirmations without waiting for finality',async()=>{
+ const f=fixture(),source=f.create();
+ f.client.getBlockNumber=async()=>10n;
+ let result=await source.find(id,owner,labelHash);assert.equal(result?.confirmed,false);assert.equal(result?.finalized,false);
+ f.client.getBlockNumber=async()=>11n;
+ result=await source.find(id,owner,labelHash);assert.equal(result?.confirmed,true);assert.equal(result?.finalized,false);
+});
+
+test('background discovery finds confirmed vouchers before finality and reconstructs them after restart',async()=>{
+ const f=fixture();
+ for(const source of [f.create(),f.create()]){
+  const found=await source.indexRecent();assert.equal(found.proofs[0].id,id);assert.equal(found.catchingUp,false);
+  assert.equal((await source.find(id,owner,labelHash))?.confirmed,true);
+ }
+ f.client.getBlockNumber=async()=>10n;assert.deepEqual((await f.create().indexRecent()).proofs,[]);
+});
+
+test('a new confirmed voucher is found before a failing historical index can block it',async()=>{
+ const f=fixture();const read=f.client.getLogs;
+ f.client.getLogs=(async(args:any)=>{if(args.fromBlock<10n)throw Error('old history unavailable');return read(args);}) as typeof read;
+ assert.equal((await f.create().find(id,owner,labelHash))?.confirmed,true);
 });

@@ -6,10 +6,10 @@ import {SlotError} from '../slot/errors';
 import {ensContracts,ENS_PARENT,ENS_BACKEND,normalizeLabel,type EnsConfig} from './config';
 import {ensRegistrarAbi,ensRegistryAbi} from './abi';
 import {createEnsSender} from './sender';
-import {createEnsWorker} from './worker';
+import {createEnsWorker,type EnsRegistrationProgress} from './worker';
 import {createVoucherSource,voucherTransaction} from './source';
-export type EnsClaim={id:Hex;label:string;name:string;completed:boolean;stage:'voucher'|'finalizing-base'|'ready'|'registered';owner:Address;resolver:Address;voucherTransactionHash?:Hex};
-export type EnsName={name:string;owner:Address;expiry:string;resolvedAddress:Address|null};
+export type EnsClaim={id:Hex;label:string;name:string;completed:boolean;stage:'voucher'|'confirming-base'|'ready'|'registered';owner:Address;resolver:Address;voucherTransactionHash?:Hex;voucherConfirmedAt?:number;registration?:EnsRegistrationProgress};
+export type EnsName={name:string;owner:Address;expiry:string;resolvedAddress:Address|null;resolutionStatus?:'unavailable'};
 export function createEnsService(config:EnsConfig,key?:Hex){
   const client=createPublicClient({chain:sepolia,batch:{multicall:{wait:10}},transport:http(config.rpcUrl,{timeout:4000,retryCount:0})});
   const base=createBaseReadClient();
@@ -36,12 +36,13 @@ export function createEnsService(config:EnsConfig,key?:Hex){
   async function getClaim(id:Hex,owner:Address):Promise<EnsClaim>{
     const c=await client.readContract({...registrar,functionName:'claim',args:[id]});
     if(c.owner.toLowerCase()!==owner.toLowerCase())throw new SlotError('EnsClaim','Claim unavailable for this wallet.',404);
-    let stage:EnsClaim['stage']=c.completed?'registered':'voucher',voucherTransactionHash:Hex|undefined;
+    let stage:EnsClaim['stage']=c.completed?'registered':'voucher',voucherTransactionHash:Hex|undefined,voucherConfirmedAt:number|undefined;
     if(!c.completed){
       const found=await source.find(id,owner,keccak256(toHex(c.label)));
-      if(found){stage=found.finalized?'ready':'finalizing-base';voucherTransactionHash=found.proof.transactionHash;}
+      if(found){stage=found.confirmed?'ready':'confirming-base';voucherTransactionHash=found.proof.transactionHash;voucherConfirmedAt=found.proof.timestamp===undefined?undefined:Number(found.proof.timestamp)*1000;}
     }
-    return {id,label:c.label,name:c.label+'.'+ENS_PARENT,owner:c.owner,resolver:c.resolver,completed:c.completed,stage,voucherTransactionHash};
+    if(stage==='ready'&&sender)worker.enqueue({id,owner});
+    return {id,label:c.label,name:c.label+'.'+ENS_PARENT,owner:c.owner,resolver:c.resolver,completed:c.completed,stage,voucherTransactionHash,voucherConfirmedAt,registration:stage==='ready'?worker.progress(id):undefined};
   }
   async function claims(owner:Address){
     const count=await client.readContract({...registrar,functionName:'claimCount',args:[owner]});
@@ -64,12 +65,22 @@ export function createEnsService(config:EnsConfig,key?:Hex){
       cursor=end>config.deploymentBlock+1999n?end-1999n:config.deploymentBlock;
     })().finally(()=>{scan=undefined;});
     await scan;
+    const count=await client.readContract({...registrar,functionName:'claimCount',args:[owner]});
+    if(count>256n)throw new SlotError('EnsLimit','Claim history requires pagination.',503);
+    for(let i=0n;i<count;i++){
+      const id=await client.readContract({...registrar,functionName:'claimAt',args:[owner,i]});
+      const claim=await client.readContract({...registrar,functionName:'claim',args:[id]});
+      if(claim.completed)labels.set(keccak256(toHex(claim.label)),claim.label);
+    }
     const result:EnsName[]=[];
     for(const [hash,label] of labels){
       const state=await client.readContract({...registry,functionName:'getState',args:[BigInt(hash)]});
       if(state.status!==2||state.latestOwner.toLowerCase()!==owner.toLowerCase())continue;
       const name=label+'.'+ENS_PARENT;
-      result.push({name,owner:state.latestOwner,expiry:state.expiry.toString(),resolvedAddress:await client.getEnsAddress({name})});
+      // Resolution is optional metadata; an RPC failure cannot hide verified ownership.
+      let resolvedAddress:Address|null=null,resolutionStatus:EnsName['resolutionStatus'];
+      try{resolvedAddress=await client.getEnsAddress({name});}catch{resolutionStatus='unavailable';}
+      result.push({name,owner:state.latestOwner,expiry:state.expiry.toString(),resolvedAddress,resolutionStatus});
     }
     return result;
   }
@@ -101,23 +112,25 @@ export function createEnsService(config:EnsConfig,key?:Hex){
     async prepareVoucher(owner:Address,id:Hex){return (await prepareReview(owner,id)).transaction;},
     async fulfill(owner:Address,id:Hex){return exclusive(owner,async()=>{
       await check();const c=await getClaim(id,owner);if(c.completed)return c;
-      if(c.stage!=='ready')throw new SlotError('EnsPending',c.stage==='voucher'?'Consume your voucher first.':'Waiting for Base finality. Your voucher is recorded; do not send another.',409);
+      if(c.stage!=='ready')throw new SlotError('EnsPending',c.stage==='voucher'?'Consume your voucher first.':'Waiting for Base transfer confirmation. Your voucher is recorded; do not send another.',409);
       const verified=await source.find(id,owner,keccak256(toHex(c.label)));
-      if(!verified?.finalized)throw new SlotError('EnsPending','Waiting for a finalized voucher proof.',409);
+      if(!verified?.confirmed)throw new SlotError('EnsPending','Waiting for a confirmed voucher proof.',409);
       await signer().send(config.registrar,encodeFunctionData({abi:ensRegistrarAbi,functionName:'fulfill',args:[id,verified.proof.source]}));return getClaim(id,owner);
     });},
   };
+  async function incomplete(proofs:Awaited<ReturnType<typeof source.events>>){
+    const result=[];
+    for(const proof of proofs){
+      const claim=await client.readContract({...registrar,functionName:'claim',args:[proof.id]});
+      if(!claim.completed&&claim.owner.toLowerCase()===proof.owner.toLowerCase()&&keccak256(toHex(claim.label))===proof.labelHash)result.push({id:proof.id,owner:proof.owner});
+    }
+    return result;
+  }
   const worker=createEnsWorker({fromBlock:config.sourceBlock,pageBlocks,
-    // Keep the proof index warm even before anyone opens the phone or redeems.
+    // Recent confirmed transfers can mint immediately; finality only drives backfill.
+    discover:async()=>{const recent=await source.indexRecent();return {claims:await incomplete(recent.proofs),catchingUp:recent.catchingUp};},
     head:async()=>(await source.indexFinalized()).finalizedNumber,
-    events:async(fromBlock,toBlock)=>{
-      const result=[];
-      for(const proof of source.finalizedEvents(fromBlock,toBlock)){
-        const claim=await client.readContract({...registrar,functionName:'claim',args:[proof.id]});
-        if(!claim.completed&&claim.owner.toLowerCase()===proof.owner.toLowerCase()&&keccak256(toHex(claim.label))===proof.labelHash)result.push({id:proof.id,owner:proof.owner});
-      }
-      return result;
-    },
+    events:async(fromBlock,toBlock)=>incomplete(source.finalizedEvents(fromBlock,toBlock)),
     complete:async({id,owner})=>{await service.fulfill(owner,id);},
   });
   return {...service,start(){if(sender)worker.start();},stop:worker.stop};

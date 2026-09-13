@@ -11,6 +11,7 @@ class EnsRequestError extends Error {constructor(message:string,public stage?:st
 export function PhoneENS({address,onChanged}:{address:string;onChanged:()=>void}){
  const {getAccessToken}=usePrivy(),walletRequest=useWalletRequest();
  const [view,setView]=useState<View|null>(null),[label,setLabel]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[review,setReview]=useState<Review|null>(null),[pending,setPending]=useState<Pending|null>(null);
+ const [checkedAt,setCheckedAt]=useState<number|null>(null),[now,setNow]=useState(Date.now());
  const [namesState,setNamesState]=useState<ReadState>('loading'),[claimsState,setClaimsState]=useState<ReadState>('loading');
  const refreshing=useRef(false),completedSeen=useRef(new Set<string>());
  const alive=useRef(true),owner=useRef(address),locked=useRef(false),pendingRef=useRef(pending);owner.current=address;pendingRef.current=pending;
@@ -37,7 +38,7 @@ export function PhoneENS({address,onChanged}:{address:string;onChanged:()=>void}
     try{
      const next:Pick<View,'configured'|'claims'>=await apiRef.current(undefined,false,'claims');
      if(!current())return;
-     setView(previous=>({...previous,configured:next.configured,claims:next.claims,names:previous?.names||[]}));setClaimsState('ready');
+     setView(previous=>({...previous,configured:next.configured,claims:next.claims,names:previous?.names||[]}));setClaimsState('ready');setCheckedAt(Date.now());
      const newlyCompleted=next.claims.filter(c=>c.completed&&!completedSeen.current.has(c.id));
      for(const c of newlyCompleted)completedSeen.current.add(c.id);
      const claim=next.claims.find(c=>c.id===saved?.claimId);
@@ -57,17 +58,20 @@ export function PhoneENS({address,onChanged}:{address:string;onChanged:()=>void}
  }
  const refreshRef=useRef(refresh);refreshRef.current=refresh;
  useEffect(()=>{
-  alive.current=true;refreshing.current=false;completedSeen.current.clear();pendingRef.current=null;setView(null);setReview(null);setPending(null);setError('');setNamesState('loading');setClaimsState('loading');
+  alive.current=true;refreshing.current=false;completedSeen.current.clear();pendingRef.current=null;setView(null);setReview(null);setPending(null);setError('');setNamesState('loading');setClaimsState('loading');setCheckedAt(null);
   try{const raw=sessionStorage.getItem(storageKey);if(raw){let saved;try{saved=JSON.parse(raw);}catch{saved={id:raw,claimId:''};}pendingRef.current=saved;setPending(saved);}}catch{}
   void refreshRef.current().catch(()=>setError('ENS is temporarily unavailable. Refresh to retry.'));
   return()=>{alive.current=false;};
  },[storageKey]);
  const waiting=!!pending||!!view?.claims.some(c=>!c.completed)||namesState==='unavailable'||claimsState==='unavailable';
  useEffect(()=>{
-  if(!waiting)return;
-  const timer=setInterval(()=>{if(!locked.current)void refreshRef.current().catch(()=>{});},5000);
-  return()=>clearInterval(timer);
+  const check=()=>{if(!locked.current&&document.visibilityState!=='hidden')void refreshRef.current().catch(()=>{});};
+  // Keep ownership fresh even when claim completion precedes name discovery.
+  const timer=setInterval(check,waiting?5000:15000);
+  window.addEventListener('focus',check);document.addEventListener('visibilitychange',check);
+  return()=>{clearInterval(timer);window.removeEventListener('focus',check);document.removeEventListener('visibilitychange',check);};
  },[waiting,storageKey]);
+ useEffect(()=>{if(!waiting)return;const timer=setInterval(()=>setNow(Date.now()),10000);return()=>clearInterval(timer);},[waiting]);
  async function run(work:()=>Promise<void>){
   if(locked.current)return;locked.current=true;setBusy(true);setError('');
   try{await work();}catch(cause){if(alive.current)setError(cause instanceof Error?cause.message:'Registration is temporarily unavailable.');}
@@ -85,18 +89,20 @@ export function PhoneENS({address,onChanged}:{address:string;onChanged:()=>void}
  return <section className="phone-card" aria-label="ENS names on Sepolia">
   <span className="eyebrow">YOUR ENS · SEPOLIA TESTNET</span><h2>Your name onchain.</h2>
   <p>Use one ENS Registration voucher to claim your <b>.wallstreetslot.eth</b> name.</p><p className="small">Free registration · No Sepolia funds needed.</p>
-  {view?.names.map(item=><div className="ready-card ens-name-card" key={item.name}><b>{item.name}</b><p className="small">{namesState==='ready'?'Registered on Sepolia · Owned by your wallet':'Last verified on Sepolia'} · Expires {new Date(Number(item.expiry)*1000).toLocaleDateString()}{item.resolvedAddress?.toLowerCase()!==address.toLowerCase()?' · Address record differs from your wallet':''}</p><div className="ens-name-actions"><button className="phone-text" onClick={()=>void run(()=>navigator.clipboard.writeText(item.name))}>Copy name</button><a className="phone-chain-link" href={'https://explorer.ens.dev/'+encodeURIComponent(item.name)} target="_blank" rel="noreferrer">ENS Explorer ↗</a></div></div>)}
+  {view?.names.map(item=><div className="ready-card ens-name-card" key={item.name}><b>{item.name}</b><p className="small">{namesState==='ready'?'Registered on Sepolia · Owned by your wallet':'Last verified on Sepolia'} · Expires {new Date(Number(item.expiry)*1000).toLocaleDateString()}{item.resolutionStatus==='unavailable'?' · Address record could not be checked':item.resolvedAddress?.toLowerCase()!==address.toLowerCase()?' · Address record differs from your wallet':''}</p><div className="ens-name-actions"><button className="phone-text" onClick={()=>void run(()=>navigator.clipboard.writeText(item.name))}>Copy name</button><a className="phone-chain-link" href={'https://explorer.ens.dev/'+encodeURIComponent(item.name)} target="_blank" rel="noreferrer">ENS Explorer ↗</a></div></div>)}
   {namesState==='loading'&&<p role="status">Loading names from Sepolia…</p>}
   {namesState==='unavailable'&&<p role="alert" className="phone-error">Sepolia names could not be refreshed. Any names shown are from the last successful read.</p>}
   {claimsState==='unavailable'&&<p role="alert" className="phone-error">Claim progress could not be refreshed. Do not send another voucher. Sepolia names load separately.</p>}
   {view?.claims.filter(c=>!c.completed&&!view.names.some(n=>n.name===c.name)).map(c=><div className="receive-box" key={c.id}><b>{c.name}</b>
    {claimsState==='unavailable'?<p className="small">Last known claim status; waiting for a fresh check.</p>:<>
     <ol className="small" aria-label="Registration progress">
-     <li>{c.stage==='voucher'?'Base: transfer one voucher to the dead address.':'Base: voucher transferred to the dead address.'}</li>
-     <li>{c.stage==='voucher'?'Sepolia: registration follows Base finality.':c.stage==='finalizing-base'?'Sepolia: waiting for Base finality. Registration has not started.':'Sepolia: Base transfer finalized. Registration is pending.'}</li>
-     <li>Sepolia: the name appears after registration and ownership are verified.</li>
+     <li>{c.stage==='voucher'?'Redeem one voucher on Base.':'Voucher received on Base.'}</li>
+     <li>{c.stage==='voucher'?'Confirm the voucher transfer on Base.':c.stage==='confirming-base'?'Confirming your voucher transfer on Base.':'Voucher transfer confirmed on Base.'}</li>
+     <li>{c.stage!=='ready'?'Your ENS name will then be registered on Sepolia.':c.registration?.state==='retrying'?'Sepolia registration is delayed. We are retrying automatically.':c.registration?.state==='registering'?'Registering your ENS name on Sepolia…':'Waiting for the registration service on Sepolia.'}</li>
     </ol>
-    {c.stage!=='voucher'&&<p className="small">No further voucher is needed. You can close this page; registration continues automatically.</p>}
+    {c.stage==='confirming-base'&&<p className="small" role="status">Your voucher is received. Registration starts automatically after the next Base block confirms it.{c.voucherConfirmedAt!==undefined?' '+Math.max(0,Math.floor((now-c.voucherConfirmedAt)/60000))+' min since your transfer.':''}</p>}
+    {c.stage!=='voucher'&&<p className="small">Your voucher is recorded. No second voucher or signature is needed. Registration continues when you close this page.</p>}
+    {c.stage!=='voucher'&&checkedAt&&<p className="small">Last checked {new Date(checkedAt).toLocaleTimeString()} · Updates automatically.</p>}
     {c.voucherTransactionHash&&<a className="phone-chain-link" href={'https://basescan.org/tx/'+c.voucherTransactionHash} target="_blank" rel="noreferrer">Voucher transfer on Base ↗</a>}
     {c.stage==='voucher'&&!pending&&!review&&<><p className="small">Your name is reserved. Use one voucher to finish.</p><button className="phone-secondary" disabled={busy} onClick={()=>void run(()=>prepare(c.id))}>{busy?'Checking voucher…':'Continue'}</button></>}
    </>}
@@ -106,7 +112,7 @@ export function PhoneENS({address,onChanged}:{address:string;onChanged:()=>void}
    <label htmlFor="ens-label">Choose your name</label><input id="ens-label" value={label} maxLength={32} autoCapitalize="none" autoCorrect="off" spellCheck={false} onChange={e=>setLabel(e.target.value)} placeholder="frank" disabled={busy}/><p className="small">.wallstreetslot.eth · 3–32 letters, numbers or hyphens</p>
    <button className="phone-primary" disabled={busy||!label}>{busy?'Preparing…':'Continue'}</button>
   </form>}
-  {review&&<div className="receive-box" role="dialog" aria-label="Confirm ENS voucher redemption"><h3>{review.name}</h3><p>Use <b>1 ENS Registration voucher</b> to register this name. Your voucher cannot be recovered after redemption.</p><p>Registration is free. We cover all Sepolia fees.</p><p className="small">The voucher transfer uses {review.gasMode==='eth'?'ETH on Base':'USDC on Base, with ETH fallback'} for its network fee.</p><details><summary>Transaction details</summary><p className="small" style={{overflowWrap:'anywhere'}}>Your name belongs to {review.address}. The voucher is transferred on Base to 0x000000000000000000000000000000000000dEaD. This transfer is not a token burn.</p></details><button className="phone-primary" disabled={busy} onClick={()=>void run(send)}>Confirm redemption</button><button className="phone-text" disabled={busy} onClick={()=>void run(async()=>{await apiRef.current({action:'cancel',id:review.id});setReview(null);})}>Cancel</button></div>}
+  {review&&<div className="receive-box" role="dialog" aria-label="Confirm ENS voucher redemption"><h3>{review.name}</h3><p>Use <b>1 ENS Registration voucher</b> to register this name. Your voucher cannot be recovered after redemption.</p><p>Registration is free. We cover all Sepolia fees.</p><p>After your voucher transfer is confirmed on Base, we register your ENS name on Sepolia automatically. You can close this page after confirming; no second voucher or signature is needed.</p><p className="small">The voucher transfer uses {review.gasMode==='eth'?'ETH on Base':'USDC on Base, with ETH fallback'} for its network fee.</p><details><summary>Transaction details</summary><p className="small" style={{overflowWrap:'anywhere'}}>Your name belongs to {review.address}. The voucher is transferred on Base to 0x000000000000000000000000000000000000dEaD. This transfer is not a token burn.</p></details><button className="phone-primary" disabled={busy} onClick={()=>void run(send)}>Confirm redemption</button><button className="phone-text" disabled={busy} onClick={()=>void run(async()=>{await apiRef.current({action:'cancel',id:review.id});setReview(null);})}>Cancel</button></div>}
   {pending&&claimsState==='ready'&&!view?.claims.some(c=>c.id===pending.claimId&&c.stage!=='voucher')&&<p role="status" className="phone-progress">Checking your voucher transfer on Base. No second transfer will be sent.</p>}
   {namesState!=='ready'&&claimsState==='ready'&&view?.claims.some(c=>c.completed)&&<p role="status">Registration completed on Sepolia. Refreshing current name ownership.</p>}
   {error&&<p className="phone-error" role="alert">{error}</p>}

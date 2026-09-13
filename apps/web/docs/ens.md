@@ -85,8 +85,11 @@ validation of redemption eligibility is performed by this backend, not by Base.
    shares the address-keyed write coordinator with spins/transfers.
 5. Find the canonical Base `TransferSingle` event and successful receipt. Check
    transaction sender, target, calldata, collection, event contents and block
-   hash. Unfinalized proofs are reread rather than cached across reorgs.
-6. Wait for Base **finalized** state and revalidate the proof. The source ID is
+   hash. Indexed proof references are only hints; canonical receipts and events
+   are revalidated before each registration.
+6. Require **two Base block confirmations** (the receipt block plus its next
+   block) and revalidate the proof. Do not wait for Ethereum/L1 finality.
+   The source ID is
    `keccak256(abi.encode(uint256(8453), collection, txHash, uint256(logIndex)))`.
    The transaction payload ties that source to exactly one reservation.
 7. The worker calls `SlotENSRegistrar.fulfill(claimId, sourceId)`. Its onchain
@@ -96,25 +99,35 @@ validation of redemption eligibility is performed by this backend, not by Base.
    registered name appears; the worker retries without another player action.
 
 The backend is a trusted cross-chain attestor: Sepolia does not independently
-verify Base consensus. The backend also controls the parent namespace. The
-player owns the subname and resolver, but availability depends on the parent,
+verify Base consensus. Fast redemption deliberately accepts the risk of a Base
+reorganization after two confirmations: a Sepolia registration already minted
+cannot be automatically undone. The backend also controls the parent namespace.
+The player owns the subname and resolver, but availability depends on the parent,
 its renewal and registry configuration.
 
 ## Recovery and operation
 
-A worker in the existing always-on service scans finalized collection events
-from `ENS_BASE_FROM_BLOCK`, verifies that proofs match real reservations and
-retries incomplete claims even when the phone is closed. A restart reconstructs
+A worker in the existing always-on service discovers recent, confirmed voucher
+transfers and registers them before scanning old history. The finalized event
+index from `ENS_BASE_FROM_BLOCK` remains a backfill mechanism, not a minting gate.
+Both paths verify proofs against actual reservations and retry incomplete claims
+even when the phone is closed. A restart reconstructs
 proofs and claims from both chains without a database or another token transfer.
 Completed claims are skipped. Catch-up runs in bounded batches with a one-second
-pause between successful batches, returning to fifteen-second polling when caught
-up or after an RPC failure. The worker consumes the verified finalized proof index
+pause between successful batches, returning to five-second polling when caught
+up or after an RPC failure. A scan failure cannot block already discovered
+claims. Phone reads enqueue confirmed claims for the next worker pass, ahead of
+new scans. Recent discovery uses bounded pages and resumes its cursor between
+ticks. The worker consumes the verified finalized proof index
 instead of fetching its log pages twice. Concurrent lookups for the same claim
-share only the in-flight read; new reviews reuse the claim checked during
+share the in-flight read; cached proof references are revalidated on every lookup.
+New reviews reuse the claim checked during
 preparation instead of scanning it twice. Later authorization still rechecks
 canonical events.
-Pending events survive transient RPC failures by
-retrying the same page; unfinalized reorgs cannot authorize Sepolia fulfillment.
+Pending events survive transient RPC failures by retrying the same page. A proof
+that is no longer canonical cannot authorize a new fulfillment. Safe diagnostics
+(`ens.worker_recent_scan_failed`, `ens.worker_scan_failed`,
+`ens.worker_claim_retry`) expose failures without RPC payloads or secrets.
 
 ENS has one serialized Sepolia sender which retains the exact signed bytes on
 ambiguous submissions. Run one service replica. Player Base submissions use the
@@ -149,7 +162,12 @@ progress (`GET /api/ens?view=claims`). Name ownership and resolution are read
 only from Sepolia; a slow or failed Base proof cannot hide those names. Failed
 claim reads disable new redemption actions instead of presenting an empty claim
 list. The UI distinguishes the Base transfer to the dead address, waiting for
-Base finality, pending Sepolia registration and verified Sepolia ownership.
+Base confirmation, queued/active/retrying Sepolia registration and verified
+Sepolia ownership. It polls during registration and continues refreshing ownership
+after completion, including on focus/visibility recovery. A completed onchain
+claim supplies its label before the name-event index catches up. Resolver RPC
+failures cannot hide verified name ownership; the address record is marked
+unavailable separately.
 It links the verified Base transfer and retains uncertain submission markers
 through unfinalized reorgs, without showing a second transfer-confirmation banner
 after the transfer is already visible.
