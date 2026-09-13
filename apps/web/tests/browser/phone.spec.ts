@@ -4,21 +4,21 @@ import QRCode from 'qrcode';
 import {WALLET_ASSETS,NFT_PRIZES} from '../../lib/assets';
 import {BASE_PRIZE_COLLECTION,BASE_PRIZE_IDS} from '../../lib/prize-collection';
 const address='0x0000000000000000000000000000000000000011',recipient='0x0000000000000000000000000000000000000022',contract='0x0000000000000000000000000000000000000099';
-async function setup(page:Page,{paired=false,busy=false,unavailable=false,playActive=true,playPrepared=false,usdc='100000000',eth='0.001',gasMode='usdc'}={}) {
+async function setup(page:Page,{paired=false,busy=false,unavailable=false,playActive=true,playPrepared=false,usdc='100000000',eth='0.001',gasMode='usdc',allowance='2500000',sessionId='fixture-session'}={}) {
   let connected=paired;
   let playGrant=playActive||playPrepared?{active:playActive,budget:'5000000',signerId:'fixture',policyId:'fixture'}:undefined;
   await page.route('**/api/account/welcome',route=>route.fulfill({json:{status:'granted',amount:'2'}}));
-  const session=()=>({id:'fixture-session',state:'active',address,code:'123456',serverTime:Date.now(),expiresAt:Date.now()+180000,welcome:{status:'granted',amount:'2'},...(playGrant?{playGrant}:{})});
-  await page.route('**/api/account',async route=>route.fulfill({json:{userId:'fixture-user',wallet:{address,depositQr:'data:image/gif;base64,R0lGODlhAQABAAAAACw=',balance:{amount:'10',stale:false,updatedAt:Date.now()},portfolio:unavailable?null:{address,chainId:8453,contract,updatedAt:Date.now(),eth,allowance:'2500000',freeSpins:'2',ticketPrice:'50000',busy,canTransact:!busy,gameId:busy?'4':null,gasMode,assets:WALLET_ASSETS.map(asset=>({...asset,balance:asset.id==='usdc'?usdc:'100000000',formatted:asset.decimals===8?'1':'10',verified:true})),nfts:NFT_PRIZES.map(nft=>({...nft,token:BASE_PRIZE_COLLECTION,tokenId:BASE_PRIZE_IDS[nft.symbol],balance:'2'}))}}}}));
+  const session=()=>({id:sessionId,state:'active',address,code:'123456',serverTime:Date.now(),expiresAt:Date.now()+180000,welcome:{status:'granted',amount:'2'},...(playGrant?{playGrant}:{})});
+  await page.route('**/api/account',async route=>route.fulfill({json:{userId:'fixture-user',wallet:{address,depositQr:'data:image/gif;base64,R0lGODlhAQABAAAAACw=',balance:{amount:'10',stale:false,updatedAt:Date.now()},portfolio:unavailable?null:{address,chainId:8453,contract,updatedAt:Date.now(),eth,allowance,freeSpins:'2',ticketPrice:'50000',busy,canTransact:!busy,gameId:busy?'4':null,gasMode,assets:WALLET_ASSETS.map(asset=>({...asset,balance:asset.id==='usdc'?usdc:'100000000',formatted:asset.decimals===8?'1':'10',verified:true})),nfts:NFT_PRIZES.map(nft=>({...nft,token:BASE_PRIZE_COLLECTION,tokenId:BASE_PRIZE_IDS[nft.symbol],balance:'2'}))}}}}));
   await page.route('**/api/relay/**',async route=>{
     const path=new URL(route.request().url()).pathname;
     if(path.endsWith('/phone/logout')){connected=false;return route.fulfill({json:{ok:true}});}
     if(path.endsWith('/lookup'))return route.fulfill({json:{code:'123456',origin:fixtureOrigin,expiresAt:Date.now()+300000}});
     if(path.endsWith('/approve')){connected=true;return route.fulfill({json:session()});}
-    if(path.endsWith('/phone/activity'))return route.fulfill({json:{...session(),sessionId:'fixture-session'}});
-    if(path.endsWith('/phone/play/prepare')){playGrant={active:false,budget:'5000000',signerId:'fixture',policyId:'fixture'};return route.fulfill({json:session()});}
-    if(path.endsWith('/phone/play/activate')){playGrant={active:true,budget:'5000000',signerId:'fixture',policyId:'fixture'};return route.fulfill({json:session()});}
-    if(path.endsWith('/phone/game')||path.endsWith('/phone/approval'))return route.fulfill({json:{configured:true,settings:{ticketPrice:'50000'},player:{balance:usdc,freeSpins:'2',allowance:'2500000',game:{id:'4',pending:busy}},gasMode}});
+    if(path.endsWith('/phone/activity'))return route.fulfill({json:{...session(),sessionId}});
+    if(path.endsWith('/phone/play/prepare')){playGrant={active:false,budget:route.request().postDataJSON().budget,signerId:'fixture',policyId:'fixture'};return route.fulfill({json:session()});}
+    if(path.endsWith('/phone/play/activate')){playGrant={active:true,budget:playGrant!.budget,signerId:'fixture',policyId:'fixture'};return route.fulfill({json:session()});}
+    if(path.endsWith('/phone/game')||path.endsWith('/phone/approval'))return route.fulfill({json:{configured:true,settings:{ticketPrice:'50000'},player:{balance:usdc,freeSpins:'2',allowance,game:{id:'4',pending:busy}},gasMode}});
     return connected?route.fulfill({json:session()}):route.fulfill({status:401,json:{error:'No iPad linked'}});
   });
   await page.setViewportSize({width:390,height:844});
@@ -133,7 +133,7 @@ test('closing scanner while permission is pending stops a late camera stream',as
 
 
 test('paired setup has one approval form and empty wallets see Base funding before any signature',async({page})=>{
-  await setup(page,{paired:true,playActive:false,usdc:'0',eth:'0'});await page.goto('/phone-fixture');
+  await setup(page,{paired:true,playActive:false,allowance:'0',usdc:'0',eth:'0'});await page.goto('/phone-fixture');
   await expect(page.getByRole('heading',{name:'Your USDC limit.'})).toBeHidden();
   await expect(page.getByRole('button',{name:'Approve and play'})).toBeHidden();
   await expect(page.getByText('You can already play for free on the iPad.',{exact:false})).toBeVisible();
@@ -144,7 +144,7 @@ test('paired setup has one approval form and empty wallets see Base funding befo
   await expect(page.getByText('Add USDC on Base to this address',{exact:false})).toBeVisible();
   await expect(page.getByRole('dialog')).toBeHidden();
   expect(await page.locator('body').getAttribute('data-submitted')).toBeNull();
-  await page.unrouteAll({behavior:'wait'});await setup(page,{paired:true,playActive:false});
+  await page.unrouteAll({behavior:'wait'});await setup(page,{paired:true,playActive:false,allowance:'0'});
   await page.getByRole('button',{name:'Refresh balances'}).click();
   await expect(page.getByRole('heading',{name:'Your USDC limit.'})).toHaveCount(1);
   await expect(page.getByRole('button',{name:'Approve and play'})).toBeEnabled();
@@ -154,7 +154,7 @@ test('paired setup has one approval form and empty wallets see Base funding befo
 });
 
 test('ETH alone cannot enable paid play; ETH gas mode requires ETH and failed balances block approval',async({page})=>{
-  await setup(page,{paired:true,playActive:false,usdc:'0'});await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
+  await setup(page,{paired:true,playActive:false,allowance:'0',usdc:'0'});await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
   await page.getByLabel('I authorize spins within this budget').check();
   await expect(page.getByRole('button',{name:'Approve and play'})).toBeDisabled();
   await page.unrouteAll({behavior:'wait'});await setup(page,{eth:'0',gasMode:'eth'});await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
@@ -165,7 +165,7 @@ test('ETH alone cannot enable paid play; ETH gas mode requires ETH and failed ba
 });
 
 test('paid play rechecks USDC before preparing permission when displayed balances are stale',async({page})=>{
-  await setup(page,{paired:true,playActive:false});await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
+  await setup(page,{paired:true,playActive:false,allowance:'0'});await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
   await page.getByLabel('I authorize spins within this budget').check();
   await expect(page.getByRole('button',{name:'Approve and play'})).toBeEnabled();
   let prepared=0;
@@ -278,6 +278,7 @@ test('one wallet approval card and draft survive tab switches, failed refresh an
  await setup(page,{paired:true,playActive:false});await page.goto('/phone-fixture');
  const card=page.locator('#wallet-approval');await expect(card).toHaveCount(1);await expect(card).toBeHidden();
  await page.getByRole('button',{name:'Wallet',exact:true}).click();
+ await page.getByRole('button',{name:'Change USDC limit',exact:true}).click();
  await page.getByLabel('New total USDC limit').fill('7.25');
  await page.evaluate(()=>{(window as any).approvalCard=document.getElementById('wallet-approval');});
  for(const tab of ['Activity','Play','Wallet','Activity','Wallet']){
@@ -289,7 +290,7 @@ test('one wallet approval card and draft survive tab switches, failed refresh an
  await page.getByRole('button',{name:'Refresh balances'}).click();
  await expect(card).toContainText('Needs refresh');await expect(card).toContainText('2.5 USDC');
  await expect(page.getByLabel('New total USDC limit')).toHaveValue('7.25');
- await expect(card.getByRole('button',{name:'Approve and play'})).toBeDisabled();
+ await expect(card.getByRole('button',{name:'Review approval'})).toBeDisabled();
  await page.getByRole('button',{name:'Play',exact:true}).click();await page.getByRole('button',{name:'End the iPad link'}).click();
  await expect(card).toBeHidden();await page.getByRole('button',{name:'Wallet',exact:true}).click();
  await expect(page.getByLabel('New total USDC limit')).toHaveValue('7.25');await expect(card).toHaveCount(1);
@@ -311,7 +312,7 @@ test('an approval review arriving after navigation stays in Wallet',async({page}
 
 
 test('budget confirmation survives RPC and network failures and enables the iPad without resending',async({page})=>{
- await setup(page,{paired:true,playActive:false});
+ await setup(page,{paired:true,playActive:false,allowance:'0'});
  const id='a'.repeat(64),hash='0x'+'b'.repeat(64);let sends=0,statusReads=0,receiptReads=0,activations=0;
  page.on('request',request=>{if(new URL(request.url()).pathname==='/api/relay/phone/play/activate')activations++;});
  await page.route('**/api/contract/**',async route=>{
@@ -342,7 +343,7 @@ test('budget confirmation survives RPC and network failures and enables the iPad
 });
 
 test('an interrupted confirmed approval can be checked and completed without another USDC transaction',async({page})=>{
- await setup(page,{paired:true,playActive:false,playPrepared:true});
+ await setup(page,{paired:true,playActive:false,playPrepared:true,allowance:'5000000'});
  const id='c'.repeat(64),hash='0x'+'d'.repeat(64);let writes=0,receipts=0;
  await page.addInitScript(({address,id,hash})=>sessionStorage.setItem('slot-contract-tx:'+address,JSON.stringify({id,hash})),{address,id,hash});
  await page.route('**/api/relay/phone/approval',route=>route.fulfill({json:{configured:true,settings:{ticketPrice:'50000'},player:{balance:'100000000',allowance:'5000000',busy:false},gasMode:'usdc'}}));
@@ -353,14 +354,14 @@ test('an interrupted confirmed approval can be checked and completed without ano
  await page.goto('/phone-transactions-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
  await page.getByRole('button',{name:'Check transaction'}).click();
  await expect(page.getByText('Transaction confirmed on Base.',{exact:false})).toBeVisible();
- await page.getByLabel('I authorize spins within this budget').check();await page.getByRole('button',{name:'Complete the approval'}).click();
+ await page.getByLabel('I authorize spins within this budget').check();await page.getByRole('button',{name:'Enable this iPad'}).click();
  await expect(page.getByText('Paid spins are enabled on this iPad.',{exact:true})).toBeVisible();
  expect(writes).toBe(0);expect(receipts).toBe(2);
 });
 
 
 test('confirmation authentication failures keep the known hash without retrying or enabling paid spins',async({page})=>{
- await setup(page,{paired:true,playActive:false});
+ await setup(page,{paired:true,playActive:false,allowance:'0'});
  const id='e'.repeat(64),hash='0x'+'f'.repeat(64);let sends=0,reads=0,activations=0;
  page.on('request',request=>{if(new URL(request.url()).pathname==='/api/relay/phone/play/activate')activations++;});
  await page.route('**/api/contract/**',route=>{
@@ -378,4 +379,31 @@ test('confirmation authentication failures keep the known hash without retrying 
  await expect(page.getByRole('button',{name:'Complete the approval'})).toBeDisabled();
  expect(JSON.parse((await page.evaluate(address=>sessionStorage.getItem('slot-contract-tx:'+address),address))!)).toEqual({id,hash});
  await page.waitForTimeout(2200);expect(reads).toBe(1);expect(sends).toBe(1);expect(activations).toBe(0);
+});
+
+test('each linked session reuses its remaining allowance without an approval transaction',async({page})=>{
+ const writes:string[]=[],budgets:string[]=[];
+ page.on('request',request=>{const path=new URL(request.url()).pathname;if(path.startsWith('/api/contract/'))writes.push(path);if(path==='/api/relay/phone/play/prepare'){const body=request.postDataJSON();expect(body.reuseAllowance).toBe(true);budgets.push(body.budget);}});
+ for(const [sessionId,allowance] of [['first-session','2750000'],['second-session','1750000'],['tiny-allowance','1']]){
+  await page.unrouteAll({behavior:'wait'});await setup(page,{paired:true,playActive:false,sessionId,allowance,...(allowance==='1'?{usdc:'0',eth:'0'}:{})});
+  await page.goto('/phone-transactions-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Approve and play'})).toHaveCount(0);
+  await expect(page.getByLabel('New total USDC limit')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Enable this iPad'})).toBeDisabled();
+  await page.getByLabel('I authorize spins within this budget').check();
+  await page.getByRole('button',{name:'Enable this iPad'}).click();
+  await expect(page.getByText('Paid spins are enabled on this iPad.',{exact:true})).toBeVisible();
+  await expect(page.getByRole('dialog')).toBeHidden();
+ }
+ expect(budgets).toEqual(['2750000','1750000','1']);expect(writes).toEqual([]);
+});
+
+for(const changed of ['0','7500000'])test(`a changed allowance (${changed}) never triggers an implicit approval`,async({page})=>{
+ await setup(page,{paired:true,playActive:false});let prepares=0,writes=0;
+ page.on('request',request=>{const path=new URL(request.url()).pathname;if(path==='/api/relay/phone/play/prepare')prepares++;if(path.startsWith('/api/contract/'))writes++;});
+ await page.route('**/api/relay/phone/approval',route=>route.fulfill({json:{configured:true,settings:{ticketPrice:'50000'},player:{balance:'100000000',allowance:changed,busy:false},gasMode:'usdc'}}));
+ await page.goto('/phone-transactions-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
+ await page.getByLabel('I authorize spins within this budget').check();await page.getByRole('button',{name:'Enable this iPad'}).click();
+ await expect(page.getByRole('alert').filter({hasText:'USDC limit changed'})).toBeVisible();
+ await expect(page.getByRole('dialog')).toBeHidden();expect(prepares).toBe(0);expect(writes).toBe(0);
 });

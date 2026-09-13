@@ -306,7 +306,7 @@ test('reserve availability blocks input without hiding credits or confirmed resu
 });
 
 
-test('an onchain budget stays locked until session activation and the iPad shows the recovery step',async({page,browser})=>{
+test('an existing allowance needs only session activation and the iPad explains reuse',async({page,browser})=>{
  const phone=await phoneContext(browser);let active=false;
  await page.route('**/api/relay/tablet',async route=>{
   const response=await route.fetch();const data=await response.json();
@@ -319,9 +319,48 @@ test('an onchain budget stays locked until session activation and the iPad shows
  await link(page,phone);
  await expect(page.locator('#spin-paid')).toBeDisabled();
  await expect(page.locator('#play-consent-title')).toHaveText('Enable paid spins on your phone.');
- await expect(page.locator('#play-consent-copy')).toContainText('Complete the approval');
+ await expect(page.locator('#play-consent-copy')).toContainText('Enable this iPad');
+ await expect(page.locator('#play-consent-copy')).toContainText('No new USDC approval is needed');
  active=true;
  await expect(page.locator('#spin-paid')).toBeEnabled();
  await expect(page.locator('#play-consent-title')).toHaveText('Spins approved.');
  await phone.close();
+});
+
+for(const scenario of ['fast','slow','logout'] as const)test(`onchain spin visual minimum: ${scenario}`,async({page,browser})=>{
+ const phone=await phoneContext(browser);let phase='idle',submissions=0,sessionId='';
+ await page.route('**/api/relay/tablet/game',async route=>{
+  const session=await (await page.request.get(fixtureOrigin+'/api/relay/tablet')).json();sessionId=session.id;
+  const game=phase==='idle'?null:{id:'1',pending:phase==='pending',hasResult:phase==='complete',confirmed:phase==='complete',won:false,status:phase==='pending'?'waiting':'lost',targetBlock:'105',symbols:Array(15).fill(2),matchCount:0,winningLine:0,winningSymbol:0};
+  await route.fulfill({json:{configured:true,sessionId,block:'107',settings:{ticketPrice:'50000',paused:false,totalOutcomeWeight:1000,configuredPrizeCount:15},keeper:{configured:true,canStartFreeSpin:true,balanceWei:'1000000'},player:{freeSpins:'4',allowance:'0',balance:'0',latestGameId:game?'1':'0',busy:false,game,operation:null}}});
+ });
+ await page.route('**/api/relay/tablet/spin',route=>{
+  submissions++;phase=scenario==='slow'?'pending':'complete';
+  return route.fulfill({status:202,json:{sessionId,operation:{stage:'started',afterGameId:'0',gameId:'1'}}});
+ });
+ try{
+  await link(page,phone);await expect(page.locator('#spin-free')).toBeEnabled();
+  await page.clock.install();await page.clock.pauseAt(new Date());
+  await page.locator('#spin-free').click();
+  await expect(page.locator('#game-phase')).toHaveText(scenario==='slow'?'02 / WAITING FOR BLOCK':'SPIN IN PROGRESS');
+  await expect(page.locator('.machine')).toHaveClass(/is-spinning/);
+  await expect(page.locator('#outcome')).toBeHidden();
+  if(scenario==='logout'){
+   await page.locator('#logout').click();await expect(page.locator('#game-controls')).toBeHidden();
+   await page.clock.runFor(6000);await expect(page.locator('#outcome')).toBeHidden();
+   await expect(page.locator('.machine')).not.toHaveClass(/is-spinning/);return;
+  }
+  await page.clock.runFor(4999);
+  await expect(page.locator('.machine')).toHaveClass(/is-spinning/);
+  await expect(page.locator('#spin-free')).toBeDisabled();await expect(page.locator('#spin-paid')).toBeDisabled();
+  await expect(page.locator('.cell[data-result-symbol]')).toHaveCount(0);
+  await page.evaluate(()=>{(window as any).slotPullLever();document.getElementById('spin-free')!.click();});expect(submissions).toBe(1);
+  if(scenario==='slow'){
+   await page.clock.runFor(1001);await expect(page.locator('.machine')).toHaveClass(/is-spinning/);
+   phase='complete';await page.clock.runFor(2000);
+  }else await page.clock.runFor(1);
+  await expect(page.locator('#outcome-title')).toHaveText('YOU LOST');await expect(page.locator('#outcome')).toBeVisible();
+  await expect(page.locator('.machine')).not.toHaveClass(/is-spinning/);
+  await expect(page.locator('.cell[data-result-symbol]')).toHaveCount(15);await expect(page.locator('#spin-free')).toBeEnabled();
+ }finally{await phone.close();}
 });
