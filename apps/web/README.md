@@ -13,6 +13,10 @@ browser does not support it. Decorative dice, cards and chips live in
 paid spins, free spins, automatic reveal and an onchain admin console.
 Prize availability notices apply to new spins and are hidden while a spin is
 being submitted or awaiting its result; depleted reserves still disable new spins.
+Accepted spins animate for at least five seconds, including fast onchain results.
+Slower rounds keep spinning until confirmed. Inputs and result artwork stay locked
+during the visual minimum; logout or session expiry cancels it. Preflight failures
+do not start the reels, and loading an already settled round does not replay them.
 Without a configured contract address, wallet login, holdings and pairing remain
 available while game operations and reviewed wallet writes are disabled.
 
@@ -188,8 +192,9 @@ Three-minute inactivity applies to the shared arcade session, not wallet access.
 | `revealRound(gameId)` and expired-game cleanup | Backend EOA |
 | Configuration, roles, treasury and prize deposits | Admin Privy wallet, confirmed in the browser |
 
-On the phone, the user chooses a limited USDC budget. The backend verifies the
-exact approval before enabling the signer. Its policy permits only
+On the phone, the user reuses a positive existing allowance or, when it is zero,
+chooses a new USDC budget. The backend verifies the exact remaining allowance
+before enabling the signer. Its policy permits only
 `eth_sendTransaction` on Base, to the slot address, with zero native value and
 the `startSpin()` function. It does not allow token approvals, arbitrary
 transfers or typed data. The contract deducts the current ticket price from
@@ -404,8 +409,15 @@ credentials and raw SDK errors are never logged.
 
 ### Phone approval and funding
 
-During paired play setup, the phone shows one USDC approval form. Once play is
-enabled, the wallet limit controls remain available for changes and revocation.
+During paired play setup, any verified allowance greater than zero is reused,
+including a remainder below one ticket price. **Enable this iPad** authorizes only
+the new session signer; it sends no USDC approval transaction and needs no gas.
+The backend rechecks the exact remaining allowance before preparing and activating
+the session. A changed or unreadable allowance asks for a refresh, never an
+automatic replacement approval. An unfinished signer can reuse the current limit.
+With zero allowance, **Approve and play** requests a reviewed USDC approval.
+**Change USDC limit** and revocation remain explicit, separate transactions.
+Actual paid spins still require enough allowance, USDC and gas for the ticket.
 Paid play requires a verified USDC balance covering a spin before requesting
 approval; free spins remain available without funding. Approval and revocation
 check for USDC gas funds or ETH on Base (ETH only in ETH gas mode), including a
@@ -419,9 +431,9 @@ rate-limit and server errors for up to three minutes; it never resends the
 transaction. Known transaction hashes are saved immediately for receipt recovery.
 Authentication failures and unknown operations still stop verification. Once the
 approval confirms, the original flow continues with the scoped session signer.
-For an interrupted flow, use **Check transaction**, then **Complete the approval**;
-the fresh allowance check skips a duplicate approval when the exact budget is
-already onchain. Both screens distinguish a set USDC limit from enabled paid spins.
+For an interrupted flow, use **Check transaction**, then **Enable this iPad**
+once a positive allowance is verified. Pending or uncertain transactions remain
+locked until checked, even when an older positive allowance exists. Both screens distinguish a set USDC limit from enabled paid spins.
 
 
 RPC reads and backend transaction preparation share provider health across the
@@ -491,6 +503,10 @@ wallet without paying Sepolia gas. The existing backend EOA submits the Sepolia
 transactions. Existing Base ENS vouchers are transferred to `0x000000000000000000000000000000000000dEaD`, not burned;
 the player's Base transfer follows the app's existing USDC/ETH fee mode.
 The phone confirms the voucher once, then follows backend registration automatically.
+Registration starts after two Base block confirmations, without waiting for L1
+finality. Recent transfers take priority over historical indexing. The phone
+shows registration retries and keeps refreshing ownership after completion;
+a failed address-record lookup does not hide an owned name.
 Subdomains ultimately use the official ENSv2
 [`ETHRegistry`](https://sepolia.etherscan.io/address/0xBDC85dD5b15D7ecb354cd7cb6f2c50b4f2c4F0E2),
 pinned from `ensdomains/contracts-v2`. It maps `wallstreetslot.eth` to the project's

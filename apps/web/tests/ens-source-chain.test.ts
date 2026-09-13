@@ -30,7 +30,10 @@ test('actual SlotPrize1155 transfer to dead address produces a recoverable claim
   const snapshot=await local('evm_snapshot',[]);
   const receipt=await client.waitForTransactionReceipt({hash:await user.sendTransaction(voucherTransaction(registrar,player.address,id,label))});assert.equal(receipt.status,'success');
   assert.equal(await client.readContract({address:BASE_PRIZE_COLLECTION,abi:prizeCollectionAbi,functionName:'balanceOf',args:[ENS_DISCARD_ADDRESS,2n]}),1n);
-  assert.equal((await source().find(id,player.address,label))?.finalized,false);
+  const waiting=await source().find(id,player.address,label);assert.equal(waiting?.finalized,false);assert.equal(waiting?.confirmed,false);
+  await local('evm_mine',[]);
+  const fast=await source().find(id,player.address,label);assert.equal(fast?.confirmed,true);assert.equal(fast?.finalized,false);
+  assert.equal((await source().indexRecent()).proofs[0].transactionHash,receipt.transactionHash);
   finalized=receipt.blockNumber;const proof=await source().find(id,player.address,label);assert.equal(proof?.finalized,true);
   assert.deepEqual(await source().find(id,player.address,label),proof);
   assert.equal(await source().find(id,owner.address,label),null);

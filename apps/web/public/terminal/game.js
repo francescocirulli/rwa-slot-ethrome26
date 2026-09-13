@@ -1,7 +1,7 @@
 /* Onchain slot controller, deliberately ES5 for the shared Safari 12 terminal. */
 (function () {
   'use strict';
-  var currentSession = null, revision = 0, snapshot = null, fetching = false, sending = false, timer, online = true, shownResult = '', settleTimer, hardwareState = '', observedPending = false, configuredState = null, requestError = '', requestUncertain = false;
+  var currentSession = null, revision = 0, snapshot = null, fetching = false, sending = false, timer, online = true, shownResult = '', settleTimer, hardwareState = '', observedPending = false, configuredState = null, requestError = '', requestUncertain = false, spinStartedAt = null;
   var lines = [[5,6,7,8,9], [0,1,7,13,14], [10,11,7,3,4]];
   var labels = ['MAGNET','FREE SPIN','NVIDIA','HOPERA','SPACEX','APPLE','ALPHABET','AMAZON','ENS','URBE PASS','T-SHIRT','GOLD','BOOKS','WATER BOTTLE','CAPS','SYMBOL 15'];
   function el(id) {return document.getElementById(id);}
@@ -24,7 +24,7 @@
   function atLeast(left, right) {left = String(left).replace(/^0+/, '') || '0'; right = String(right).replace(/^0+/, '') || '0'; return left.length > right.length || left.length === right.length && left >= right;}
   function status(phase, title, detail) {el('game-phase').textContent = phase; el('game-title').textContent = title; el('game-detail').textContent = detail || '';}
   function feedback(data) {var key = JSON.stringify(data); if (key === hardwareState) return; hardwareState = key; var event = document.createEvent('CustomEvent'); event.initCustomEvent('slot-game', false, false, data); window.dispatchEvent(event);}
-  function spin(value) {document.querySelector('.machine').classList.toggle('is-spinning', value); document.querySelector('.reels').setAttribute('aria-busy', value ? 'true' : 'false');}
+  function spin(value) {if (value && spinStartedAt === null) spinStartedAt = Date.now();if (!value) {spinStartedAt = null;window.clearTimeout(settleTimer);settleTimer = null;}document.querySelector('.machine').classList.toggle('is-spinning', value); document.querySelector('.reels').setAttribute('aria-busy', value ? 'true' : 'false');}
   function resetGrid() {
     var cells = document.querySelectorAll('.cell');
     for (var index = 0; index < cells.length; index++) {cells[index].classList.remove('winner'); cells[index].removeAttribute('data-result-symbol');}
@@ -111,11 +111,13 @@
     var player = snapshot.player, game = player.game, operation = player.operation, grant = currentSession.playGrant;
     var currentOperation = operation && operation.afterGameId === player.latestGameId;
     var checking = sending || currentOperation && operation.stage === 'submitting' && !operation.hash;
-    var inFlight = currentOperation && (operation.stage === 'confirming' || operation.stage === 'uncertain' || operation.stage === 'submitting' && operation.hash);
+    var inFlight = currentOperation && (operation.stage === 'confirming' || operation.stage === 'started' || operation.stage === 'uncertain' || operation.stage === 'submitting' && operation.hash);
     var pending = game && game.pending, waitingConfirmation = game && game.hasResult && !game.confirmed;
-    var roundActive = checking || inFlight || pending && game.status !== 'expired' || waitingConfirmation;
+    var remainingSpinTime = spinStartedAt === null ? 0 : Math.max(0, 5000 - (Date.now() - spinStartedAt));
+    var presenting = !!(game && game.hasResult && game.confirmed && remainingSpinTime > 0);
+    var roundActive = checking || inFlight || pending && game.status !== 'expired' || waitingConfirmation || presenting;
     var reserves = snapshot.prizeAvailability && snapshot.prizeAvailability.state;
-    var unavailable = !online || checking || inFlight || pending || waitingConfirmation || player.busy || player.gameUnavailable || snapshot.settings.paused || snapshot.settings.totalOutcomeWeight !== 1000 || snapshot.settings.configuredPrizeCount < 3 || !snapshot.keeper.configured || snapshot.keeper.balanceWei === '0';
+    var unavailable = presenting || !online || checking || inFlight || pending || waitingConfirmation || player.busy || player.gameUnavailable || snapshot.settings.paused || snapshot.settings.totalOutcomeWeight !== 1000 || snapshot.settings.configuredPrizeCount < 3 || !snapshot.keeper.configured || snapshot.keeper.balanceWei === '0';
     var availability = !online ? 'Connection lost. New spins resume when the network is back.' : snapshot.settings.paused ? 'Machine paused. Open spins still settle onchain.' : snapshot.settings.totalOutcomeWeight !== 1000 || snapshot.settings.configuredPrizeCount < 3 ? 'The slot is getting ready. The prize table is not complete yet.' : player.gameUnavailable ? 'Connection to the current round is unavailable. Retrying automatically.' : !snapshot.keeper.configured || snapshot.keeper.balanceWei === '0' ? 'The game service is not ready. Please wait for the operator.' : '';
     if (reserves && reserves !== 'ready') {
       unavailable = true;
@@ -131,9 +133,9 @@
     el('free-spin-note').textContent = !online ? 'Balance pending update.' : hasFreeSpins ? 'The lever uses them first. Gas included.' : welcome && welcome.status === 'checking' ? 'Checking welcome bonus…' : welcome && welcome.status === 'pending' ? 'Welcome bonus: +2 on the way.' : 'No free spins available.';
     el('spin-paid').disabled = !!unavailable || !grant || !grant.active || !atLeast(player.allowance, snapshot.settings.ticketPrice) || !atLeast(player.balance, snapshot.settings.ticketPrice);
     el('spin-free').disabled = !!unavailable || !snapshot.keeper.canStartFreeSpin || player.freeSpins === '0';
-    var hasBudget = atLeast(player.allowance, snapshot.settings.ticketPrice), hasBalance = atLeast(player.balance, snapshot.settings.ticketPrice);
-    el('play-consent-title').textContent = hasFreeSpins && !(grant && grant.active) ? 'You can already play for free.' : grant && grant.active ? hasBudget ? 'Spins approved.' : 'Budget needs a top-up.' : hasBudget ? 'Enable paid spins on your phone.' : 'Approve a budget on your phone.';
-    el('play-consent-copy').textContent = hasFreeSpins && !(grant && grant.active) ? 'Pull the lever or press USE FREE SPIN. No USDC top-up or approval needed.' : grant && grant.active ? hasBudget ? 'Remaining USDC budget: ' + amount(player.allowance) + '. Your phone can stay closed.' : 'Remaining budget: ' + amount(player.allowance) + ' USDC. To set a new one, log out and link again from your phone. Free spins stay available.' : grant ? 'On your phone, open Wallet. Check the approval transaction, then tap Complete the approval. Do not submit the same transaction again.' : hasBudget ? 'Your USDC limit is set. Open Wallet on your phone and complete Approve and play to authorize this iPad.' : 'Open Wallet on your phone, choose a USDC budget and complete Approve and play. Free spins do not use USDC.';
+    var hasBudget = atLeast(player.allowance, snapshot.settings.ticketPrice), hasApproval = atLeast(player.allowance, '1'), hasBalance = atLeast(player.balance, snapshot.settings.ticketPrice);
+    el('play-consent-title').textContent = hasFreeSpins && !(grant && grant.active) ? 'You can already play for free.' : grant && grant.active ? hasBudget ? 'Spins approved.' : hasApproval ? 'Limit below the spin price.' : 'Approve a new USDC limit.' : hasApproval ? 'Enable paid spins on your phone.' : 'Approve a budget on your phone.';
+    el('play-consent-copy').textContent = hasFreeSpins && !(grant && grant.active) ? 'Pull the lever or press USE FREE SPIN. No USDC top-up or approval needed.' : grant && grant.active ? hasBudget ? 'Remaining USDC budget: ' + amount(player.allowance) + '. Your phone can stay closed.' : hasApproval ? 'Your remaining approval is ' + amount(player.allowance) + ' USDC, below the price of one spin. Free spins stay available.' : 'Your USDC approval is used up. Open Wallet on your phone to approve a new limit. Free spins stay available.' : hasApproval ? 'Your USDC limit is already approved. Open Wallet on your phone and tap Enable this iPad. No new USDC approval is needed.' : grant ? 'On your phone, open Wallet. Check the approval transaction, then tap Complete the approval. Do not submit the same transaction again.' : 'Open Wallet on your phone, choose a USDC budget and complete Approve and play. Free spins do not use USDC.';
     if (!hasBalance && grant && grant.active) {el('play-consent-title').textContent = 'Not enough USDC for a paid spin.'; el('play-consent-copy').textContent = 'Add USDC to your wallet on Base. Free spins do not use USDC.';}
     if (availability) {el('play-consent-title').textContent = 'Waiting for the machine.'; el('play-consent-copy').textContent = 'New spins resume when the service is ready. Your balance and free spins are safe.';}
     if (window.slotDemo) {el('play-consent-title').textContent = 'Test credits only.'; el('play-consent-copy').textContent = '5 cents + 1 cent of simulated gas. No real funds.';}
@@ -151,6 +153,15 @@
       else if (game.status === 'waiting') status('02 / WAITING FOR BLOCK', 'Let the reels run.', '');
       else status('03 / REVEAL', 'One last turn…', '');
       if (window.slotDemo) {el('game-phase').textContent = 'DEMO · ' + el('game-phase').textContent; el('game-detail').textContent = 'Both transactions simulated. Nothing sent to Base.';}
+      return;
+    }
+    if (presenting) {
+      // A confirmed fast result waits for the visual minimum; chain state is never fabricated.
+      feedback({phase: 'spin', ready: false}); spin(true); resetGrid(); hideResult(); hideOutcome(); shownResult = '';
+      status('SPIN IN PROGRESS', 'Let the reels run.', '');
+      window.clearTimeout(settleTimer);
+      var generation = revision;
+      settleTimer = window.setTimeout(function () {settleTimer = null;if (generation === revision) render();}, remainingSpinTime);
       return;
     }
     if (game && game.hasResult && game.confirmed) {
@@ -190,7 +201,9 @@
       sending = false;
       if (code === 401) {var event = document.createEvent('Event'); event.initEvent('slot-expired', false, false); window.dispatchEvent(event); return;}
       if (error) {if (!code) online = false; requestError = error; requestUncertain = !code || code >= 500; render();}
-      else {snapshot.player.operation = data.operation; render();}
+      else {snapshot.player.operation = data.operation;
+        if (data.operation && (data.operation.stage === 'started' || data.operation.stage === 'confirming' || data.operation.stage === 'uncertain' || data.operation.stage === 'submitting' && data.operation.hash)) {observedPending = true;spin(true);resetGrid();hideResult();hideOutcome();shownResult = '';}
+        render();}
       window.clearTimeout(timer); poll();
     });
   }

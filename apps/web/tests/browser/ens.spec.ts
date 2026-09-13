@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 const address='0x0000000000000000000000000000000000000011';
 const claimId='0x'+'1'.repeat(64);
 test.use({viewport:{width:390,height:844}});
-test('iPhone redeems one voucher with review and resumes Sepolia registration after finality',async({page})=>{
+test('iPhone redeems one voucher with review and resumes Sepolia registration after Base confirmation',async({page})=>{
  let stage='empty',sends=0,completions=0;
  await page.route('**/api/account',route=>route.fulfill({json:{userId:'fixture-user',wallet:{address,depositQr:'',balance:{amount:'10',stale:false},portfolio:{address,chainId:8453,contract:address,eth:'0',allowance:'0',freeSpins:'0',ticketPrice:'50000',gasMode:'usdc',gameId:null,busy:false,canTransact:true,assets:[],nfts:[]}}}}));
  await page.route('**/api/ens*',async route=>{
@@ -11,7 +11,7 @@ test('iPhone redeems one voucher with review and resumes Sepolia registration af
   if(request.url().includes('?label='))return route.fulfill({json:{name:'frank.wallstreetslot.eth',available:true}});
   if(body.action==='reserve'){stage='voucher';return route.fulfill({json:{...claim,stage}});}
   if(body.action==='prepare')return route.fulfill({json:{id:'review-1',claimId,name:claim.name,address,quantity:1,registrationPayer:'backend',gasMode:'usdc',expires:Date.now()+90000}});
-  if(body.action==='send'){expect(body.confirm).toBe(true);expect(request.headers()['x-fixture-privy']).toBe('1');sends++;stage='finalizing-base';return route.fulfill({json:{stage:'submitted'}});}
+  if(body.action==='send'){expect(body.confirm).toBe(true);expect(request.headers()['x-fixture-privy']).toBe('1');sends++;stage='confirming-base';return route.fulfill({json:{stage:'submitted'}});}
   if(body.action==='status')return route.fulfill({json:{stage:'submitted',claim}});
   if(body.action==='complete'){completions++;stage='registered';return route.fulfill({json:{...claim,completed:true,stage}});}
 
@@ -23,13 +23,13 @@ test('iPhone redeems one voucher with review and resumes Sepolia registration af
  await expect(review).toContainText('1 ENS Registration voucher');await expect(review).toContainText('We cover all Sepolia fees.');
  await expect(review.getByText('ETH',{exact:true})).toHaveCount(0);expect(sends).toBe(0);
  await page.getByRole('button',{name:'Confirm redemption',exact:true}).click();
- await expect(page.getByText('Base: voucher transferred to the dead address.',{exact:false})).toBeVisible();expect(sends).toBe(1);
- await expect(page.getByText('Sepolia: waiting for Base finality. Registration has not started.')).toBeVisible();
+ await expect(page.getByText('Voucher received on Base.',{exact:false})).toBeVisible();expect(sends).toBe(1);
+ await expect(page.getByText('Confirming your voucher transfer on Base.')).toBeVisible();
  await expect(page.getByText('Checking your voucher transfer on Base.',{exact:false})).toHaveCount(0);
- await page.reload();await page.getByRole('button',{name:'Wallet',exact:true}).click();await expect(page.getByText('Base: voucher transferred to the dead address.',{exact:false})).toBeVisible();
+ await page.reload();await page.getByRole('button',{name:'Wallet',exact:true}).click();await expect(page.getByText('Voucher received on Base.',{exact:false})).toBeVisible();
  await expect(page.getByRole('button',{name:'Continue',exact:true})).toHaveCount(0);
  stage='ready';
- await expect(page.getByText('Sepolia: Base transfer finalized. Registration is pending.',{exact:true})).toBeVisible({timeout:12000});
+ await expect(page.getByText('Voucher transfer confirmed on Base.',{exact:true})).toBeVisible({timeout:12000});
  await expect(page.getByRole('button',{name:'Copy name'})).toHaveCount(0);
  stage='registered';completions++;
  await expect(page.getByRole('button',{name:'Copy name'})).toBeVisible({timeout:12000});expect(sends).toBe(1);expect(completions).toBe(1);
@@ -134,15 +134,15 @@ for(const failure of ['slow','unavailable'] as const)test(`Sepolia names remain 
  }finally{release();}
 });
 
-test('a missing Base proof after finality waiting never prompts another voucher transfer',async({page})=>{
+test('a missing Base proof after Base confirmation waiting never prompts another voucher transfer',async({page})=>{
  const counts=await recoveryFixture(page,'uncertain');
  await page.getByRole('button',{name:'Continue',exact:true}).click();
  await page.getByRole('button',{name:'Confirm redemption',exact:true}).click();
  await expect(page.getByRole('alert').filter({hasText:'cannot be verified'})).toBeVisible();
- let stage='finalizing-base';
+ let stage='confirming-base';
  await page.route('**/api/ens?view=claims',route=>route.fulfill({json:{configured:true,claims:[{id:claimId,label:'frank',name:'frank.wallstreetslot.eth',owner:address,resolver:address,completed:false,stage}]}}));
  await page.getByRole('button',{name:'Refresh ENS'}).click();
- await expect(page.getByText('Sepolia: waiting for Base finality. Registration has not started.')).toBeVisible();
+ await expect(page.getByText('Confirming your voucher transfer on Base.')).toBeVisible();
  stage='voucher';await page.getByRole('button',{name:'Refresh ENS'}).click();
  await expect(page.getByText('Checking your voucher transfer on Base.',{exact:false})).toBeVisible();
  await expect(page.getByRole('button',{name:'Continue',exact:true})).toHaveCount(0);
@@ -193,4 +193,29 @@ test('registered ENS cards keep names, details and actions readable on narrow ph
  }
  await page.setViewportSize({width:390,height:844});
  await cards.first().screenshot({path:'/private/tmp/ens-name-card-fixed.png'});
+});
+
+test('ENS explains transfer confirmation, shows retries, and continues polling through delayed name discovery',async({page})=>{
+ const started=new Date('2026-09-13T01:20:00Z');await page.clock.install({time:started});
+ await page.route('**/api/account',route=>route.fulfill({json:{userId:'fixture-user',wallet:{address,balance:{amount:'10',stale:false},portfolio:null}}}));
+ let stage='confirming-base',state='retrying',names=0,posts=0;
+ await page.route('**/api/ens*',route=>{
+  if(route.request().method()==='POST')posts++;
+  if(new URL(route.request().url()).searchParams.get('view')==='names'){
+   if(stage==='registered')names++;
+   return route.fulfill({json:{configured:true,names:names>=3?[{name:'frango.wallstreetslot.eth',owner:address,expiry:'1900000000',resolvedAddress:null,resolutionStatus:'unavailable'}]:[]}});
+  }
+  return route.fulfill({json:{configured:true,claims:[{id:claimId,label:'frango',name:'frango.wallstreetslot.eth',owner:address,resolver:address,completed:stage==='registered',stage,voucherConfirmedAt:started.getTime()-240000,registration:{state,lastAttemptAt:Date.now()}}]}});
+ });
+ await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
+ await expect(page.getByRole('status').filter({hasText:'Your voucher is received.'})).toContainText('4 min since your transfer');
+ await expect(page.getByText('Last checked',{exact:false})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Continue',exact:true})).toHaveCount(0);
+ stage='ready';await page.clock.runFor(5100);
+ await expect(page.getByText('Sepolia registration is delayed. We are retrying automatically.')).toBeVisible();
+ state='registering';await page.clock.runFor(5100);await expect(page.getByText('Registering your ENS name on Sepolia…')).toBeVisible();
+ stage='registered';await page.clock.runFor(5100);await expect.poll(()=>names).toBeGreaterThanOrEqual(2);
+ await expect(page.getByRole('button',{name:'Copy name'})).toHaveCount(0);
+ await page.clock.runFor(15100);await expect(page.getByRole('button',{name:'Copy name'})).toBeVisible();
+ await expect(page.getByText('Address record could not be checked',{exact:false})).toBeVisible();expect(posts).toBe(0);
 });
