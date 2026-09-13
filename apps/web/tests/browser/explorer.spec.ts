@@ -71,3 +71,59 @@ test('a blocked iframe offers recovery instead of a blank archive',async({page})
  await expect(page.frameLocator('iframe[title="Game archive workspace"]').locator('#spins')).toHaveText('26');
  await expect(page.getByText('The archive could not open.',{exact:false})).toBeHidden();
 });
+
+test('iPad archive, summary and receipt scroll within the frame while Back stays visible',async({page})=>{
+  await page.route('**/api/explorer?*',route=>{
+    const params=new URL(route.request().url()).searchParams;
+    const data=result(params);
+    if(!params.has('game'))data.rows=Array.from({length:25},(_,i)=>({...row,gameId:String(25-i),symbols:null}));
+    return route.fulfill({json:data});
+  });
+  await page.setViewportSize({width:1024,height:650});await page.goto('/');
+  await expect(page.locator('#pair-code')).not.toHaveText('— — —');
+  await page.evaluate(address=>window.dispatchEvent(new CustomEvent('slot-session',{detail:{address,state:'active'}})),player);
+  await page.getByRole('button',{name:'Game Explorer',exact:true}).click();
+  const workspace=page.frameLocator('#explorer-frame'),archive=workspace.locator('.archive');
+  await expect(workspace.locator('.ledger-row')).toHaveCount(25);
+  for(const mode of ['Game Explorer','My summary']){
+    await workspace.getByRole('button',{name:mode}).click();
+    await expect(workspace.locator('.ledger-row')).toHaveCount(25);
+    const bounds=await archive.evaluate(node=>({height:node.clientHeight,content:node.scrollHeight,viewport:window.innerHeight,document:document.documentElement.scrollHeight}));
+    expect(bounds.height).toBeGreaterThan(0);expect(bounds.height).toBeLessThanOrEqual(bounds.viewport);
+    expect(bounds.content).toBeGreaterThan(bounds.height);expect(bounds.document).toBeLessThanOrEqual(bounds.viewport);
+    await archive.evaluate(node=>{node.scrollTop=node.scrollHeight;});
+    await expect(workspace.locator('#next')).toBeInViewport();
+    await expect(page.getByRole('button',{name:'Back to slot'})).toBeInViewport();
+    await workspace.getByRole('button',{name:'View spin 1',exact:true}).click();
+    await expect(workspace.locator('#grid img')).toHaveCount(15);
+    const receipt=workspace.locator('.receipt');
+    await receipt.evaluate(node=>{node.scrollTop=node.scrollHeight;});
+    expect(await receipt.evaluate(node=>node.scrollTop)).toBeGreaterThan(0);
+    await expect(workspace.locator('#receipt-link')).toBeInViewport();
+    await workspace.getByRole('button',{name:'Close ×'}).click();
+    await expect(workspace.getByRole('button',{name:'View spin 1',exact:true})).toBeFocused();
+  }
+  await page.getByRole('button',{name:'Back to slot'}).click();
+  await expect(page.locator('#explorer-dialog')).toBeHidden();
+});
+
+test('iPad touch swipes scroll the embedded archive in both directions',async({page,browserName})=>{
+  test.skip(browserName!=='chromium','Native touch injection uses the Chromium DevTools protocol.');
+  await fixture(page);await page.setViewportSize({width:1024,height:650});await page.goto('/');
+  await page.getByRole('button',{name:'Game Explorer',exact:true}).click();
+  const workspace=page.frameLocator('#explorer-frame'),archive=workspace.locator('.archive');
+  await expect(workspace.locator('#spins')).toHaveText('26');
+  const cdp=await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+  async function swipe(from:number,to:number){
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:500,y:from}]});
+    for(let i=1;i<=10;i++)await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:500,y:from+(to-from)*i/10}]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  }
+  await swipe(570,180);
+  await expect.poll(()=>archive.evaluate(node=>node.scrollTop)).toBeGreaterThan(100);
+  await expect(page.getByRole('button',{name:'Back to slot'})).toBeInViewport();
+  await swipe(180,570);
+  await expect.poll(()=>archive.evaluate(node=>node.scrollTop)).toBeLessThan(100);
+  await cdp.detach();
+});
