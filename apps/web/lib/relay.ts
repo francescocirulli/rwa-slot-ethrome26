@@ -230,17 +230,28 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
           try {
             if (path.endsWith('/prepare')) {
               if (slot.reader.config.gasMode === 'usdc' && input.gasConsent !== GAS_CONSENT) throw new ApiError(400, 'Confirm USDC fees with ETH fallback on your phone.');
-              if (typeof input.budget !== 'string' || !/^[1-9][0-9]{0,17}$/.test(input.budget)) throw new ApiError(400, 'Invalid budget.');
-              const settings = await slot.reader.settings(); valid(s);
-              if (BigInt(input.budget) < settings.ticketPrice) throw new ApiError(400, 'The budget must cover at least one spin.');
-              if (s.playGrant) throw new ApiError(409, 'Budget already prepared. Complete the consent or link the session again.');
-              const grant = await walletService.preparePlay(s.wallet, user.userId, s.id, s.code, slot.reader.config.address, slot.reader.config.chainId, input.budget);
-              try {valid(s);} catch (error) {walletService.revoke(grant); throw error;}
-              grant.gasMode = slot.reader.config.gasMode; s.playGrant = grant;
+              const reuse = input.reuseAllowance === true;
+              if (typeof input.budget !== 'string' || !(reuse ? /^[1-9][0-9]{0,77}$/ : /^[1-9][0-9]{0,17}$/).test(input.budget) || BigInt(input.budget) >= 2n ** 256n) throw new ApiError(400, 'Invalid budget.');
+              if (reuse) {
+                const player = await slot.reader.walletState(s.wallet.address as Address); valid(s);
+                if (player.allowance !== BigInt(input.budget)) throw new ApiError(409, 'The USDC limit changed. Refresh balances and enable this iPad again.');
+                if (s.playGrant?.active) throw new ApiError(409, 'Paid spins are already enabled for this session.');
+              } else {
+                const settings = await slot.reader.settings(); valid(s);
+                if (BigInt(input.budget) < settings.ticketPrice) throw new ApiError(400, 'The budget must cover at least one spin.');
+                if (s.playGrant) throw new ApiError(409, 'Budget already prepared. Complete the consent or link the session again.');
+              }
+              // Any positive existing allowance can authorize the session. Spin preflight still checks the ticket price.
+              if (reuse && s.playGrant) s.playGrant.budget = input.budget;
+              else {
+                const grant = await walletService.preparePlay(s.wallet, user.userId, s.id, s.code, slot.reader.config.address, slot.reader.config.chainId, input.budget);
+                try {valid(s);} catch (error) {walletService.revoke(grant); throw error;}
+                grant.gasMode = slot.reader.config.gasMode; s.playGrant = grant;
+              }
             } else {
               if (!s.playGrant) throw new ApiError(409, 'Prepare the budget first.');
               const player = await slot.reader.walletState(s.wallet.address as Address); valid(s);
-              if (player.allowance !== BigInt(s.playGrant.budget)) throw new ApiError(409, 'Confirm the USDC approval for the exact budget on your phone.');
+              if (player.allowance !== BigInt(s.playGrant.budget)) throw new ApiError(409, 'The USDC limit does not match this session. Refresh balances and complete the setup on your phone.');
               await walletService.activate(s.playGrant); valid(s);
             }
           } finally {s.busy = false;}
@@ -253,7 +264,7 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
           if (input.mode !== 'free' && input.mode !== 'paid') throw new ApiError(400, 'Invalid spin type.');
           touch(s);
           const grant = s.playGrant;
-          if (input.mode === 'paid' && (!grant?.active || !walletService?.sendSpin)) throw new ApiError(403, 'Approve the budget and spins on your phone.');
+          if (input.mode === 'paid' && (!grant?.active || !walletService?.sendSpin)) throw new ApiError(403, 'Enable paid spins on your phone.');
           const operation = await slot.start(s.wallet.address as Address, BigInt(input.afterGameId), input.mode, {
             assertSession: () => {valid(s);}, maxPrice: grant ? BigInt(grant.budget) : undefined,
             sendPaid: grant ? (key) => {valid(s); return walletService!.sendSpin!(grant, key, grant.gasMode || slot.reader.config.gasMode, () => {valid(s);});} : undefined,

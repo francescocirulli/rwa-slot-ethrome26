@@ -10,8 +10,10 @@ credit interfaces beyond the original immutable Base deployment.
 ## Two-stage flow
 
 1. The player authenticates their embedded wallet on the phone and pairs the
-   iPad. They choose a budget, sign `USDC.approve(slot, budget)` and add a signer
-   with a policy restricted to `startSpin()` on this slot/network, with zero ETH value.
+   iPad. A verified positive USDC allowance is reused without another token
+   approval, even when the remainder is below a ticket price. With zero allowance,
+   they choose a budget and sign `USDC.approve(slot, budget)`. They authorize a
+   fresh session signer with a policy restricted to `startSpin()` on this slot/network, with zero ETH value.
 2. The lever/button sends a request authenticated by the iPad session. The
    backend derives the player from that session and checks state, balance,
    allowance, the reveal service and consent. The signer sends `startSpin()`
@@ -24,7 +26,17 @@ credit interfaces beyond the original immutable Base deployment.
 5. The contract stores the result and pays the original player atomically.
    The app reads `getGame`, `getGameStatus`, `RoundRevealed` and `PrizePaid`,
    then waits for two confirmations before stopping the grid. Two confirmations
-   are an L2 UX threshold, not equivalent to Ethereum finality.
+   are an L2 UX threshold, not equivalent to Ethereum finality. An accepted spin
+   keeps animating for at least five seconds. A fast confirmed result waits only
+   for the remaining visual time; a slower result is never revealed early.
+   New inputs remain locked until the result is shown, and session cleanup
+   cancels the presentation timer.
+
+`POST /api/relay/phone/play/prepare` accepts `reuseAllowance: true` with the
+exact integer `budget` displayed on the phone. Reuse requires a fresh matching
+onchain allowance greater than zero; it does not require one full ticket or
+request a token approval. Activation rechecks the allowance and signer permission.
+An inactive prepared signer can adopt that verified remaining limit.
 
 When credits are available, the backend EOA signs `startFreeSpin(player)` with
 `GAME_MANAGER_ROLE`: the recipient is bound to the session, with no USDC charge
