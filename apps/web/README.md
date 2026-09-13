@@ -480,6 +480,10 @@ retain the original transaction; a balance of zero never authorizes another bonu
 
 ## ENSv2 on the phone
 
+Registered-name cards stack the name and registration details above copy/explorer
+actions. Long names wrap within the card, while action labels remain intact on
+narrow phone screens.
+
 We registered `wallstreetslot.eth` as the parent ENS name on Sepolia. A player who
 wins and redeems an ENS Registration voucher can choose an available subdomain,
 for example `elon.wallstreetslot.eth`, and receives ownership in their personal

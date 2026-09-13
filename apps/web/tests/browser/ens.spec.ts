@@ -162,3 +162,35 @@ test('a Sepolia completion refreshes ownership when the parallel name read prece
  await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
  await expect(page.getByRole('button',{name:'Copy name'})).toBeVisible();expect(names).toBe(2);
 });
+
+test('registered ENS cards keep names, details and actions readable on narrow phones',async({page})=>{
+ const names=['frank.wallstreetslot.eth','a'.repeat(32)+'.wallstreetslot.eth'];
+ await page.addInitScript(()=>{Object.defineProperty(navigator,'clipboard',{value:{writeText:async(text:string)=>{(window as any).copiedEnsName=text;}}});});
+ await page.route('**/api/account',route=>route.fulfill({json:{userId:'fixture-user',wallet:{address,balance:{amount:'10',stale:false},portfolio:null}}}));
+ await page.route('**/api/ens*',route=>route.fulfill({json:{configured:true,namesState:'ready',claims:[],names:names.map(name=>({name,owner:address,resolvedAddress:address,expiry:'1900000000'}))}}));
+ await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
+ const cards=page.getByRole('region',{name:'ENS names on Sepolia'}).locator('.ready-card');
+ await expect(cards).toHaveCount(2);
+ for(const width of [320,390,430]){
+  await page.setViewportSize({width,height:844});
+  for(let i=0;i<names.length;i++){
+   const card=cards.nth(i),name=card.locator('b'),details=card.locator('p'),copy=card.getByRole('button',{name:'Copy name'}),explorer=card.getByRole('link',{name:'ENS Explorer'});
+   await expect(name).toHaveText(names[i]);
+   const titleBox=(await name.boundingBox())!,detailsBox=(await details.boundingBox())!,copyBox=(await copy.boundingBox())!,linkBox=(await explorer.boundingBox())!;
+   expect(detailsBox.y).toBeGreaterThanOrEqual(titleBox.y+titleBox.height);
+   expect(copyBox.y).toBeGreaterThanOrEqual(detailsBox.y+detailsBox.height);
+   expect(linkBox.y).toBeGreaterThanOrEqual(detailsBox.y+detailsBox.height);
+   for(const control of [copy,explorer]){
+    expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    const lines=await control.evaluate(node=>{const range=document.createRange();range.selectNodeContents(node);return range.getClientRects().length;});
+    expect(lines).toBe(1);
+   }
+   expect(await card.evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true);
+   await copy.click();expect(await page.evaluate(()=>(window as any).copiedEnsName)).toBe(names[i]);
+   await expect(explorer).toHaveAttribute('href','https://explorer.ens.dev/'+names[i]);
+  }
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ }
+ await page.setViewportSize({width:390,height:844});
+ await cards.first().screenshot({path:'/private/tmp/ens-name-card-fixed.png'});
+});
