@@ -218,3 +218,38 @@ test('a funded wallet escapes the legacy cached rejection within one confirmatio
  assert.deepEqual(keys,['ens-voucher:'+claimId,'ens-voucher:'+claimId+':retry:1']);
  await f.call({action:'send',id:p.body.id,confirm:true});assert.equal(transfers,1);
 });
+
+test('ENS retries temporary voucher reads under the same review and sends only once',async()=>{
+ const f=fixture(),prepare=f.service.prepareReview,voucher=f.service.prepareVoucher;
+ let reviews=0,checks=0;
+ const unavailable=()=>Object.assign(new Error('private-provider-payload'),{name:'HttpRequestError',status:503});
+ f.service.prepareReview=async(...args)=>{if(++reviews===1)throw unavailable();return prepare(...args);};
+ const p=await f.call({action:'prepare',claimId});assert.equal(p.status,200);assert.equal(reviews,2);assert.equal(f.counts().sends,0);
+ f.service.prepareVoucher=async(...args)=>{if(++checks===1)throw unavailable();return voucher(...args);};
+ const sent=await f.call({action:'send',id:p.body.id,confirm:true});assert.equal(sent.status,200);assert.equal(sent.body.stage,'submitted');assert.equal(checks,2);assert.equal(f.counts().sends,1);
+});
+
+test('a voucher consumed while a read retries still blocks transfer and releases the lease',async()=>{
+ const f=fixture(),p=await f.call({action:'prepare',claimId});let checks=0;
+ f.service.prepareVoucher=async()=>{checks++;if(checks===1)throw Object.assign(new Error('temporary'),{name:'TimeoutError'});throw new (await import('../lib/slot/errors')).SlotError('EnsConsumed','Voucher already consumed.',409);};
+ const sent=await f.call({action:'send',id:p.body.id,confirm:true});assert.equal(sent.status,409);assert.equal(sent.body.stage,'failed');assert.equal(f.counts().sends,0);assert.equal(checks,2);
+ await f.writes.acquire(testAccount.address.toLowerCase(),'next-write',async()=>false);
+});
+
+test('an expired review cannot submit after a successful slow voucher check',async()=>{
+ const f=fixture(),p=await f.call({action:'prepare',claimId}),voucher=f.service.prepareVoucher;const realNow=Date.now;
+ f.service.prepareVoucher=async(...args)=>{const result=await voucher(...args);Date.now=()=>p.body.expires+1;return result;};
+ try{const sent=await f.call({action:'send',id:p.body.id,confirm:true});assert.equal(sent.status,409);assert.equal(sent.body.stage,'failed');assert.equal(sent.body.code,'EnsReview');assert.equal(f.counts().sends,0);}finally{Date.now=realNow;}
+ await f.writes.acquire(testAccount.address.toLowerCase(),'next-write',async()=>false);
+});
+
+test('ENS read recovery is bounded and does not retry auth, semantic or unknown errors',async()=>{
+ const {retryEnsRead}=await import('../lib/ens/read-check');const {SlotError}=await import('../lib/slot/errors');
+ let attempts=0;const waits:number[]=[];
+ await assert.rejects(retryEnsRead('review',async()=>{attempts++;throw {cause:{name:'HttpRequestError',status:429}};},async ms=>{waits.push(ms);}));
+ assert.equal(attempts,3);assert.deepEqual(waits,[1000,5000]);
+ for(const error of [new SlotError('EnsConsumed','Consumed'),new SlotError('EnsConfig','Mismatch',503),{cause:{name:'HttpRequestError',status:401}},{cause:{name:'ContractFunctionRevertedError'}},new Error('unknown')]){
+  attempts=0;await assert.rejects(retryEnsRead('send-check',async()=>{attempts++;throw error;},async()=>{throw Error('Must not wait');}));assert.equal(attempts,1);
+ }
+ attempts=0;assert.equal(await retryEnsRead('review',async()=>{if(++attempts===1)throw {cause:{message:'RPC providers are temporarily unavailable.'}};return 'verified';},async()=>{}),'verified');
+});

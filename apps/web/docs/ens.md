@@ -132,6 +132,18 @@ payloads are never exposed: read/preparation errors explain the failed phase ins
 of implying that a transfer has been submitted. Retrying preparation never sends a
 voucher; the explicit wallet review is still required.
 
+Review preparation and the final pre-transfer eligibility check retry temporary
+RPC network, timeout, rate-limit and server failures with up to three attempts, waiting
+one second and then five seconds between attempts. Only read checks retry;
+reservation, fulfillment and voucher submission are outside this retry loop.
+Authorization is revalidated after the checks, and an expired review cannot send.
+Semantic errors (including a consumed voucher), authentication failures and
+configuration mismatches still fail closed. Sepolia view calls use Multicall3 to
+combine compatible reads; HTTP history requests remain separate. Safe
+`ens.read_retry` and `ens.read_failed` diagnostics record only the phase and retry
+number. `ens.request_failed` distinguishes wallet-access checks, voucher checks
+and submission, without provider payloads, wallet authorization or credentials.
+
 The UI indexes names in this namespace, checks current ownership and displays
 forward resolution. It does not enumerate every Sepolia name or automatically
 set a primary/reverse name. Provider errors are never displayed as an empty
