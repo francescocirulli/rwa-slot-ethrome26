@@ -14,7 +14,7 @@ test('iPhone redeems one voucher with review and resumes Sepolia registration af
   if(body.action==='send'){expect(body.confirm).toBe(true);expect(request.headers()['x-fixture-privy']).toBe('1');sends++;stage='finalizing-base';return route.fulfill({json:{stage:'submitted'}});}
   if(body.action==='status')return route.fulfill({json:{stage:'submitted',claim}});
   if(body.action==='complete'){completions++;stage='registered';return route.fulfill({json:{...claim,completed:true,stage}});}
-  if(stage==='ready'){stage='registered';claim.stage=stage;claim.completed=true;completions++;}
+
   return route.fulfill({json:{configured:true,claims:stage==='empty'?[]:[claim],names:stage==='registered'?[{name:claim.name,owner:address,resolvedAddress:address,expiry:'1900000000'}]:[]}});
  });
  await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
@@ -23,17 +23,22 @@ test('iPhone redeems one voucher with review and resumes Sepolia registration af
  await expect(review).toContainText('1 ENS Registration voucher');await expect(review).toContainText('We cover all Sepolia fees.');
  await expect(review.getByText('ETH',{exact:true})).toHaveCount(0);expect(sends).toBe(0);
  await page.getByRole('button',{name:'Confirm redemption',exact:true}).click();
- await expect(page.getByText('Your voucher is confirmed.',{exact:false})).toBeVisible();expect(sends).toBe(1);
- await page.reload();await page.getByRole('button',{name:'Wallet',exact:true}).click();await expect(page.getByText('Your voucher is confirmed.',{exact:false})).toBeVisible();
+ await expect(page.getByText('Base: voucher transferred to the dead address.',{exact:false})).toBeVisible();expect(sends).toBe(1);
+ await expect(page.getByText('Sepolia: waiting for Base finality. Registration has not started.')).toBeVisible();
+ await expect(page.getByText('Checking your voucher transfer on Base.',{exact:false})).toHaveCount(0);
+ await page.reload();await page.getByRole('button',{name:'Wallet',exact:true}).click();await expect(page.getByText('Base: voucher transferred to the dead address.',{exact:false})).toBeVisible();
  await expect(page.getByRole('button',{name:'Continue',exact:true})).toHaveCount(0);
  stage='ready';
+ await expect(page.getByText('Sepolia: Base transfer finalized. Registration is pending.',{exact:true})).toBeVisible({timeout:12000});
+ await expect(page.getByRole('button',{name:'Copy name'})).toHaveCount(0);
+ stage='registered';completions++;
  await expect(page.getByRole('button',{name:'Copy name'})).toBeVisible({timeout:12000});expect(sends).toBe(1);expect(completions).toBe(1);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
 test('RPC failure is not displayed as an empty ENS balance or success',async({page})=>{
  await page.route('**/api/account',route=>route.fulfill({json:{userId:'fixture-user',wallet:{address,depositQr:'',balance:{amount:'10',stale:false},portfolio:null}}}));
  await page.route('**/api/ens*',route=>route.fulfill({status:503,json:{error:'RPC unavailable'}}));
- await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();await expect(page.getByText('ENS is temporarily unavailable. Refresh to retry.')).toBeVisible();
+ await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();await expect(page.getByText('Sepolia names could not be refreshed. Any names shown are from the last successful read.')).toBeVisible();
  await expect(page.getByRole('button',{name:'Copy name'})).toHaveCount(0);
 });
 
@@ -42,7 +47,7 @@ async function recoveryFixture(page:import('@playwright/test').Page, failure:'pr
  const claim={id:claimId,label:'frank',name:'frank.wallstreetslot.eth',owner:address,resolver:address,completed:false,stage:'voucher'};
  await page.route('**/api/account',route=>route.fulfill({json:{userId:'fixture-user',wallet:{address,depositQr:'',balance:{amount:'10',stale:false},portfolio:null}}}));
  await page.route('**/api/relay/**',route=>route.fulfill({status:401,json:{error:'No iPad linked'}}));
- await page.route('**/api/ens',route=>{
+ await page.route('**/api/ens*',route=>{
   const body=route.request().method()==='POST'?route.request().postDataJSON():{};
   if(body.action==='prepare'){
    prepares++;
@@ -78,10 +83,10 @@ for(const failure of ['failed','uncertain'] as const)test(`ENS ${failure} submis
  await page.reload();await page.getByRole('button',{name:'Wallet',exact:true}).click();
  if(failure==='failed'){
   await expect(page.getByRole('button',{name:'Continue',exact:true})).toBeVisible();
-  await expect(page.getByText('Confirming your voucher.',{exact:false})).toBeHidden();
+  await expect(page.getByText('Checking your voucher transfer on Base.',{exact:false})).toBeHidden();
  }else{
   await expect(page.getByRole('button',{name:'Continue',exact:true})).toBeHidden();
-  await expect(page.getByText('Confirming your voucher.',{exact:false})).toBeVisible();
+  await expect(page.getByText('Checking your voucher transfer on Base.',{exact:false})).toBeVisible();
  }
  expect(counts().attempts).toBe(1);
 });
@@ -89,7 +94,7 @@ for(const failure of ['failed','uncertain'] as const)test(`ENS ${failure} submis
 test('ENS preserves a verified retry after a balance rejection and page reload',async({page})=>{
  const counts=await recoveryFixture(page,'failed');let prepares=0,sends=0;
  const retryToken='2.'+'R'.repeat(43);
- await page.route('**/api/ens',async(route)=>{
+ await page.route('**/api/ens*',async(route)=>{
   const body=route.request().method()==='POST'?route.request().postDataJSON():{};
   if(body.action==='prepare'){
    prepares++;if(prepares===2)expect(body.retryToken).toBe(retryToken);
@@ -107,6 +112,53 @@ test('ENS preserves a verified retry after a balance rejection and page reload',
  await page.reload();await page.getByRole('button',{name:'Wallet',exact:true}).click();
  await page.getByRole('button',{name:'Continue',exact:true}).click();
  await page.getByRole('button',{name:'Confirm redemption',exact:true}).click();
- await expect(page.getByText('Confirming your voucher.',{exact:false})).toBeVisible();
+ await expect(page.getByText('Checking your voucher transfer on Base.',{exact:false})).toBeVisible();
  expect(prepares).toBe(2);expect(sends).toBe(2);expect(counts().attempts).toBe(0);
+});
+
+for(const failure of ['slow','unavailable'] as const)test(`Sepolia names remain visible when claim checks are ${failure}`,async({page})=>{
+ await page.route('**/api/account',route=>route.fulfill({json:{userId:'fixture-user',wallet:{address,depositQr:'',balance:{amount:'10',stale:false},portfolio:null}}}));
+ let release:()=>void=()=>{};
+ const waiting=new Promise<void>(resolve=>{release=resolve;});
+ await page.route('**/api/ens*',async route=>{
+  if(new URL(route.request().url()).searchParams.get('view')==='names')return route.fulfill({json:{configured:true,names:[{name:'frank.wallstreetslot.eth',owner:address,resolvedAddress:address,expiry:'1900000000'}]}});
+  if(failure==='slow')await waiting;
+  return route.fulfill({status:503,json:{error:'Claim checks unavailable'}});
+ });
+ try{
+  await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Copy name'})).toBeVisible();
+  await expect(page.getByText('Registered on Sepolia · Owned by your wallet',{exact:false})).toBeVisible();
+  await expect(page.getByLabel('Choose your name')).toHaveCount(0);
+  if(failure==='unavailable')await expect(page.getByRole('alert').filter({hasText:'Claim progress could not be refreshed'})).toBeVisible();
+ }finally{release();}
+});
+
+test('a missing Base proof after finality waiting never prompts another voucher transfer',async({page})=>{
+ const counts=await recoveryFixture(page,'uncertain');
+ await page.getByRole('button',{name:'Continue',exact:true}).click();
+ await page.getByRole('button',{name:'Confirm redemption',exact:true}).click();
+ await expect(page.getByRole('alert').filter({hasText:'cannot be verified'})).toBeVisible();
+ let stage='finalizing-base';
+ await page.route('**/api/ens?view=claims',route=>route.fulfill({json:{configured:true,claims:[{id:claimId,label:'frank',name:'frank.wallstreetslot.eth',owner:address,resolver:address,completed:false,stage}]}}));
+ await page.getByRole('button',{name:'Refresh ENS'}).click();
+ await expect(page.getByText('Sepolia: waiting for Base finality. Registration has not started.')).toBeVisible();
+ stage='voucher';await page.getByRole('button',{name:'Refresh ENS'}).click();
+ await expect(page.getByText('Checking your voucher transfer on Base.',{exact:false})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Continue',exact:true})).toHaveCount(0);
+ expect(counts().attempts).toBe(1);
+});
+
+
+test('a Sepolia completion refreshes ownership when the parallel name read preceded the mint',async({page})=>{
+ await page.route('**/api/account',route=>route.fulfill({json:{userId:'fixture-user',wallet:{address,depositQr:'',balance:{amount:'10',stale:false},portfolio:null}}}));
+ let names=0;
+ await page.route('**/api/ens*',route=>{
+  if(new URL(route.request().url()).searchParams.get('view')==='names'){
+   names++;return route.fulfill({json:{configured:true,names:names===1?[]:[{name:'frank.wallstreetslot.eth',owner:address,resolvedAddress:address,expiry:'1900000000'}]}});
+  }
+  return route.fulfill({json:{configured:true,claims:[{id:claimId,label:'frank',name:'frank.wallstreetslot.eth',owner:address,resolver:address,completed:true,stage:'registered'}]}});
+ });
+ await page.goto('/phone-fixture');await page.getByRole('button',{name:'Wallet',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Copy name'})).toBeVisible();expect(names).toBe(2);
 });

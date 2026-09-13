@@ -8,7 +8,7 @@ import {ensRegistrarAbi,ensRegistryAbi} from './abi';
 import {createEnsSender} from './sender';
 import {createEnsWorker} from './worker';
 import {createVoucherSource,voucherTransaction} from './source';
-export type EnsClaim={id:Hex;label:string;name:string;completed:boolean;stage:'voucher'|'finalizing-base'|'ready'|'registered';owner:Address;resolver:Address};
+export type EnsClaim={id:Hex;label:string;name:string;completed:boolean;stage:'voucher'|'finalizing-base'|'ready'|'registered';owner:Address;resolver:Address;voucherTransactionHash?:Hex};
 export type EnsName={name:string;owner:Address;expiry:string;resolvedAddress:Address|null};
 export function createEnsService(config:EnsConfig,key?:Hex){
   const client=createPublicClient({chain:sepolia,batch:{multicall:{wait:10}},transport:http(config.rpcUrl,{timeout:4000,retryCount:0})});
@@ -36,12 +36,12 @@ export function createEnsService(config:EnsConfig,key?:Hex){
   async function getClaim(id:Hex,owner:Address):Promise<EnsClaim>{
     const c=await client.readContract({...registrar,functionName:'claim',args:[id]});
     if(c.owner.toLowerCase()!==owner.toLowerCase())throw new SlotError('EnsClaim','Claim unavailable for this wallet.',404);
-    let stage:EnsClaim['stage']=c.completed?'registered':'voucher';
+    let stage:EnsClaim['stage']=c.completed?'registered':'voucher',voucherTransactionHash:Hex|undefined;
     if(!c.completed){
       const found=await source.find(id,owner,keccak256(toHex(c.label)));
-      if(found)stage=found.finalized?'ready':'finalizing-base';
+      if(found){stage=found.finalized?'ready':'finalizing-base';voucherTransactionHash=found.proof.transactionHash;}
     }
-    return {id,label:c.label,name:c.label+'.'+ENS_PARENT,owner:c.owner,resolver:c.resolver,completed:c.completed,stage};
+    return {id,label:c.label,name:c.label+'.'+ENS_PARENT,owner:c.owner,resolver:c.resolver,completed:c.completed,stage,voucherTransactionHash};
   }
   async function claims(owner:Address){
     const count=await client.readContract({...registrar,functionName:'claimCount',args:[owner]});

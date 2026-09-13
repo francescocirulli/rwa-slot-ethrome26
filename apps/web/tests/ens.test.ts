@@ -253,3 +253,20 @@ test('ENS read recovery is bounded and does not retry auth, semantic or unknown 
  }
  attempts=0;assert.equal(await retryEnsRead('review',async()=>{if(++attempts===1)throw {cause:{message:'RPC providers are temporarily unavailable.'}};return 'verified';},async()=>{}),'verified');
 });
+
+
+test('Sepolia name reads are independent of Base claim checks and remain wallet-scoped',async()=>{
+ const f=fixture();let claims=0;
+ f.service.claims=async()=>{claims++;throw Error('private-base-provider-payload');};
+ f.service.names=async(owner)=>{assert.equal(owner,testAccount.address);return [{name:'frank.wallstreetslot.eth',owner,expiry:'1900000000',resolvedAddress:owner}];};
+ const read=(view:string)=>f.api(new Request(origin+'/api/ens?view='+view+'&address='+zeroAddress,{headers:{Authorization:'Bearer player-a'}}));
+ const names=await read('names');assert.equal(names.status,200);assert.equal((await names.json()).names[0].owner,testAccount.address);assert.equal(claims,0);
+ const failed=await read('claims');assert.equal(failed.status,503);assert.doesNotMatch(await failed.text(),/private-base-provider-payload/);
+ assert.equal(claims,1);assert.equal(f.counts().sends,0);
+});
+
+test('claim status reads do not require successful name indexing on Sepolia',async()=>{
+ const f=fixture();f.service.names=async()=>{throw Error('history unavailable');};f.c.stage='finalizing-base';
+ const response=await f.api(new Request(origin+'/api/ens?view=claims',{headers:{Authorization:'Bearer player-a'}}));
+ assert.equal(response.status,200);assert.equal((await response.json()).claims[0].stage,'finalizing-base');
+});

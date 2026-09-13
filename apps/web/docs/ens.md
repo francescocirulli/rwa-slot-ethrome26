@@ -144,6 +144,16 @@ combine compatible reads; HTTP history requests remain separate. Safe
 number. `ens.request_failed` distinguishes wallet-access checks, voucher checks
 and submission, without provider payloads, wallet authorization or credentials.
 
+The phone loads names (`GET /api/ens?view=names`) independently from claim
+progress (`GET /api/ens?view=claims`). Name ownership and resolution are read
+only from Sepolia; a slow or failed Base proof cannot hide those names. Failed
+claim reads disable new redemption actions instead of presenting an empty claim
+list. The UI distinguishes the Base transfer to the dead address, waiting for
+Base finality, pending Sepolia registration and verified Sepolia ownership.
+It links the verified Base transfer and retains uncertain submission markers
+through unfinalized reorgs, without showing a second transfer-confirmation banner
+after the transfer is already visible.
+
 The UI indexes names in this namespace, checks current ownership and displays
 forward resolution. It does not enumerate every Sepolia name or automatically
 set a primary/reverse name. Provider errors are never displayed as an empty
