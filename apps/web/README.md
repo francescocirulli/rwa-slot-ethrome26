@@ -491,6 +491,10 @@ wallet without paying Sepolia gas. The existing backend EOA submits the Sepolia
 transactions. Existing Base ENS vouchers are transferred to `0x000000000000000000000000000000000000dEaD`, not burned;
 the player's Base transfer follows the app's existing USDC/ETH fee mode.
 The phone confirms the voucher once, then follows backend registration automatically.
+Registration starts after two Base block confirmations, without waiting for L1
+finality. Recent transfers take priority over historical indexing. The phone
+shows registration retries and keeps refreshing ownership after completion;
+a failed address-record lookup does not hide an owned name.
 Subdomains ultimately use the official ENSv2
 [`ETHRegistry`](https://sepolia.etherscan.io/address/0xBDC85dD5b15D7ecb354cd7cb6f2c50b4f2c4F0E2),
 pinned from `ensdomains/contracts-v2`. It maps `wallstreetslot.eth` to the project's

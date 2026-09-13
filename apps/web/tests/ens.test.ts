@@ -49,7 +49,7 @@ test('cross-account review theft and duplicate confirms cannot cause additional 
  assert.equal((await f.call({action:'send',id:p.body.id,confirm:true,transaction:{to:zeroAddress}})).status,200);
  assert.equal((await f.call({action:'send',id:p.body.id,confirm:true})).status,200);
  assert.equal(f.counts().sends,1);
- f.c.stage='finalizing-base';await f.call({action:'status',id:p.body.id});
+ f.c.stage='confirming-base';await f.call({action:'status',id:p.body.id});
  await f.writes.acquire(testAccount.address.toLowerCase(),'spin',async()=>false);
 });
 test('ENS source consumption releases the shared lock even without a status poll',async()=>{
@@ -101,7 +101,7 @@ test('a voucher consumed after review cannot be sent again and a failed prefligh
 
 test('a submission reference survives an unfinalized reorg and cannot prepare a second voucher transfer',async()=>{
  const f=fixture(),p=await f.call({action:'prepare',claimId});await f.call({action:'send',id:p.body.id,confirm:true});
- f.c.stage='finalizing-base';await f.call({action:'status',id:p.body.id});f.c.stage='voucher';
+ f.c.stage='confirming-base';await f.call({action:'status',id:p.body.id});f.c.stage='voucher';
  assert.equal((await f.call({action:'prepare',claimId})).status,409);
  assert.equal((await f.call({action:'status',id:p.body.id})).status,200);assert.equal(f.counts().sends,1);
 });
@@ -266,7 +266,65 @@ test('Sepolia name reads are independent of Base claim checks and remain wallet-
 });
 
 test('claim status reads do not require successful name indexing on Sepolia',async()=>{
- const f=fixture();f.service.names=async()=>{throw Error('history unavailable');};f.c.stage='finalizing-base';
+ const f=fixture();f.service.names=async()=>{throw Error('history unavailable');};f.c.stage='confirming-base';
  const response=await f.api(new Request(origin+'/api/ens?view=claims',{headers:{Authorization:'Bearer player-a'}}));
- assert.equal(response.status,200);assert.equal((await response.json()).claims[0].stage,'finalizing-base');
+ assert.equal(response.status,200);assert.equal((await response.json()).claims[0].stage,'confirming-base');
+});
+
+test('ENS retries discovered claims even when scanning later history fails, without advancing past the failure',async()=>{
+ const {createEnsWorker}=await import('../lib/ens/worker');let scansFail=false,complete=false,attempts=0;
+ const worker=createEnsWorker({fromBlock:0n,pageBlocks:1n,head:async()=>1n,
+  events:async(from)=>{if(scansFail)throw Error('private RPC details');return from===0n?[{id:claimId,owner:testAccount.address}]:[];},
+  complete:async()=>{attempts++;if(!complete)throw Error('temporary Sepolia failure');}});
+ await worker.tick();assert.equal(attempts,1);assert.equal(worker.progress(claimId)?.state,'retrying');assert.equal(worker.state().pending,1);
+ // A failing head query previously skipped the pending queue entirely.
+ const second=createEnsWorker({fromBlock:0n,pageBlocks:1n,head:async()=>{if(scansFail)throw Error('head unavailable');return 0n;},events:async()=>[{id:claimId,owner:testAccount.address}],complete:async()=>{attempts++;if(!complete)throw Error('temporary');}});
+ await second.tick();assert.equal(second.state().pending,1);scansFail=true;complete=true;
+ await assert.rejects(second.tick(),/head unavailable/);assert.equal(attempts,3);assert.equal(second.state().cursor,1n);assert.equal(second.state().pending,0);assert.equal(second.progress(claimId),undefined);
+ worker.stop();second.stop();
+});
+
+test('Sepolia ownership survives resolver outages and a completed claim fills a lagging name index',async()=>{
+ const {createServer}=await import('node:http');
+ const {decodeFunctionData,encodeFunctionResult,keccak256,toHex,multicall3Abi}=await import('viem');
+ const {ensRegistrarAbi,ensRegistryAbi}=await import('../lib/ens/abi');
+ const {createEnsService}=await import('../lib/ens/service');
+ const abi=[...ensRegistrarAbi,...ensRegistryAbi,...multicall3Abi];let transferred=false,failOwnership=false;
+ function call(data:Hex):Hex{
+  const decoded=decodeFunctionData({abi,data});
+  const encode=(result:unknown)=>encodeFunctionResult({abi,functionName:decoded.functionName,result:result as never});
+  switch(decoded.functionName){
+   case 'aggregate3':return encode(decoded.args[0].map(c=>{try{return {success:true,returnData:call(c.callData)};}catch{return {success:false,returnData:'0x'};}}));
+   case 'claimCount':return encode(1n);
+   case 'claimAt':return encode(claimId);
+   case 'claim':return encode({owner:testAccount.address,label:'frank',completed:true,source:claimId,resolver:testAccount.address});
+   case 'getState':if(failOwnership)throw Error('unavailable');return encode({status:2,expiry:1900000000n,latestOwner:transferred?zeroAddress:testAccount.address,tokenId:BigInt(keccak256(toHex('frank'))),resource:0n});
+   default:throw Error('Resolver unavailable');
+  }
+ }
+ const server=createServer(async(req,res)=>{
+  const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk));const payload=JSON.parse(Buffer.concat(chunks).toString());
+  const reply=(q:any)=>{try{return {id:q.id,jsonrpc:'2.0',result:q.method==='eth_blockNumber'?'0x64':q.method==='eth_getLogs'?[]:q.method==='eth_call'?call(q.params[0].data):null};}catch{return {id:q.id,jsonrpc:'2.0',error:{code:-32000,message:'Unavailable'}};}};
+  res.setHeader('Content-Type','application/json');res.end(JSON.stringify(Array.isArray(payload)?payload.map(reply):reply(payload)));
+ });
+ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const service=createEnsService({rpcUrl:'http://127.0.0.1:'+(server.address() as {port:number}).port,registrar:testAccount.address,registry:testAccount.address,deploymentBlock:90n,sourceBlock:1n});
+ try{
+  const names=await service.names(testAccount.address);assert.equal(names.length,1);assert.equal(names[0].name,'frank.wallstreetslot.eth');assert.equal(names[0].owner,testAccount.address);assert.equal(names[0].resolutionStatus,'unavailable');
+  transferred=true;assert.deepEqual(await service.names(testAccount.address),[]);
+  failOwnership=true;await assert.rejects(service.names(testAccount.address));
+ }finally{service.stop();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+});
+
+test('a recent confirmed voucher is registered before historical indexing, even if history fails',async()=>{
+ const {createEnsWorker}=await import('../lib/ens/worker');const order:string[]=[];
+ const worker=createEnsWorker({fromBlock:0n,discover:async()=>({claims:[{id:claimId,owner:testAccount.address}],catchingUp:false}),
+ head:async()=>{order.push('history');throw Error('historical RPC unavailable');},events:async()=>[],complete:async()=>{order.push('registered');}});
+ await assert.rejects(worker.tick(),/historical RPC unavailable/);assert.deepEqual(order,['registered','history']);assert.equal(worker.state().pending,0);worker.stop();
+});
+
+test('a confirmed claim found by the phone is processed before any additional discovery reads',async()=>{
+ const {createEnsWorker}=await import('../lib/ens/worker');const order:string[]=[];
+ const worker=createEnsWorker({fromBlock:0n,discover:async()=>{order.push('discover');return {claims:[],catchingUp:false};},head:async()=>-1n,events:async()=>[],complete:async()=>{order.push('registered');}});
+ worker.enqueue({id:claimId,owner:testAccount.address});await worker.tick();assert.deepEqual(order,['registered','discover']);worker.stop();
 });
