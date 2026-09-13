@@ -44,7 +44,8 @@ export function PhoneApproval({portfolio,transaction,permission,reload,stale=fal
  }
  return <section id="wallet-approval" className="phone-card phone-approval" aria-labelledby="wallet-approval-title">
   <span className="eyebrow">SPENDING ON THE SLOT</span><h2 id="wallet-approval-title">Your USDC limit.</h2>
-  <div className="approval-summary"><div><span>Remaining approval</span><b>{allowance!=null?formatUnits(BigInt(allowance),6)+' USDC':'—'}</b></div><span className="approval-badge">{stale?'Needs refresh':allowance==null?'Unavailable':BigInt(allowance)>0n?'Approved':'Not approved'}</span></div>
+  <div className="approval-summary"><div><span>Remaining approval</span><b>{allowance!=null?formatUnits(BigInt(allowance),6)+' USDC':'—'}</b></div><span className="approval-badge">{stale?'Needs refresh':allowance==null?'Unavailable':BigInt(allowance)>0n?'USDC limit set':'Not approved'}</span></div>
+  {permission&&<p className="permission-note" role="status">{grant?.active?'Paid spins are enabled on this iPad.':grant&&allowance===grant.budget?'Your USDC limit is confirmed. Complete the approval below to enable paid spins on this iPad.':'Paid spins are not enabled yet. Complete the approval below; setting a USDC limit alone does not enable this iPad.'}</p>}
   <p className="small">Maximum the slot may spend. Approving does not move your USDC. Free spins need no approval.</p>
   <form onSubmit={event=>{event.preventDefault();void approve(amount,enablePlay);}}>
    <label htmlFor="wallet-allowance">New total USDC limit</label>

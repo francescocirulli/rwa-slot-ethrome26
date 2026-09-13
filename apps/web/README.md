@@ -411,6 +411,17 @@ fresh server check before review and submission. These checks do not quote fees;
 Privy determines the actual fee. Missing required balance reads block approval. The wallet
 receive section provides the Base address and QR code; refresh after funding.
 
+A USDC allowance and the iPad session's paid-spin permission are separate steps.
+After explicit approval, confirmation polling retries temporary network, timeout,
+rate-limit and server errors for up to three minutes; it never resends the
+transaction. Known transaction hashes are saved immediately for receipt recovery.
+Authentication failures and unknown operations still stop verification. Once the
+approval confirms, the original flow continues with the scoped session signer.
+For an interrupted flow, use **Check transaction**, then **Complete the approval**;
+the fresh allowance check skips a duplicate approval when the exact budget is
+already onchain. Both screens distinguish a set USDC limit from enabled paid spins.
+
+
 RPC reads and backend transaction preparation share provider health across the
 slot, balances and inventory. HTTP failures, timeouts and quota errors temporarily
 remove the failing endpoint from rotation: the cooldown starts at 30 seconds and

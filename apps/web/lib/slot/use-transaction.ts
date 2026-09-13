@@ -6,7 +6,7 @@ import type {GasMode, GasToken} from './gas';
 import {useWalletRequest} from '@/lib/wallet-authorization-client';
 export type TransactionReview = {id:string;address:string;signerAddress?:string;signer?:'privy'|'backend';action:string;args:string[];expiresAt:number;transaction:{to:string;data:Hex;chainId:number;gasMode:GasMode}};
 type Pending = {id?:string;hash?:Hex};
-class TransactionApiError extends Error {constructor(message:string,public pending?:Pending,public code?:string){super(message);}}
+class TransactionApiError extends Error {constructor(message:string,public pending?:Pending,public code?:string,public status?:number){super(message);}}
 export function useContractTransaction(address:string,adminUserId?:string) {
   const {getAccessToken}=usePrivy();
   const walletRequest=useWalletRequest();
@@ -23,10 +23,15 @@ export function useContractTransaction(address:string,adminUserId?:string) {
     return()=>{alive.current=false;decision.current?.(false);decision.current=null;};
   },[storageKey]);
   function valid(){if(!alive.current||owner.current!==address)throw new Error('Account cambiato. Operazione interrotta.');}
+  async function responseValue(response:Response){
+    const value=await response.json().catch(()=>{throw new TransactionApiError('Verification unavailable.',undefined,undefined,response.status);});
+    if(!response.ok)throw new TransactionApiError(value.error||'Operation unavailable.',value.pending,value.code,response.status);
+    return value;
+  }
   async function api(path:string,body?:unknown,backend=false){
     valid();const token=await getAccessToken();valid();if(!token)throw new Error('Accedi di nuovo per verificare il wallet.');
     const response=await (path==='send'&&!backend?walletRequest:fetch)(endpoint+path,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${token}`,...(body===undefined?{}:{'Content-Type':'application/json','X-Slot-Request':'1'})},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(25000)});
-    const value=await response.json();valid();if(!response.ok)throw new TransactionApiError(value.error||'Operation unavailable.',value.pending,value.code);return value;
+    const value=await responseValue(response);valid();return value;
   }
   function remember(value:Pending){
     // Only public identifiers, never credentials. Persist BEFORE the send can start.
@@ -34,22 +39,30 @@ export function useContractTransaction(address:string,adminUserId?:string) {
   }
   function clear(){sessionStorage.removeItem(storageKey);setPending(null);}
   async function wait(value:Pending){
-    for(let attempt=0;attempt<90;attempt++){
+    const until=Date.now()+180000;
+    for(let attempt=0;attempt<90&&Date.now()<until;attempt++){
       valid();
       let state;
       try {
         // Once the hash is known, recovery only needs the chain, even after a server restart.
-        state=value.hash?await fetch('/api/contract/receipt?hash='+value.hash,{cache:'no-store',signal:AbortSignal.timeout(15000)}).then(async response=>{if(!response.ok)throw new Error('Verification unavailable.');return response.json();}):await api('status?id='+value.id);
+        state=value.hash?await fetch('/api/contract/receipt?hash='+value.hash,{cache:'no-store',signal:AbortSignal.timeout(15000)}).then(responseValue):await api('status?id='+value.id);
       } catch(cause){
+        valid();
         // An operation without a hash is kept in server memory only: after a restart the
         // server cannot find it. Surface it and let the user verify onchain and discard it.
         if(!value.hash&&cause instanceof TransactionApiError&&cause.code==='UnknownOperation'){
           setUnrecoverable(true);
           throw new Error('The request was lost when the service restarted and cannot be recovered. Verify the contract on Base, then discard it to continue.');
         }
-        throw cause;
+        const retryable=cause instanceof TransactionApiError
+          ? cause.status===408||cause.status===429||!!cause.status&&cause.status>=500
+          : cause instanceof TypeError||cause instanceof Error&&['AbortError','TimeoutError'].includes(cause.name);
+        if(!retryable)throw cause;
+        setError('Confirmation temporarily unavailable. Retrying the same transaction; do not approve again.');
+        await new Promise(resolve=>setTimeout(resolve,2000));
+        continue;
       }
-      valid();if(state.gasToken)setGasToken(state.gasToken);
+      valid();setError('');if(state.gasToken)setGasToken(state.gasToken);
       if(state.hash&&state.hash!==value.hash){value={...value,hash:state.hash};remember(value);}
       const stage=state.stage||state.status;
       if(stage==='confirmed'){clear();setConfirmed(count=>count+1);return;}
@@ -79,8 +92,9 @@ export function useContractTransaction(address:string,adminUserId?:string) {
       decision.current=null;setReview(null);
       if(!accepted)throw new Error('Operation cancelled.');
       valid();
-      const value={id:prepared.id};remember(value);submitted=true;
-      await api('send',{id:prepared.id,confirm:true},prepared.signer==='backend');
+      let value:Pending={id:prepared.id};remember(value);submitted=true;
+      const sent=await api('send',{id:prepared.id,confirm:true},prepared.signer==='backend');
+      if(/^0x[a-fA-F0-9]{64}$/.test(sent.hash||'')){value={...value,hash:sent.hash};remember(value);}
       await wait(value);
     }catch(cause){
       if(cause instanceof TransactionApiError&&cause.pending?.id){valid();remember(cause.pending);}
