@@ -11,6 +11,8 @@ button uses the Fullscreen API with the WebKit prefix and hides itself where the
 browser does not support it. Decorative dice, cards and chips live in
 `public/decor` and are never part of the layout. Integrates `DigitalSlotMachine` from [`../../contracts`](../../contracts):
 paid spins, free spins, automatic reveal and an onchain admin console.
+Prize availability notices apply to new spins and are hidden while a spin is
+being submitted or awaiting its result; depleted reserves still disable new spins.
 Without a configured contract address, wallet login, holdings and pairing remain
 available while game operations and reviewed wallet writes are disabled.
 
@@ -498,7 +500,9 @@ See [ENS setup, costs and recovery](docs/ens.md) before enabling the feature.
 ### Game Explorer and personal statistics
 
 The iPad **Explore** tool and phone **Explorer** navigation open a shared, responsive
-ES5 workspace. Search confirmed Arkiv records with combined time, wallet, result,
+ES5 workspace. The archive has its own bounded touch scroller with momentum on
+iOS 12 Safari; the back button stays outside the scrolling content. Receipts
+scroll independently. Search confirmed Arkiv records with combined time, wallet, result,
 match, winning-symbol and prize filters; open a spin to inspect its original 15-symbol
 grid and Base receipt. **My summary** shows the connected player's spins, wins,
 points and result distributions. Current-season totals use the same expiring

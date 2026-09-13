@@ -113,12 +113,14 @@
     var checking = sending || currentOperation && operation.stage === 'submitting' && !operation.hash;
     var inFlight = currentOperation && (operation.stage === 'confirming' || operation.stage === 'uncertain' || operation.stage === 'submitting' && operation.hash);
     var pending = game && game.pending, waitingConfirmation = game && game.hasResult && !game.confirmed;
+    var roundActive = checking || inFlight || pending && game.status !== 'expired' || waitingConfirmation;
     var reserves = snapshot.prizeAvailability && snapshot.prizeAvailability.state;
     var unavailable = !online || checking || inFlight || pending || waitingConfirmation || player.busy || player.gameUnavailable || snapshot.settings.paused || snapshot.settings.totalOutcomeWeight !== 1000 || snapshot.settings.configuredPrizeCount < 3 || !snapshot.keeper.configured || snapshot.keeper.balanceWei === '0';
     var availability = !online ? 'Connection lost. New spins resume when the network is back.' : snapshot.settings.paused ? 'Machine paused. Open spins still settle onchain.' : snapshot.settings.totalOutcomeWeight !== 1000 || snapshot.settings.configuredPrizeCount < 3 ? 'The slot is getting ready. The prize table is not complete yet.' : player.gameUnavailable ? 'Connection to the current round is unavailable. Retrying automatically.' : !snapshot.keeper.configured || snapshot.keeper.balanceWei === '0' ? 'The game service is not ready. Please wait for the operator.' : '';
     if (reserves && reserves !== 'ready') {
       unavailable = true;
-      if (!availability) availability = reserves === 'restocking' ? 'Prize reserve too low. The operator needs to refill the machine. Your free spins are safe.' : reserves === 'unavailable' ? 'Prize availability could not be verified. Retrying automatically. Your free spins are safe.' : 'Checking prize availability. Your balance and free spins are available below.';
+      // Reserves govern the next spin, not the round already being settled.
+      if (!availability && !roundActive) availability = reserves === 'restocking' ? 'New spins are paused while the operator refills prizes.' : reserves === 'unavailable' ? 'Prize availability could not be verified. Retrying automatically.' : 'Checking prize availability…';
     }
     el('game-availability').textContent = availability; show('game-availability', !!availability);
     var hasFreeSpins = atLeast(player.freeSpins, '1'), welcome = player.welcome || currentSession.welcome;
@@ -146,8 +148,8 @@
       if (!online) status('WAITING ONCHAIN', 'Looking for the signal.', 'Your spin continues on the contract. Do not send a new request.');
       else if (inFlight) status('01 / SENDING SPIN', operation && operation.stage === 'uncertain' ? 'Verifying the transaction…' : 'Here we go. Good luck!', operation && operation.error || 'Waiting for the first transaction to confirm.');
       else if (waitingConfirmation) status('03 / CONFIRMING RESULT', 'Almost there…', 'Waiting for the reveal confirmations on Base.');
-      else if (game.status === 'waiting') status('02 / WAITING FOR BLOCK', 'Let the reels run.', 'Spin #' + game.id + ' · block ' + snapshot.block + ' / ' + (Number(game.targetBlock) + 1));
-      else status('03 / REVEAL', 'One last turn…', 'The keeper is revealing spin #' + game.id + '.');
+      else if (game.status === 'waiting') status('02 / WAITING FOR BLOCK', 'Let the reels run.', '');
+      else status('03 / REVEAL', 'One last turn…', '');
       if (window.slotDemo) {el('game-phase').textContent = 'DEMO · ' + el('game-phase').textContent; el('game-detail').textContent = 'Both transactions simulated. Nothing sent to Base.';}
       return;
     }
