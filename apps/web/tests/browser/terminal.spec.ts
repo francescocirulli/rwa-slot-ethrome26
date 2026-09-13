@@ -297,3 +297,24 @@ test('reserve availability blocks input without hiding credits or confirmed resu
     expect(submissions).toBe(0);
   }finally{await phone.close();}
 });
+
+
+test('an onchain budget stays locked until session activation and the iPad shows the recovery step',async({page,browser})=>{
+ const phone=await phoneContext(browser);let active=false;
+ await page.route('**/api/relay/tablet',async route=>{
+  const response=await route.fetch();const data=await response.json();
+  await route.fulfill({response,json:{...data,...(data.state==='active'?{playGrant:{active,budget:'5000000'}}:{})}});
+ });
+ await page.route('**/api/relay/tablet/game',async route=>{
+  const response=await page.request.get(fixtureOrigin+'/api/relay/tablet');const session=await response.json();
+  await route.fulfill({json:{configured:true,sessionId:session.id,block:'120',settings:{ticketPrice:'50000',paused:false,totalOutcomeWeight:1000,configuredPrizeCount:3},keeper:{configured:true,canStartFreeSpin:true,balanceWei:'1000000'},player:{busy:false,freeSpins:'0',allowance:'5000000',balance:'20000000',latestGameId:'0',game:null,operation:null}}});
+ });
+ await link(page,phone);
+ await expect(page.locator('#spin-paid')).toBeDisabled();
+ await expect(page.locator('#play-consent-title')).toHaveText('Enable paid spins on your phone.');
+ await expect(page.locator('#play-consent-copy')).toContainText('Complete the approval');
+ active=true;
+ await expect(page.locator('#spin-paid')).toBeEnabled();
+ await expect(page.locator('#play-consent-title')).toHaveText('Spins approved.');
+ await phone.close();
+});
