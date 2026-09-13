@@ -7,7 +7,7 @@ export function createPortfolioReader(readInventory:ReturnType<typeof createInve
   async function fresh(address:Address) {
     const slot=getSlot();
     const [inventory,player,settings]=await Promise.all([
-      readInventory(address,slot?.reader.config.address||null),
+      readInventory(address,slot?.reader.config.address||null,'player'),
       slot?slot.walletView(address).catch(()=>null):null,
       slot?slot.reader.settings().catch(()=>null):null,
     ]);
@@ -15,7 +15,7 @@ export function createPortfolioReader(readInventory:ReturnType<typeof createInve
     return {address,chainId:8453,contract:inventory.contract,updatedAt:inventory.updatedAt,eth:inventory.eth,
       assets:inventory.assets.map(({reserve,canDeposit,...asset})=>asset),
       nfts:inventory.nfts.map(({reserve,canMint,canDeposit,...nft})=>nft),
-      allowance:player?.allowance??null,freeSpins:inventory.freeSpins,ticketPrice:settings?.ticketPrice.toString()??null,
+      allowance:player?.allowance??null,freeSpins:player?.freeSpins??inventory.freeSpins,ticketPrice:settings?.ticketPrice.toString()??null,
       busy,canTransact:!!slot&&!!player&&!busy,gameId:player?.activeGameId&&player.activeGameId!=='0'?player.activeGameId:null,
       stateUnavailable:!!slot&&!player,
       gasMode:slot?.reader.config.gasMode||'usdc'};

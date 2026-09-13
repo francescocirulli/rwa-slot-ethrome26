@@ -99,11 +99,11 @@ export function createRelay({origin, walletService, readBalance, now = Date.now,
         if (req.method === 'GET') {
           if (path === '/tablet') return json(await view(tablet(req)));
           if (path === '/phone') return json(await view((await phone(req)).s));
-          if (path === '/tablet/game' || path === '/phone/game') {
+          if (path === '/tablet/game' || path === '/phone/game' || path === '/phone/approval') {
             const s = path.startsWith('/tablet') ? tablet(req) : (await phone(req)).s;
             if (!slot) return json({configured: false});
             if (!s.wallet || s.state !== 'active') throw new ApiError(409, 'Link the wallet first.');
-            const game = await slot.playView(s.wallet.address as Address);
+            const game = await (path === '/phone/approval' ? slot.approvalView(s.wallet.address as Address) : slot.playView(s.wallet.address as Address));
             valid(s); return json({sessionId: s.id, ...game});
           }
           if (path === '/tablet/balance' || path === '/phone/balance') {
