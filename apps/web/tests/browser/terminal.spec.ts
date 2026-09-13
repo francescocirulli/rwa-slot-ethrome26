@@ -126,7 +126,7 @@ test('onchain slot spins through both transactions, waits for finality, maps row
     const response = await page.request.get(fixtureOrigin+'/api/relay/tablet');
     const session = await response.json(); sessionId = session.id;
     const game = phase === 'idle' ? null : {id:'1',player:session.address,pending:phase==='waiting'||phase==='revealable',hasResult:phase==='confirming'||phase==='complete',confirmed:phase==='complete',won:true,status:phase==='waiting'?'waiting':phase==='revealable'?'revealable':'won',targetBlock:'105',revealDeadline:'361',symbols,matchCount:5,winningLine:1,winningSymbol:1,payout:{kind:3,formattedAmount:'2',tokenSymbol:null},transactionHash:'0x'+'a'.repeat(64)};
-    await route.fulfill({json:{configured:true,funding:{ready:true,assets:[]},sessionId:session.id,block:phase==='waiting'?'103':'107',settings:{ticketPrice:'1000000',paused:false,totalOutcomeWeight:1000,configuredPrizeCount:3},keeper:{configured:true,canStartFreeSpin:true,balanceWei:'1000000000000000'},player:{address:session.address,freeSpins:'2',allowance:'0',balance:'128500000',latestGameId:phase==='idle'?'0':'1',historyReady:true,game,operation:null}}});
+    await route.fulfill({json:{configured:true,prizeAvailability:{state:phase==='idle'?'ready':'restocking'},funding:{ready:true,assets:[]},sessionId:session.id,block:phase==='waiting'?'103':'107',settings:{ticketPrice:'1000000',paused:false,totalOutcomeWeight:1000,configuredPrizeCount:3},keeper:{configured:true,canStartFreeSpin:true,balanceWei:'1000000000000000'},player:{address:session.address,freeSpins:'2',allowance:'0',balance:'128500000',latestGameId:phase==='idle'?'0':'1',historyReady:true,game,operation:null}}});
   });
   await page.route('**/api/relay/tablet/spin',async route=>{
     const body=route.request().postDataJSON();expect(body).toEqual({mode:'free',afterGameId:'0'});phase='waiting';
@@ -141,13 +141,20 @@ test('onchain slot spins through both transactions, waits for finality, maps row
   await page.locator('#spin-free').click();
   await expect(page.locator('.machine')).toHaveClass(/is-spinning/);
   await expect(page.locator('#game-phase')).toContainText('WAITING FOR BLOCK');
+  await expect(page.locator('#game-availability')).toBeHidden();
+  await expect(page.locator('#game-detail')).toBeEmpty();
+  await expect(page.locator('#spin-free')).toBeDisabled();
   await expect(page.locator('.cell[data-result-symbol]')).toHaveCount(0);
   phase='revealable';await expect(page.locator('#game-phase')).toContainText('REVEAL');
   await expect(page.locator('.machine')).toHaveClass(/is-spinning/);
+  await expect(page.locator('#game-availability')).toBeHidden();
   phase='confirming';await expect(page.locator('#game-phase')).toContainText('CONFIRMING RESULT');
+  await expect(page.locator('#game-availability')).toBeHidden();
   await expect(page.locator('.cell[data-result-symbol]')).toHaveCount(0);
   await expect(page.locator('#game-tx')).toBeHidden();
   phase='complete';await expect(page.locator('#game-title')).toContainText('You won 2 free spin');
+  await expect(page.locator('#game-availability')).toContainText('New spins are paused');
+  await expect(page.locator('#spin-free')).toBeDisabled();
   await expect(page.locator('.machine')).not.toHaveClass(/is-spinning/);
   await expect(page.locator('.cell.winner')).toHaveCount(5);
   await expect(page.locator('#game-tx')).toHaveAttribute('href','https://basescan.org/tx/0x'+'a'.repeat(64));
@@ -283,7 +290,7 @@ test('reserve availability blocks input without hiding credits or confirmed resu
     await expect(page.locator('#free-spin-balance')).toHaveText('4');
     await expect(page.locator('#balance')).toHaveText('0.00');
     for(const next of ['restocking','unavailable']){
-      state=next;await expect(page.locator('#game-availability')).toContainText(next==='restocking'?'operator needs to refill':'could not be verified');
+      state=next;await expect(page.locator('#game-availability')).toContainText(next==='restocking'?'operator refills prizes':'could not be verified');
       await expect(page.locator('#spin-free')).toBeDisabled();await expect(page.locator('#spin-paid')).toBeDisabled();
       await page.evaluate(()=>{(window as any).slotPullLever();document.getElementById('spin-free')!.click();});
       await expect(page.locator('.machine')).not.toHaveClass(/is-spinning/);expect(submissions).toBe(0);

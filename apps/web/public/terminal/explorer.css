@@ -5,3 +5,6 @@
 button:focus,input:focus,select:focus,a:focus{outline:2px solid #a7352a;outline-offset:2px}
 
 @media(min-width:700px){.archive{padding:20px 28px}.masthead{padding-bottom:16px}h1{font-size:40px;margin-top:10px}h1 br{display:none}h1 em:before{content:' '}.archive-seal{padding:10px 14px}.tabs{margin:12px 0 18px}.section-heading{margin-top:18px}}
+
+/* A bounded inner scroller avoids iframe document expansion on iOS 12 Safari. */
+html,body{height:100%;overflow:hidden}.archive{position:absolute;top:0;right:0;bottom:0;left:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}.receipt{-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
