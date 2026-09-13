@@ -146,4 +146,4 @@ Details: [app and wallets](apps/web/README.md),
 The optional Arkiv integration indexes confirmed Base spins and displays the same
 season on iPad and phone. Contributions expire together at the season boundary;
 spin history has independent retention. See [setup and bounty evidence](arkiv/README.md),
-[schema](arkiv/schema.md), and [feedback](friction.md).
+[schema](arkiv/schema.md), and [feedback](feedback.md).

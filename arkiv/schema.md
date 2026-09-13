@@ -160,7 +160,7 @@ onchain information and are not authenticated wallet/write endpoints.
 - Expiry evidence after a real eligible spin:
   `node --env-file=.env.local --import tsx scripts/arkiv-evidence.ts`.
 
-See [setup and evidence](README.md) and [friction report](../friction.md).
+See [setup and evidence](README.md) and [feedback report](../feedback.md).
 
 ## Game Explorer and personal summaries
 

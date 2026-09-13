@@ -74,7 +74,7 @@ The supplied branch does not configure production secrets or deploy the service.
   is not proof of an Arkiv socket subscription.
 
 Local browser tests use controlled fixtures. They are not evidence of a real
-Arkiv write/expiry or a two-wallet live gameplay demo. See [friction.md](../friction.md)
+Arkiv write/expiry or a two-wallet live gameplay demo. See [feedback.md](../feedback.md)
 for the observed read-only testnet checks and outstanding live evidence.
 
 ## Submission
