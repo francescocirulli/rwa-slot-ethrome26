@@ -25,6 +25,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
   const welcomeViews = new Map<string, WelcomeView>();
   const prizeAvailability = createPrizeAvailability(() => reader.funding());
   let backendQueue = Promise.resolve<unknown>(null), ticking = false, timer: ReturnType<typeof setTimeout> | undefined, stopped = true;
+  let inspectedBlock = -1n;
   let pendingBackend: {hash: Hash; raw: Hex; nonce: number} | undefined;
   const health = {configured: !!backend, address: backend?.address || null, lastTick: 0, lastBlock: '0', error: '', canStartFreeSpin: false, balanceWei: '0'};
   function locked<T>(key: string, action: () => Promise<T>): Promise<T> {
@@ -195,8 +196,8 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
       } catch (error) {writes.release(player.toLowerCase(), leaseId);throw error;}
     });
   }
-  async function walletView(player: Address) {
-    const state = await reader.walletState(player);
+  async function walletView(player: Address, blockNumber?: bigint) {
+    const state = await reader.walletState(player, blockNumber);
     const pending = [...operations.values()].filter(op => op.player.toLowerCase() === player.toLowerCase() && !['started','failed'].includes(op.stage));
     for (const op of pending) await reconcile(op);
     return serializable({...state,busy:state.busy || pending.some(op => !['started','failed'].includes(op.stage))});
@@ -211,6 +212,11 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
     const bonus = welcome.get(player.toLowerCase());
     return serializable({...state, operation: operation || null,
       welcome: bonus ? {status: bonus.checking ? 'checking' : 'pending', amount: '2', error: bonus.error} : welcomeViews.get(player.toLowerCase()) || null});
+  }
+  async function approvalView(player:Address) {
+    const block=await client.getBlockNumber({cacheTime:0});
+    const [settings,state]=await Promise.all([reader.settings(block),walletView(player,block)]);
+    return serializable({configured:true,gasMode:config.gasMode,block,settings,player:state});
   }
   async function playView(player:Address) {
     const block=await client.getBlockNumber({cacheTime:0});
@@ -269,12 +275,15 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
       await reader.validate(); await flushBackend();
       const block = await client.getBlockNumber({cacheTime: 0});
       health.lastTick = Date.now(); health.lastBlock = block.toString();
+      // Current state is unchanged between Base blocks. Never skip pending-send
+      // reconciliation, failed checks or the fresh preflight used for a write.
+      if (block === inspectedBlock && !pendingBackend && !health.error) {await processWelcome(); return;}
       const [ids, permissions, balance] = await Promise.all([reader.activeGames(block), reader.roles(backend.address, block), client.getBalance({address: backend.address, blockNumber: block})]);
       health.balanceWei = balance.toString();
       health.canStartFreeSpin = permissions.manager;
       const rounds = await Promise.all(ids.map(async id => ({id, game: await client.readContract({...contract, functionName: 'getGame', args: [id], blockNumber: block})})));
       rounds.sort((a, b) => a.game.revealDeadline < b.game.revealDeadline ? -1 : 1);
-      health.error = '';
+      health.error = ''; inspectedBlock = block;
       for (const round of rounds) {
         reader.rememberGame(round.game.player,round.id);
         if (!round.game.pending || block <= round.game.targetBlock) continue;
@@ -295,7 +304,7 @@ export function createSlotEngine(reader: SlotReader, backendKey?: Hex, writes:Wr
     async function loop() {await tick(); if (!stopped) {timer = setTimeout(loop, 1000); timer.unref();}}
     void loop();
   }
-  return {reader, start, playerView, playView, walletView, tick, startKeeper, sendBackend, queueWelcome,
+  return {reader, start, playerView, playView, approvalView, walletView, tick, startKeeper, sendBackend, queueWelcome,
     health: () => ({...health, pendingTransaction: pendingBackend?.hash || null}),
     stop() {stopped = true; if (timer) clearTimeout(timer);},
   };

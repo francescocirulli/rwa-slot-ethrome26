@@ -34,4 +34,12 @@ test('inventory reads wallet and slot at the same block, includes unconfigured c
   for(const symbol of [12,13,14])assert.equal(configured.nfts.find(n=>n.symbol===symbol)?.canDeposit,true);
   unavailable=true;const next=await read(wallet,slot);assert.equal(next.assets[0].reserve,null);assert.equal(next.nfts[0].reserve,null);assert.equal(next.nfts[0].balance,'7');
   functions.length=0;const fundingOnly=await read(wallet,slot,true);assert.deepEqual(fundingOnly.nfts,[]);assert.equal(fundingOnly.scope,'funding');assert.ok(!functions.includes('tokenExists'));assert.ok(!functions.includes('getERC1155Inventory'));assert.ok(!functions.includes('owner'));
+  functions.length=0;
+  const personal=await read(wallet,slot,'player');
+  assert.equal(personal.scope,'player');assert.equal(personal.contractEth,null);
+  assert.equal(personal.assets[0].formatted,'10');assert.equal(personal.nfts[0].balance,'7');
+  assert.equal(personal.assets[0].reserve,null);assert.equal(personal.nfts[0].reserve,null);
+  assert.ok(functions.includes('balanceOf'));
+  for(const name of ['getERC20Inventory','getERC1155Inventory','owner','pendingOwner','tokenExists','freeSpins'])assert.ok(!functions.includes(name),name+' is not part of a player wallet refresh');
+
 });

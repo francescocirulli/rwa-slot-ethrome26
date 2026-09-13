@@ -27,7 +27,7 @@ export function PhoneApproval({portfolio,transaction,permission,reload,stale=fal
    const units=parseUnits(value,6);if(units.toString().length>18||enable&&units<=0n)throw Error('Enter a valid USDC limit.');
    if(enable&&permission){
     if(!consent)return;
-    stillLinked();const latest=await permission.api('/phone/game');stillLinked();
+    stillLinked();const latest=await permission.api('/phone/approval');stillLinked();
     if(!latest.configured||!latest.player||latest.player.busy)throw Error('Refresh the game state before approving.');
     const balanceError=approvalFundingError(latest.player.balance==null?null:BigInt(latest.player.balance),portfolio?.eth==null?null:parseEther(portfolio.eth),latest.gasMode,BigInt(latest.settings.ticketPrice));
     if(balanceError)throw Error(balanceError);
