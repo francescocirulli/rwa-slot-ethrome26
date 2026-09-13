@@ -11,7 +11,7 @@ import {createVoucherSource,voucherTransaction} from './source';
 export type EnsClaim={id:Hex;label:string;name:string;completed:boolean;stage:'voucher'|'finalizing-base'|'ready'|'registered';owner:Address;resolver:Address};
 export type EnsName={name:string;owner:Address;expiry:string;resolvedAddress:Address|null};
 export function createEnsService(config:EnsConfig,key?:Hex){
-  const client=createPublicClient({chain:sepolia,transport:http(config.rpcUrl,{timeout:12000,retryCount:0})});
+  const client=createPublicClient({chain:sepolia,batch:{multicall:{wait:10}},transport:http(config.rpcUrl,{timeout:4000,retryCount:0})});
   const base=createBaseReadClient();
   const sender=key?createEnsSender(config.rpcUrl,key):undefined;
   const registrar={address:config.registrar,abi:ensRegistrarAbi};
