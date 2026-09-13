@@ -1,4 +1,5 @@
 import {createPublicClient, formatUnits, defineChain, erc20Abi, keccak256, toHex, zeroAddress, parseEventLogs, type Address, type Hash} from 'viem';
+import {base} from 'viem/chains';
 import {slotAbi} from './abi';
 import {GAME_STATES, serializable, type SlotConfig} from './config';
 import {SlotError} from './errors';
@@ -12,9 +13,10 @@ export function createSlotReader(config: SlotConfig) {
   const pageBlocks = config.logPageBlocks && config.logPageBlocks > 0n ? config.logPageBlocks : 2000n;
   const historyFloor = config.historyFromBlock && config.historyFromBlock >= config.deploymentBlock ? config.historyFromBlock : config.deploymentBlock;
   const chain = defineChain({id: config.chainId, name: config.chainId === 8453 ? 'Base' : 'Local test',
-    nativeCurrency: {name: 'Ether', symbol: 'ETH', decimals: 18}, rpcUrls: {default: {http: config.rpcUrls && config.rpcUrls.length ? config.rpcUrls : [config.rpcUrl]}}});
+    nativeCurrency: {name: 'Ether', symbol: 'ETH', decimals: 18},
+    ...(config.chainId === base.id ? {contracts: base.contracts} : {}), rpcUrls: {default: {http: config.rpcUrls && config.rpcUrls.length ? config.rpcUrls : [config.rpcUrl]}}});
   const rpcUrls = config.rpcUrls && config.rpcUrls.length ? config.rpcUrls : [config.rpcUrl];
-  const client = createPublicClient({chain, transport: rpcTransport(rpcUrls)});
+  const client = createPublicClient({chain, batch: config.chainId === base.id ? {multicall: {wait: 10}} : undefined, transport: rpcTransport(rpcUrls)});
   const contract = {address: config.address, abi: slotAbi};
   let checkedAt = 0;
   let validation:Promise<void>|undefined;
@@ -29,7 +31,7 @@ export function createSlotReader(config: SlotConfig) {
   const latest = new Map<string, {id: bigint; block: bigint; hash: Hash; checked: bigint}>();
   const scans = new Map<string, {head: bigint; cursor: bigint}>();
   async function validate() {
-    if (Date.now() - checkedAt < 5000) return;
+    if (Date.now() - checkedAt < 60000) return;
     if(!validation)validation=(async()=>{
       const [chainId, code, token] = await Promise.all([client.getChainId(), client.getCode({address: config.address}),
         client.readContract({...contract, functionName: 'paymentToken'})]);

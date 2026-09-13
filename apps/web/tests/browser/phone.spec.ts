@@ -17,7 +17,7 @@ async function setup(page:Page,{paired=false,busy=false,unavailable=false,playAc
     if(path.endsWith('/phone/activity'))return route.fulfill({json:{...session(),sessionId:'fixture-session'}});
     if(path.endsWith('/phone/play/prepare'))return route.fulfill({json:{...session(),playGrant:{active:false,budget:'5000000',signerId:'fixture',policyId:'fixture'}}});
     if(path.endsWith('/phone/play/activate'))return route.fulfill({json:{...session(),playGrant:{active:true,budget:'5000000'}}});
-    if(path.endsWith('/phone/game'))return route.fulfill({json:{configured:true,settings:{ticketPrice:'50000'},player:{balance:usdc,freeSpins:'2',allowance:'2500000',game:{id:'4',pending:busy}},gasMode}});
+    if(path.endsWith('/phone/game')||path.endsWith('/phone/approval'))return route.fulfill({json:{configured:true,settings:{ticketPrice:'50000'},player:{balance:usdc,freeSpins:'2',allowance:'2500000',game:{id:'4',pending:busy}},gasMode}});
     return connected?route.fulfill({json:session()}):route.fulfill({status:401,json:{error:'No iPad linked'}});
   });
   await page.setViewportSize({width:390,height:844});
@@ -169,7 +169,7 @@ test('paid play rechecks USDC before preparing permission when displayed balance
   await expect(page.getByRole('button',{name:'Approve and play'})).toBeEnabled();
   let prepared=0;
   await page.route('**/api/relay/phone/play/prepare',route=>{prepared++;return route.abort();});
-  await page.route('**/api/relay/phone/game',route=>route.fulfill({json:{configured:true,settings:{ticketPrice:'50000'},player:{balance:'0',freeSpins:'2',allowance:'0'},gasMode:'usdc'}}));
+  await page.route('**/api/relay/phone/approval',route=>route.fulfill({json:{configured:true,settings:{ticketPrice:'50000'},player:{balance:'0',freeSpins:'2',allowance:'0'},gasMode:'usdc'}}));
   await page.getByRole('button',{name:'Approve and play'}).click();
   await expect(page.getByRole('alert').filter({hasText:'Add USDC on Base'})).toBeVisible();
   expect(prepared).toBe(0);await expect(page.getByRole('dialog')).toBeHidden();

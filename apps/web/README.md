@@ -416,7 +416,8 @@ slot, balances and inventory. HTTP failures, timeouts and quota errors temporari
 remove the failing endpoint from rotation: the cooldown starts at 30 seconds and
 increases to five minutes after repeated failures. Requests try configured healthy
 fallbacks immediately; normal traffic retries an endpoint after its cooldown,
-without background health pings. Configure `BASE_RPC_FALLBACK_URLS` with independent
+without background health pings. If every live endpoint is cooling down, one
+real read may probe recovery every five seconds instead of waiting up to five minutes. Configure `BASE_RPC_FALLBACK_URLS` with independent
 providers and give the primary enough quota for an always-on keeper.
 
 Identical simultaneous reads share one request; completed results are not cached
@@ -498,3 +499,28 @@ walks all pages at one block before calculating totals, and exposes 25-row pages
 The 5,000-record ceiling returns an error asking for narrower filters. No new secrets,
 contract deployments or database migrations are needed. Tests live in
 `tests/explorer.test.ts` and `tests/browser/explorer.spec.ts`.
+
+### Wallet and game RPC load
+
+Player portfolio refreshes read token/NFT balances and current player state. They
+skip admin reserve balances, collection ownership and mint eligibility. Approval
+uses the authenticated `GET /api/relay/phone/approval` snapshot, containing current
+balance, allowance, pending-operation state and ticket price at one block. It does
+not inspect completed rounds, prize reserves or historical logs and does not
+renew session activity. Submission still performs a fresh server preflight.
+
+Base contract view calls use Multicall3 to combine reads at the same block;
+local test chains retain direct calls. Deployment validation is shared for 60
+seconds. The idle keeper avoids rereading roles, balance and active rounds twice
+in the same block, while pending submissions and failed checks still reconcile.
+
+Historical `eth_getLogs` requests use separate HTTP requests and separate provider
+cooldowns. A slow or rejected scan therefore cannot hold wallet reads in the same
+HTTP batch or quarantine an otherwise healthy live-read endpoint. Safe
+`rpc.endpoint_unavailable` logs identify the endpoint index, live/history category
+and method without URLs, parameters, credentials or raw provider errors.
+
+When replacing a range-capped provider, review `SLOT_LOG_PAGE_BLOCKS` as well as
+the URL. Keeping a five-block limit with providers that support 2,000 blocks
+creates hundreds of unnecessary requests during catch-up. Use the largest tested
+range supported by every configured endpoint; preserve the history start blocks.

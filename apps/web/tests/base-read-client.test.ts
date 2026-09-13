@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
-import {createPublicClient,decodeFunctionData,encodeFunctionResult,encodeAbiParameters,multicall3Abi} from 'viem';
+import {createPublicClient,erc20Abi,decodeFunctionData,encodeFunctionResult,encodeAbiParameters,multicall3Abi} from 'viem';
 import {createBaseReadClient,baseChainCheck} from '../lib/base-read-client';
 import {createSwapChain} from '../lib/admin/swaps';
 import {rpcTransport} from '../lib/rpc-transport';
@@ -55,13 +55,14 @@ test('daily quota errors fall back for shared and slot reads; real transaction r
 });
 
 type RpcCall = {id:number;method:string;params?:unknown[]};
-async function rpcFixture(reply:(call:RpcCall)=>object, status=()=>200, delay=0) {
+async function rpcFixture(reply:(call:RpcCall)=>object, status=()=>200, delay:number|((calls:RpcCall[])=>number)=0) {
   const calls:RpcCall[]=[], batches:number[]=[];
   const server=createServer(async(req,res)=>{
     const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk));
     const payload=JSON.parse(Buffer.concat(chunks).toString()),items:RpcCall[]=Array.isArray(payload)?payload:[payload];
     calls.push(...items);batches.push(items.length);
-    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
+    const pause=typeof delay==='function'?delay(items):delay;
+    if(pause)await new Promise(resolve=>setTimeout(resolve,pause));
     res.writeHead(status(),{'Content-Type':'application/json'});
     const results=items.map(call=>({id:call.id,jsonrpc:'2.0',...reply(call)}));
     res.end(JSON.stringify(Array.isArray(payload)?results:results[0]));
@@ -161,4 +162,78 @@ test('provider request-limit code -32007 opens a cooldown and repeated failures 
     now+=30001;assert.equal(await client.getBlockNumber({cacheTime:0}),100n);
     assert.equal(first.calls.length,3);
   } finally {await first.close();await second.close();}
+});
+
+
+test('history query failures cannot quarantine healthy live state reads',async()=>{
+  const reply=(call:RpcCall)=>call.method==='eth_getLogs'?{error:{code:-32005,message:'query range limit exceeded'}}:{result:'0x64'};
+  const first=await rpcFixture(reply),second=await rpcFixture(reply);
+  const client=createPublicClient({transport:rpcTransport([first.url,second.url],{isolated:true})});
+  try {
+    await assert.rejects(client.getLogs({fromBlock:1n,toBlock:100n}));
+    assert.equal(await client.getBlockNumber({cacheTime:0}),100n);
+    assert.equal(first.calls.length,2);assert.equal(second.calls.length,1);
+    await assert.rejects(client.getLogs({fromBlock:1n,toBlock:100n}));
+    assert.equal(first.calls.length,2);assert.equal(second.calls.length,1);
+  } finally {await first.close();await second.close();}
+});
+
+test('a total outage recovers on the next bounded probe instead of waiting out a long cooldown',async()=>{
+  let now=1000,down=true;
+  const first=await rpcFixture(()=>({result:'0x64'}),()=>down?503:200);
+  const second=await rpcFixture(()=>({result:'0x64'}),()=>503);
+  const client=createPublicClient({transport:rpcTransport([first.url,second.url],{now:()=>now,isolated:true})});
+  try {
+    await assert.rejects(client.getBlockNumber({cacheTime:0}));
+    now+=1000;await assert.rejects(client.getBlockNumber({cacheTime:0}));
+    assert.equal(first.calls.length,1);assert.equal(second.calls.length,1);
+    down=false;now+=4001;
+    const results=await Promise.all([1,2,3].map(()=>client.getBlockNumber({cacheTime:0})));
+    assert.deepEqual(results,[100n,100n,100n]);assert.equal(first.calls.length,2);assert.equal(second.calls.length,1);
+  } finally {await first.close();await second.close();}
+});
+
+
+test('a slow historical query never shares an HTTP batch with the live wallet read',async()=>{
+  const node=await rpcFixture(call=>({result:call.method==='eth_getLogs'?[]:'0x64'}),()=>200,
+    calls=>calls.some(call=>call.method==='eth_getLogs')?1000:0);
+  const client=createPublicClient({transport:rpcTransport([node.url],{timeout:400,isolated:true})});
+  try {
+    const [history,live]=await Promise.allSettled([client.getLogs({fromBlock:1n,toBlock:100n}),client.getBlockNumber({cacheTime:0})]);
+    assert.equal(history.status,'rejected');assert.deepEqual(live,{status:'fulfilled',value:100n});
+    assert.deepEqual(node.batches,[1,1]);
+    assert.equal(await client.getBlockNumber({cacheTime:0}),100n);
+  } finally {await node.close();}
+});
+
+
+test('Base wallet reads combine current-state calls and never query historical logs',async()=>{
+  const {createSlotReader}=await import('../lib/slot/reader');
+  const {slotAbi}=await import('../lib/slot/abi');
+  const token='0x0000000000000000000000000000000000000022';
+  function result(data:`0x${string}`):`0x${string}` {
+    const decoded=decodeFunctionData({abi:[...slotAbi,...erc20Abi],data});
+    if(decoded.functionName==='paymentToken')return encodeFunctionResult({abi:slotAbi,functionName:'paymentToken',result:token});
+    if(decoded.functionName==='getPlayerState')return encodeFunctionResult({abi:slotAbi,functionName:'getPlayerState',result:[2n,0n,false]});
+    if(decoded.functionName==='allowance')return encodeFunctionResult({abi:erc20Abi,functionName:'allowance',result:5n});
+    if(decoded.functionName==='balanceOf')return encodeFunctionResult({abi:erc20Abi,functionName:'balanceOf',result:16n});
+    throw Error('Unexpected view call');
+  }
+  const node=await rpcFixture(call=>{
+    if(call.method==='eth_chainId')return {result:'0x2105'};
+    if(call.method==='eth_blockNumber')return {result:'0x186a0'};
+    if(call.method==='eth_getCode')return {result:'0x1234'};
+    assert.equal(call.method,'eth_call');
+    const decoded=decodeFunctionData({abi:multicall3Abi,data:(call.params![0] as {data:`0x${string}`}).data});
+    assert.equal(decoded.functionName,'aggregate3');
+    const calls=decoded.args[0] as readonly {callData:`0x${string}`}[];
+    return {result:encodeFunctionResult({abi:multicall3Abi,functionName:'aggregate3',result:calls.map(call=>({success:true,returnData:result(call.callData)}))})};
+  });
+  try {
+    const reader=createSlotReader({address:'0x0000000000000000000000000000000000000011',paymentToken:token,deploymentBlock:1n,chainId:8453,rpcUrl:node.url,confirmations:2,gasMode:'eth'});
+    const state=await reader.walletState('0x0000000000000000000000000000000000000033');
+    assert.equal(state.balance,16n);assert.equal(state.allowance,5n);assert.equal(state.freeSpins,2n);assert.equal(state.busy,false);
+    assert.equal(node.calls.filter(call=>call.method==='eth_call').length,3);
+    assert.equal(node.calls.some(call=>call.method==='eth_getLogs'),false);
+  } finally {await node.close();}
 });

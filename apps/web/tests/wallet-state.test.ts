@@ -66,3 +66,13 @@ test('scanner accepts only a single valid pairing secret from this origin and ne
   assert.equal(pairingSecretFromQr(origin+'/phone#pair='+secret,origin),secret);
   for(const value of ['javascript:alert(1)','/phone#pair='+secret,origin+'/phone#pair=short','https://evil.example/phone#pair='+secret,origin+'/admin#pair='+secret,origin+'/phone#pair='+secret+'&pair='+secret,'https://user:pass@slot.example/phone#pair='+secret])assert.throws(()=>pairingSecretFromQr(value,origin));
 });
+
+
+test('approval state ignores completed-round details and reserve/history failures',async()=>{
+  const f=fixture(),engine=createSlotEngine(f.reader);
+  f.reader.rememberGame(address,99n);
+  const state=await engine.approvalView(address);
+  assert.equal(state.player.busy,false);assert.equal(state.player.allowance,'2500000');
+  assert.equal(state.player.balance,'10000000');assert.equal(state.settings.ticketPrice,'50000');
+  assert.equal('game' in state.player,false);assert.equal(f.logs(),0);
+});

@@ -13,7 +13,7 @@ function setup(gasMode:'usdc'|'eth'='eth') {
   const fixture=walletFixture(), calls:{player:string;mode:string}[]=[];
   fixture.service.preparePlay=async(wallet,userId,id,code,address,chainId,budget)=>({id:id+'-play',walletId:wallet.id,address:wallet.address,signerId:'signer-play',policyId:'policy-play',message:'',active:false,contract:address,chainId,budget});
   fixture.service.sendSpin=async()=>({hash:('0x'+'a'.repeat(64)) as `0x${string}`});
-  const slot={reader:{config:{address:contract,chainId:8453,gasMode},settings:async()=>({ticketPrice:1000000n}),walletState:async()=>({allowance}),snapshot:async()=>({configured:true})},health:()=>({configured:true}),playView:async()=>({configured:true,player:{balance:'5000000',freeSpins:'2'}}),playerView:async()=>({}),
+  const slot={reader:{config:{address:contract,chainId:8453,gasMode},settings:async()=>({ticketPrice:1000000n}),walletState:async()=>({allowance}),snapshot:async()=>({configured:true})},health:()=>({configured:true}),approvalView:async()=>({configured:true,player:{balance:'5000000',allowance:'2000000',busy:false}}),playView:async()=>({configured:true,player:{balance:'5000000',freeSpins:'2'}}),playerView:async()=>({}),
     start:async(player:string,after:bigint,mode:string,options:{assertSession:()=>void;sendPaid?:()=>unknown})=>{await gate;options.assertSession();if(startError)throw startError;calls.push({player,mode});if(mode==='paid')await options.sendPaid?.();return{stage:'confirming',gameId:'1'};}} as unknown as SlotEngine;
   const relay=createRelay({origin,slot,walletService:fixture.service,now:()=>now,readBalance:async()=>({amount:'5',stale:false,updatedAt:now})});
   function browser(token?:string){let cookie='';return{async call(path:string,body?:unknown){const headers:Record<string,string>={cookie};if(token)headers.Authorization='Bearer '+token;if(body!==undefined){headers.Origin=origin;headers['Content-Type']='application/json';headers['X-Slot-Request']='1';}const r=await relay.handle(new Request(origin+'/api/relay'+path,{method:body===undefined?'GET':'POST',headers,body:body===undefined?undefined:JSON.stringify(body)}));if(r.headers.has('set-cookie'))cookie=r.headers.get('set-cookie')!.split(';')[0];return{status:r.status,body:await r.json()};}};}
@@ -73,4 +73,16 @@ test('rejected spins log only a safe code and public wallet context, without sen
     assert.equal(JSON.parse(messages[2]).stage,'uncertain');
     assert.equal(messages.some(message=>message.includes('sensitive')),false);
   }finally{console.warn=warn;s.close();}
+});
+
+
+test('approval snapshot requires the paired phone and does not renew inactivity',async()=>{
+  const s=setup();try{
+    await s.connect();
+    assert.equal((await s.tablet.call('/phone/approval')).status,401);
+    const response=await s.phone.call('/phone/approval');
+    assert.equal(response.status,200);assert.equal(response.body.player.allowance,'2000000');
+    assert.equal('game' in response.body.player,false);
+    s.advance();assert.equal((await s.phone.call('/phone/approval')).status,401);
+  }finally{s.close();}
 });
